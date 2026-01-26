@@ -17,10 +17,14 @@ interface FiltersProps {
 
 const CATEGORIES: { id: PlaceType; label: string; icon: any }[] = [
   { id: "factory", label: "Fabrika", icon: Factory },
+  { id: "office", label: "Ofis", icon: Briefcase },
+  { id: "workshop", label: "Atölye", icon: Factory },
   { id: "kindergarten", label: "Anaokulu", icon: Baby },
+  { id: "primary_school", label: "İlkokul", icon: School },
   { id: "middle_school", label: "Ortaokul", icon: School },
   { id: "high_school", label: "Lise", icon: GraduationCap },
-  { id: "college_university", label: "Üniversite", icon: Briefcase },
+  { id: "private_school", label: "Özel Okul", icon: School },
+  { id: "college_keyword", label: "Üniversite", icon: GraduationCap },
 ];
 
 export default function Filters({ selectedCategory, onCategoryChange }: FiltersProps) {

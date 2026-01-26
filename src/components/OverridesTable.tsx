@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { adminApi } from "@/lib/adminApi";
 import type { AdminOverride } from "@/lib/types";
-import { PLACE_TYPE_LABELS } from "@/lib/types";
+import { PLACE_TYPE_LABELS } from "@/lib/labels";
 import { Edit2, Trash2, Power, Search, History, Database } from "lucide-react";
 
 interface OverridesTableProps {

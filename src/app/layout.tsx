@@ -8,7 +8,12 @@ export const metadata: Metadata = {
     "Çevrenizdeki fabrika, okul, ofis ve atölyeleri harita üzerinde keşfedin. Konum tabanlı yer arama uygulaması.",
   keywords: ["harita", "yer bulucu", "okul", "fabrika", "ofis", "konum"],
   authors: [{ name: "AIESEC" }],
-  viewport: "width=device-width, initial-scale=1, maximum-scale=5",
+};
+
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#F8FAFC" },
     { media: "(prefers-color-scheme: dark)", color: "#0F172A" },

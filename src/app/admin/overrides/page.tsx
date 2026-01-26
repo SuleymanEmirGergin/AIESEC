@@ -13,8 +13,9 @@ import {
   Info,
   ShieldAlert
 } from "lucide-react";
+import { Suspense } from "react";
 
-export default function OverridesPage() {
+function OverridesPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isAdmin, setIsAdmin] = useState(false);
@@ -123,5 +124,13 @@ export default function OverridesPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function OverridesPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-50 flex items-center justify-center">Yükleniyor...</div>}>
+      <OverridesPageContent />
+    </Suspense>
   );
 }

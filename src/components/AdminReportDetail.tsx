@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { adminApi } from "@/lib/adminApi";
 import type { AdminReport, ReportStatus } from "@/lib/types";
-import { PLACE_TYPE_LABELS } from "@/lib/types";
+import { PLACE_TYPE_LABELS } from "@/lib/labels";
 import { X, ExternalLink, MapPin, CheckCircle, Slash, MessageSquare, Tag, Plus, PlusCircle } from "lucide-react";
 
 interface AdminReportDetailProps {

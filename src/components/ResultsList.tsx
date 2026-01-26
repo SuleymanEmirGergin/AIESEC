@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import type { Place } from "@/lib/types";
-import { PLACE_TYPE_LABELS } from "@/lib/types";
+import { PLACE_TYPE_LABELS } from "@/lib/labels";
 import { formatDistance } from "@/lib/distance";
 import { MapPin, Copy, AlertTriangle, Navigation, ArrowUpDown, CheckCircle2, Circle, Info, ShieldCheck, HelpCircle } from "lucide-react";
 import ReportModal from "./ReportModal";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { PLACE_TYPE_LABELS } from "@/lib/types";
+import { PLACE_TYPE_LABELS } from "@/lib/labels";
 import type { PlaceType, AdminOverride } from "@/lib/types";
 import { X, Save, AlertCircle } from "lucide-react";
 
