@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { Search, ChevronDown, Check, X } from "lucide-react";
 import type { PlaceType } from "@/lib/types";
-import { PLACE_TYPE_LABELS, PLACE_TYPE_GROUPS } from "@/lib/types";
+import { PLACE_TYPE_LABELS, PLACE_TYPE_GROUPS } from "@/lib/labels";
 import type { PresetsResponse } from "@/lib/configTypes";
 
 interface TypeSelectorProps {

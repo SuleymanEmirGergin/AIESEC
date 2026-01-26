@@ -1,9 +1,13 @@
 export type PlaceType =
   | "factory"
+  | "office"
+  | "workshop"
   | "kindergarten"
+  | "primary_school"
   | "middle_school"
   | "high_school"
-  | "college_university";
+  | "private_school"
+  | "college_keyword";
 
 export interface Place {
   id: string;
@@ -31,23 +35,7 @@ export interface ApiResponse {
   total: number;
 }
 
-export const PLACE_TYPE_LABELS: Record<PlaceType, string> = {
-  factory: "Fabrika / Sanayi",
-  kindergarten: "Anaokulu / Kreş",
-  middle_school: "Ortaokul",
-  high_school: "Lise",
-  college_university: "Üniversite / Kampüs",
-};
 
-export const PLACE_TYPE_GROUPS: Record<string, PlaceType[]> = {
-  "İşletmeler": ["factory"],
-  "Eğitim Kurumları": [
-    "kindergarten", 
-    "middle_school", 
-    "high_school", 
-    "college_university"
-  ],
-};
 
 
 

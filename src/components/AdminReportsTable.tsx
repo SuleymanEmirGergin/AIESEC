@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { adminApi } from "@/lib/adminApi";
 import type { AdminReport, ReportStatus } from "@/lib/types";
-import { PLACE_TYPE_LABELS } from "@/lib/types";
+import { PLACE_TYPE_LABELS } from "@/lib/labels";
 import { Calendar, ChevronRight, Clock, Filter, Search, Tag, User } from "lucide-react";
 
 interface AdminReportsTableProps {

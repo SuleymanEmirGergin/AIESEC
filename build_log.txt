@@ -1,0 +1,65 @@
+
+> nearby-place-finder@1.0.0 build
+> next build
+
+  Ôû▓ Next.js 14.2.35
+  - Environments: .env.local
+
+   Creating an optimized production build ...
+ Ô£ô Compiled successfully
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/8) ...
+ ÔÜá Unsupported metadata viewport is configured in metadata export in /_not-found. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ÔÜá Unsupported metadata themeColor is configured in metadata export in /_not-found. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ÔÜá Unsupported metadata viewport is configured in metadata export in /admin/overrides. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ÔÜá Unsupported metadata themeColor is configured in metadata export in /admin/overrides. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ÔÜá Unsupported metadata viewport is configured in metadata export in /admin. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ÔÜá Unsupported metadata themeColor is configured in metadata export in /admin. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ÔÜá Unsupported metadata viewport is configured in metadata export in /_not-found. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ÔÜá Unsupported metadata themeColor is configured in metadata export in /_not-found. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ÔÜá Unsupported metadata viewport is configured in metadata export in /admin/overrides. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ÔÜá Unsupported metadata themeColor is configured in metadata export in /admin/overrides. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ÔÜá Unsupported metadata viewport is configured in metadata export in /admin. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ÔÜá Unsupported metadata themeColor is configured in metadata export in /admin. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ÔÜá Unsupported metadata viewport is configured in metadata export in /. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ÔÜá Unsupported metadata themeColor is configured in metadata export in /. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+   Generating static pages (2/8) 
+ Ô¿» useSearchParams() should be wrapped in a suspense boundary at page "/admin/overrides". Read more: https://nextjs.org/docs/messages/missing-suspense-with-csr-bailout
+    at o (C:\Users\emirg\Desktop\AIESEC\.next\server\chunks\984.js:1:10536)
+    at s (C:\Users\emirg\Desktop\AIESEC\.next\server\chunks\984.js:1:21475)
+    at k (C:\Users\emirg\Desktop\AIESEC\.next\server\app\admin\overrides\page.js:1:13666)
+    at nj (C:\Users\emirg\Desktop\AIESEC\node_modules\.pnpm\next@14.2.35_react-dom@18.3.1_react@18.3.1\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:46252)
+    at nM (C:\Users\emirg\Desktop\AIESEC\node_modules\.pnpm\next@14.2.35_react-dom@18.3.1_react@18.3.1\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:47572)
+    at nL (C:\Users\emirg\Desktop\AIESEC\node_modules\.pnpm\next@14.2.35_react-dom@18.3.1_react@18.3.1\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:64547)
+    at nI (C:\Users\emirg\Desktop\AIESEC\node_modules\.pnpm\next@14.2.35_react-dom@18.3.1_react@18.3.1\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:47011)
+    at nM (C:\Users\emirg\Desktop\AIESEC\node_modules\.pnpm\next@14.2.35_react-dom@18.3.1_react@18.3.1\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:47718)
+    at nM (C:\Users\emirg\Desktop\AIESEC\node_modules\.pnpm\next@14.2.35_react-dom@18.3.1_react@18.3.1\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:61547)
+    at nL (C:\Users\emirg\Desktop\AIESEC\node_modules\.pnpm\next@14.2.35_react-dom@18.3.1_react@18.3.1\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:64547)
+
+Error occurred prerendering page "/admin/overrides". Read more: https://nextjs.org/docs/messages/prerender-error
+
+ ÔÜá Unsupported metadata viewport is configured in metadata export in /. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ÔÜá Unsupported metadata themeColor is configured in metadata export in /. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+   Generating static pages (4/8) 
+   Generating static pages (6/8) 
+ Ô£ô Generating static pages (8/8)
+
+> Export encountered errors on following paths:
+	/admin/overrides/page: /admin/overrides

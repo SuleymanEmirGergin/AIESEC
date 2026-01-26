@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import type { Place } from "@/lib/types";
 import { createCustomIcon } from "@/lib/map-utils";
-import { PLACE_TYPE_LABELS } from "@/lib/types";
+import { PLACE_TYPE_LABELS } from "@/lib/labels";
 
 interface MapContainerProps {
   places: Place[];
