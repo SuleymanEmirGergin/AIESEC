@@ -1,0 +1,35 @@
+# FastAPI OSM Backend - Dependencies
+# Python 3.12+
+
+# Core Framework
+fastapi[standard]==0.115.6
+uvicorn[standard]==0.34.0
+aiofiles==24.1.0
+
+# HTTP Client for Overpass API
+httpx==0.28.1
+
+# Data Validation
+pydantic==2.10.5
+pydantic-settings==2.7.1
+
+# Database
+sqlalchemy[asyncio]==2.0.37
+aiosqlite==0.20.0
+
+# Rate Limiting
+slowapi==0.1.9
+
+# Monitoring
+prometheus-client==0.21.1
+psutil==6.1.1
+
+# CORS Middleware (included in fastapi[standard])
+
+# Testing
+pytest==8.3.4
+pytest-asyncio==0.25.2
+pytest-cov==6.0.0
+
+# Code Quality
+ruff==0.9.1

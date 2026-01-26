@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fastapi-osm-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - HOST=0.0.0.0
+      - OVERPASS_URL=https://overpass-api.de/api/interpreter
+      - OVERPASS_TIMEOUT=15
+      - RATE_LIMIT=60/minute
+      - CACHE_TTL_SCHOOL=3600
+      - CACHE_TTL_B2B=300
+      - LOG_LEVEL=INFO
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health/ready')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

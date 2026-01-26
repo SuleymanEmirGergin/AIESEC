@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "C:\Users\emirg\Desktop\AIESEC\backend\verify_overhaul.py", line 66, in <module>
+    verify_all()
+  File "C:\Users\emirg\Desktop\AIESEC\backend\verify_overhaul.py", line 47, in verify_all
+    assert response.status_code == 200
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError
+Starting Comprehensive Verification...
+Testing Overpass Failover...
+Failover probe: status=200
+Testing Adaptive Search...

@@ -1,0 +1,7 @@
+INFO:     Started server process [34652]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+ERROR:    [Errno 10048] error while attempting to bind on address ('127.0.0.1', 8000): normal olarak her yuva adresi (ileti■im kural²/a­ adresi/ba­lant² noktas²) iin yaln²zca bir kullan²ma izin veriliyor
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+[WARMUP] Starting cache warmup for 5 cities...

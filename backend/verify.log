@@ -1,0 +1,33 @@
+
+--- Phase 1: Creating Test API Keys ---
+POST http://127.0.0.1:8000/admin/keys?name=tester_free&plan=free
+Created Free Key: ak_QmSg239v5FJyf3kbs5Q-WYg1v6_-2JihELNWas6XCHY
+Created Pro Key: ak_ywPCpB9yp9VTfZBhPLtEnE544pZ601wkhszJPeW1JO4
+
+--- Phase 2: Verifying Plan Gating (Radius) ---
+Free Key (3000m): Status 403 (Expected 403)
+Pro Key (3000m): Status 200 (Expected 200)
+
+--- Phase 3: Verifying Plan Gating (Export) ---
+Free Key Export: Status 403 (Expected 403)
+
+--- Phase 4: Verifying Intelligence (Confidence) ---
+Result Intelligence: confidence=50, level=medium
+Traceback (most recent call last):
+  File "C:\Users\emirg\Desktop\AIESEC\backend\verify_v1_2.py", line 81, in <module>
+    asyncio.run(verify_everything())
+  File "C:\Python311\Lib\asyncio\runners.py", line 190, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Python311\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python311\Lib\asyncio\base_events.py", line 654, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\emirg\Desktop\AIESEC\backend\verify_v1_2.py", line 59, in verify_everything
+    print("\u2705 Confidence scoring is present.")
+  File "C:\Python311\Lib\encodings\cp1254.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2705' in position 0: character maps to <undefined>

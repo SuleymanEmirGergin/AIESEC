@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FastAPI OSM - Admin Dashboard</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --text: #1e293b;
+            --success: #22c55e;
+            --danger: #ef4444;
+        }
+        body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 2rem; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .card { background: var(--card); border-radius: 8px; padding: 1.5rem; margin-bottom: 2rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        h1 { margin-top: 0; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; }
+        .stat-item { padding: 1rem; border-radius: 6px; background: #f1f5f9; text-align: center; }
+        .stat-label { font-size: 0.875rem; color: #64748b; margin-bottom: 0.5rem; }
+        .stat-value { font-size: 1.25rem; font-weight: bold; }
+        button { background: var(--primary); color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 1rem; transition: filter 0.2s; }
+        button:hover { filter: brightness(1.1); }
+        button.danger { background: var(--danger); }
+        .status-badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 999px; font-size: 0.875rem; font-weight: 600; }
+        .status-pass { background: #dcfce7; color: #166534; }
+        .actions { display: flex; gap: 1rem; margin-top: 1rem; }
+        #auth-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 100; }
+        .auth-card { background: white; padding: 2rem; border-radius: 12px; width: 400px; }
+        input { width: 100%; padding: 0.75rem; margin: 1rem 0; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; }
+    </style>
+</head>
+<body>
+    <div id="auth-overlay">
+        <div class="auth-card">
+            <h2>Admin Authentication</h2>
+            <p>Please enter your <code>ADMIN_API_KEY</code></p>
+            <input type="password" id="api-key-input" placeholder="Token">
+            <button onclick="authenticate()">Authenticate</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <h1>🚀 FastAPI OSM Admin</h1>
+        
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h2 style="margin: 0;">Cache Statistics</h2>
+                <div id="health-status"></div>
+            </div>
+            <div class="stats-grid" id="stats-container">
+                <div class="stat-item"><div class="stat-label">Entries</div><div class="stat-value" id="stat-entries">-</div></div>
+                <div class="stat-item"><div class="stat-label">Hit Rate</div><div class="stat-value" id="stat-hit-rate">-</div></div>
+                <div class="stat-item"><div class="stat-label">Hits</div><div class="stat-value" id="stat-hits">-</div></div>
+                <div class="stat-item"><div class="stat-label">Misses</div><div class="stat-value" id="stat-misses">-</div></div>
+                <div class="stat-item"><div class="stat-label">Uptime</div><div class="stat-value" id="stat-uptime">-</div></div>
+            </div>
+            <div class="actions">
+                <button onclick="refreshStats()">Refresh Stats</button>
+                <button class="danger" onclick="clearCache()">Clear Cache</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>System Monitoring</h2>
+            <div class="actions">
+                <button onclick="window.open('/metrics', '_blank')">View Prometheus Metrics</button>
+                <button onclick="window.open('/docs', '_blank')">API Documentation</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let adminToken = '';
+
+        function authenticate() {
+            const input = document.getElementById('api-key-input');
+            adminToken = input.value;
+            if (adminToken) {
+                document.getElementById('auth-overlay').style.display = 'none';
+                refreshStats();
+                checkHealth();
+            }
+        }
+
+        async function apiFetch(path, options = {}) {
+            options.headers = {
+                ...options.headers,
+                'Authorization': `Bearer ${adminToken}`
+            };
+            const response = await fetch(path, options);
+            if (response.status === 401) {
+                document.getElementById('auth-overlay').style.display = 'flex';
+                throw new Error('Unauthorized');
+            }
+            return response.json();
+        }
+
+        async function refreshStats() {
+            try {
+                const stats = await apiFetch('/admin/cache/stats');
+                document.getElementById('stat-entries').textContent = stats.total_entries;
+                document.getElementById('stat-hit-rate').textContent = (stats.hit_rate * 100).toFixed(1) + '%';
+                document.getElementById('stat-hits').textContent = stats.hits;
+                document.getElementById('stat-misses').textContent = stats.misses;
+                document.getElementById('stat-uptime').textContent = formatUptime(stats.uptime_seconds);
+            } catch (e) { console.error(e); }
+        }
+
+        async function clearCache() {
+            if (confirm('Are you sure you want to clear the total cache?')) {
+                try {
+                    const result = await apiFetch('/admin/cache', { method: 'DELETE' });
+                    alert(`Cache cleared! ${result.entries_cleared} entries removed.`);
+                    refreshStats();
+                } catch (e) { console.error(e); }
+            }
+        }
+
+        async function checkHealth() {
+            try {
+                const health = await (await fetch('/health/live')).json();
+                document.getElementById('health-status').innerHTML = `<span class="status-badge status-pass">System Live</span>`;
+            } catch (e) {
+                document.getElementById('health-status').innerHTML = `<span class="status-badge danger">System Down</span>`;
+            }
+        }
+
+        function formatUptime(seconds) {
+            if (seconds < 60) return seconds + 's';
+            if (seconds < 3600) return Math.floor(seconds / 60) + 'm';
+            return Math.floor(seconds / 3600) + 'h ' + Math.floor((seconds % 3600) / 60) + 'm';
+        }
+
+        // Auto refresh health
+        setInterval(checkHealth, 30000);
+    </script>
+</body>
+</html>
