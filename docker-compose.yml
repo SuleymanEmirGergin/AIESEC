@@ -7,10 +7,10 @@ services:
       dockerfile: Dockerfile
     container_name: nearby-place-finder
     ports:
-      - "3000:3000"
+      - "3004:3000"
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE:-http://localhost:8000}
+      - NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE:-http://localhost:8004/api}
       - NEXT_PUBLIC_DEFAULT_LAT=${NEXT_PUBLIC_DEFAULT_LAT:-41.0082}
       - NEXT_PUBLIC_DEFAULT_LNG=${NEXT_PUBLIC_DEFAULT_LNG:-28.9784}
       - NEXT_PUBLIC_DEFAULT_ZOOM=${NEXT_PUBLIC_DEFAULT_ZOOM:-12}
@@ -32,7 +32,7 @@ services:
       dockerfile: Dockerfile
     container_name: nearby-place-backend
     ports:
-      - "8000:8000"
+      - "8004:8000"
     environment:
       - ENV=production
       - LOG_LEVEL=info
