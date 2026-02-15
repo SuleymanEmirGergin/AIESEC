@@ -1,0 +1,7 @@
+node_modules/
+.expo/
+.npm-cache/
+.npm-cache-run2/
+dist/
+web-build/
+
