@@ -4,6 +4,10 @@ import { snapBBoxToGrid } from "./gridSnap";
 
 const OVERPASS_URL = process.env.OVERPASS_URL || "https://overpass-api.de/api/interpreter";
 
+// Overpass kullanim politikasi kendini tanitan bir User-Agent zorunlu kilar.
+// Bu header olmadan sunucu istekleri 406 Not Acceptable ile reddediyor.
+const USER_AGENT = process.env.OVERPASS_USER_AGENT || "nearby-place-finder/1.0";
+
 /**
  * Kategoriye göre OSM etiket haritası
  */
@@ -51,6 +55,7 @@ export async function fetchOverpass(
       body: `data=${encodeURIComponent(query)}`,
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": USER_AGENT,
       },
     });
 
