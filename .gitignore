@@ -31,3 +31,27 @@ yarn-error.log*
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# Secrets - asla commit'lenmemeli, sadece .example dosyalari takip edilir
+.env
+!.env.example
+!.env.local.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Veritabani dosyalari (uygulama baslangicta olusturuyor)
+*.db
+*.sqlite
+*.sqlite3
+
+# Log ve gecici calisma ciktilari
+*.log
+build_log.txt
+backend_response.json
+factory_search.json

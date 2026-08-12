@@ -1,0 +1,31 @@
+# Backend'e ozel yok sayimlar (kok .gitignore'a ek)
+
+# Sanal ortamlar - her gelistirici kendi makinesinde uretir
+.venv/
+.venv*/
+venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Secrets
+.env
+!.env.example
+
+# Uygulamanin urettigi veritabanlari
+*.db
+*.sqlite
+
+# Gecici calisma ciktilari
+*.log
+overhaul_log.txt
+overhaul_out.txt
+test_output.txt
+test_results.log
+traceback.txt
+verify.log
