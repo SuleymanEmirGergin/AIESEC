@@ -2,8 +2,15 @@ import asyncio
 import httpx
 import os
 
-BASE_URL = "http://127.0.0.1:8000"
-ADMIN_KEY = os.getenv("ADMIN_API_KEY", "***ROTATED-SECRET-REMOVED***")
+BASE_URL = os.getenv("VERIFY_BASE_URL", "http://127.0.0.1:8000")
+
+# Anahtar yalnizca ortam degiskeninden okunur; koda gomulu fallback birakilmaz.
+ADMIN_KEY = os.getenv("ADMIN_API_KEY")
+if not ADMIN_KEY:
+    raise SystemExit(
+        "ADMIN_API_KEY tanimli degil. backend/.env icindeki degeri ortama aktar:\n"
+        '  $env:ADMIN_API_KEY = (Select-String backend\\.env -Pattern "^ADMIN_API_KEY=").Line.Split("=")[1]'
+    )
 
 async def verify_everything():
     async with httpx.AsyncClient(timeout=30) as client:
