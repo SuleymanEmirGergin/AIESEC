@@ -19,8 +19,10 @@ COPY app ./app
 EXPOSE 8000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD python -c "import httpx; httpx.get('http://localhost:8000/health')"
+# /health yolu yok (router /health/live veriyor) ve raise_for_status olmadan
+# 404 bile basarili sayiliyordu; ikisi de duzeltildi.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import httpx; httpx.get('http://localhost:8000/health/live').raise_for_status()"
 
 # Run uvicorn
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

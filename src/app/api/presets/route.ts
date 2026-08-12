@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
 
+// Bu route calisma aninda NEXT_PUBLIC_API_BASE'i okuyup backend'e gidiyor.
+// Isaretlenmezse Next.js onu build sirasinda calistirip cevabi
+// .next/server/app/api/presets.body dosyasina donduruyor; container'da
+// backend ayakta olsa bile o eski fallback JSON servis ediliyordu.
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const apiBase = process.env.NEXT_PUBLIC_API_BASE;
