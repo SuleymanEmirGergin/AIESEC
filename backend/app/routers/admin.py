@@ -14,7 +14,7 @@ from app.cache import cache
 from app.database import APIKey, GlobalState, Override, Report, get_db
 from app.models import (
     APIKeyCreateResponse, APIKeyResponse, OverrideCreate, OverrideResponse,
-    OverrideUpdate, ReportDetailedResponse, ReportUpdateAdmin
+    OverrideUpdate, ReportDetailedResponse, ReportListResponse, ReportUpdateAdmin
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -38,7 +38,7 @@ async def clear_cache(_: None = Depends(verify_admin_key)):
 
 # --- Reports Management ---
 
-@router.get("/reports", response_model=List[ReportDetailedResponse])
+@router.get("/reports", response_model=ReportListResponse)
 async def list_reports(
     status: str = "open",
     limit: int = 50,
@@ -46,10 +46,35 @@ async def list_reports(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(verify_admin_key)
 ):
-    """List user reports with filtering and pagination."""
-    query = select(Report).where(Report.status == status).order_by(desc(Report.created_at))
-    result = await db.execute(query.limit(limit).offset(offset))
-    return result.scalars().all()
+    """
+    List user reports with filtering and pagination.
+
+    Toplam kayit sayisi ayri bir COUNT sorgusuyla donuyor; onceden uc
+    duz bir dizi donduruyordu ve istemci toplam sayfa sayisini
+    tahmin etmek zorunda kaliyordu.
+
+    status="all" tum durumlari kapsar. Onceden bu deger desteklenmedigi
+    icin istemci parametreyi hic gondermiyor, uc de sessizce "open"a
+    dusuyordu.
+    """
+    filters = [] if status == "all" else [Report.status == status]
+
+    total = await db.scalar(
+        select(func.count()).select_from(Report).where(*filters)
+    )
+
+    result = await db.execute(
+        select(Report)
+        .where(*filters)
+        .order_by(desc(Report.created_at))
+        .limit(limit)
+        .offset(offset)
+    )
+
+    # Duz dict donuluyor: ORM nesnelerini ReportDetailedResponse'a
+    # cevirmeyi FastAPI'nin response_model'i yapiyor. Modeli elle
+    # kurmak ORM nesnelerinde dogrulama hatasi veriyordu.
+    return {"data": result.scalars().all(), "total": total or 0}
 
 
 @router.get("/reports/{report_id}", response_model=ReportDetailedResponse)

@@ -3,6 +3,26 @@
 from typing import Optional
 
 
+def tr_fold(text: str) -> str:
+    """
+    Turkce duyarli kucuk harfe cevirme.
+
+    Python'da "I".casefold() -> "i" + U+0307 (birlesik nokta) uretir:
+
+        "Ataturk Ilkokulu".casefold() == "ataturk i̇lkokulu"
+
+    Bu yuzden "ilkokul" anahtar kelimesi eslesmiyordu. Turkiye'de okul
+    adlarinin buyuk cogunlugu buyuk I ile yazildigi (Ilkokulu, Ilkogretim)
+    icin isim tabanli siniflandirma bu adlarda sessizce devre disi
+    kaliyordu; "Ortaokulu" ve "Lisesi" ise etkilenmedigi icin sorun
+    yalnizca bazi kategorilerde goze carpiyordu.
+
+    Her iki Turkce buyuk I de noktali "i" ye esleniyor: anahtar
+    kelimeler ASCII yazildigi icin eslesme amacli dogru davranis bu.
+    """
+    return (text or "").replace("İ", "i").replace("I", "i").casefold()
+
+
 def classify_school_level(tags: dict, name: str) -> Optional[str]:
     """
     Classify school level using tags and Turkish name heuristics.
@@ -56,18 +76,26 @@ def classify_school_level(tags: dict, name: str) -> Optional[str]:
     is_private = (
         tags.get("operator:type") == "private"
         or tags.get("school:type") == "private"
-        or "özel" in tags.get("operator", "").lower()
+        or "özel" in tr_fold(tags.get("operator", ""))
     )
 
     # Priority 2: Name-based heuristics (case-insensitive, Turkish casefold)
-    name_lower = (name or "").casefold()
-    official_name_lower = tags.get("official_name", "").casefold()
+    name_lower = tr_fold(name)
+    official_name_lower = tr_fold(tags.get("official_name", ""))
     combined_name = f"{name_lower} {official_name_lower}"
 
-    # Check for college keyword first (strong match for "kolej")
-    college_keywords = ["kolej", "koleji", "college"]
-    if any(keyword in combined_name for keyword in college_keywords) or tags.get("amenity") in ["university", "college"]:
+    # Gercek yuksekogretim kurumu: etiketten anlasiliyor.
+    if tags.get("amenity") in ["university", "college"]:
         return "college_university"
+
+    # Adinda "kolej" gecen okullar. Turkiye'de kolej cogunlukla ozel bir
+    # K-12 okulu demek, universite degil; bu yuzden ayri bir tur.
+    # Onceden bunlar da "college_university" donuyordu, oysa arama
+    # filtresi `classified == place_type` karsilastirdigi icin
+    # "college_keyword" kategorisi hicbir zaman sonuc veremiyordu.
+    college_keywords = ["kolej", "koleji", "college"]
+    if any(keyword in combined_name for keyword in college_keywords):
+        return "college_keyword"
 
     # Check for private school indicators
     private_keywords = ["özel", "private"]
@@ -118,6 +146,14 @@ def classify_b2b_type(tags: dict, element_type: str) -> Optional[str]:
     building_tag = tags.get("building")
     landuse_tag = tags.get("landuse")
 
+    # Workshop once kontrol ediliyor: industrial=workshop hem bu kosulu
+    # hem de asagidaki fabrika kosulunu (industrial_tag dolu) sagliyor.
+    # Fabrika kontrolu once oldugu icin workshop dali ulasilamaz kod
+    # durumundaydi ve atolyeler fabrika olarak siniflandiriliyordu.
+    craft_tag = tags.get("craft")
+    if craft_tag or industrial_tag == "workshop":
+        return "workshop"
+
     if (
         industrial_tag
         or man_made_tag == "works"
@@ -130,11 +166,6 @@ def classify_b2b_type(tags: dict, element_type: str) -> Optional[str]:
     office_tag = tags.get("office")
     if office_tag or building_tag == "commercial":
         return "office"
-
-    # Workshop indicators
-    craft_tag = tags.get("craft")
-    if craft_tag or industrial_tag == "workshop":
-        return "workshop"
 
     return None
 

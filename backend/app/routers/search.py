@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import validate_api_key, verify_api_key
 from app.cache import build_cache_key, cache, get_ttl_for_type
 from app.database import APIKey, GlobalState, Report, get_db
-from app.models import ReportRequest, SearchParams, SearchResponse
+from app.models import RADIUS_PRESETS, ReportRequest, SearchParams, SearchResponse
 from app.overpass import OverpassError
 from app.policy import SearchPolicyInput, decide_policy
 from app.search_service import run_search_orchestration
@@ -16,6 +16,38 @@ from app.search_service import run_search_orchestration
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Desteklenen arama turleri. Bilinmeyen bir tur sorgu olusturucuda bos
+# filtre listesine dusuyordu: istek 200 donuyor ama sonuc hep bos
+# kaliyordu. Kullanici bunu "veri yok" saniyordu; artik acikca reddediliyor.
+SUPPORTED_TYPES = frozenset(RADIUS_PRESETS.keys())
+
+# SearchParams modeli bu sinirlari zaten tanimliyor, ancak endpoint
+# parametreleri Query(...) ile alindigi icin model dogrulamasi devreye
+# girmiyordu. Sinirlar burada acikca uygulaniyor.
+MIN_RADIUS_M = 100
+MAX_RADIUS_M = 5000
+
+
+def _validate_search_input(place_type: str, radius: int | None) -> None:
+    """Reject unsupported type / out-of-range radius with 422."""
+    if place_type not in SUPPORTED_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Unsupported type '{place_type}'. "
+                f"Supported: {', '.join(sorted(SUPPORTED_TYPES))}"
+            ),
+        )
+
+    if radius is not None and not (MIN_RADIUS_M <= radius <= MAX_RADIUS_M):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Radius must be between {MIN_RADIUS_M} and {MAX_RADIUS_M} "
+                f"meters (got {radius})."
+            ),
+        )
 
 
 @router.get("/search", response_model=SearchResponse)
@@ -37,6 +69,10 @@ async def search_places(
     Unified search with Plans, Confidence, and Grid Caching.
     """
     debug_mode = os.getenv("DEBUG_OVERPASS", "false").lower() == "true"
+
+    # 0. Girdi dogrulamasi (plan kontrolunden once: gecersiz istek
+    #    kullanicinin planiyla ilgili degil)
+    _validate_search_input(type, radius)
 
     # 1. Plan Enforcement
     max_allowed_radius = 5000

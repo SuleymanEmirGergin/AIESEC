@@ -16,7 +16,9 @@ class TestSearchParamsPagination:
             radius=1500,
             type="kindergarten"
         )
-        assert params.limit == 20
+        # Varsayilan limit bilincli olarak 500'e cikarildi (README:
+        # sayfalama limiti 1000'e kadar). Eski test 20 bekliyordu.
+        assert params.limit == 500
         assert params.offset == 0
 
     def test_custom_limit(self):
@@ -53,14 +55,14 @@ class TestSearchParamsPagination:
             )
 
     def test_limit_maximum_validation(self):
-        """Test that limit must be <= 100."""
+        """Ust sinir 1000 (eski test 100 varsayiyordu)."""
         with pytest.raises(ValueError):
             SearchParams(
                 lat=41.0,
                 lon=29.0,
                 radius=1500,
                 type="kindergarten",
-                limit=101
+                limit=1001
             )
 
     def test_offset_negative_validation(self):

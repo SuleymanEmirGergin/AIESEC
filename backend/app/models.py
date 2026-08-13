@@ -324,6 +324,19 @@ class ExportRequest(BaseModel):
     items: List[Dict[str, Any]] # Full item data for CSV construction
 
 
+class ReportListResponse(BaseModel):
+    """
+    Sayfalanmis rapor listesi.
+
+    Onceden uc duz bir dizi donuyordu ve toplam kayit sayisi hicbir yerde
+    yoktu; istemci sayfalamayi ancak tahminle yapabiliyordu. `total`
+    filtrelenmis kumenin tamaminin sayisi (sayfanin degil).
+    """
+
+    data: List[ReportDetailedResponse]
+    total: int
+
+
 class APIKeyResponse(BaseModel):
     """API Key details for admin."""
     name: str

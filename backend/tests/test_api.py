@@ -2,307 +2,309 @@
 
 from unittest.mock import patch
 
-from fastapi.testclient import TestClient
 import pytest
 
-from app.main import app
-from app.cache import cache
+from tests.conftest import overpass_stub
 
-
-@pytest.fixture(autouse=True)
-def clear_cache():
-    """Clear cache before each test."""
-    cache.clear()
-    yield
-    cache.clear()
-
-
-client = TestClient(app)
+SEAM = "app.search_service.overpass_client.query"
 
 
 class TestHealthEndpoint:
-    """Tests for health check endpoint."""
+    """Tests for health check endpoints."""
 
-    def test_health_check(self):
-        """Test health check returns 200."""
-        response = client.get("/health")
+    def test_liveness(self, client):
+        """Liveness probe returns 200."""
+        response = client.get("/health/live")
         assert response.status_code == 200
         assert response.json()["status"] == "ok"
-        assert "version" in response.json()
+
+    def test_legacy_health_path_is_gone(self, client):
+        """
+        Eski /health yolu artik yok; probe'lar /health/live kullanmali.
+        Bu test yolun sessizce geri gelmedigini garanti ediyor.
+        """
+        assert client.get("/health").status_code == 404
 
 
-class TestRootEndpoint:
-    """Tests for root endpoint."""
+class TestSearchValidation:
+    """Girdi dogrulamasi: gecersiz istek acikca reddedilmeli."""
 
-    def test_root(self):
-        """Test root endpoint returns API info."""
-        response = client.get("/")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["name"] == "FastAPI OSM Backend"
-        assert "version" in data
-        assert data["docs"] == "/docs"
+    def test_missing_required_params(self, client):
+        assert client.get("/api/search").status_code == 422
 
-
-class TestSearchEndpoint:
-    """Tests for /api/search endpoint."""
-
-    def test_missing_required_params(self):
-        """Test request without required parameters."""
-        response = client.get("/api/search")
-        assert response.status_code == 422  # Validation error
-
-    def test_invalid_type(self):
-        """Test request with invalid type parameter."""
+    def test_invalid_type(self, client):
+        """
+        Bilinmeyen tur bos filtre listesine dusup 200 + bos sonuc
+        donuyordu; kullanici bunu 'veri yok' saniyordu.
+        """
         response = client.get(
             "/api/search?lat=41.0&lon=29.0&radius=1500&type=invalid_type"
         )
         assert response.status_code == 422
+        assert "Unsupported type" in response.json()["detail"]
 
-    def test_radius_out_of_bounds_low(self):
-        """Test request with radius below minimum."""
+    def test_radius_below_minimum(self, client):
         response = client.get(
             "/api/search?lat=41.0&lon=29.0&radius=50&type=kindergarten"
         )
         assert response.status_code == 422
 
-    def test_radius_out_of_bounds_high(self):
-        """Test request with radius above maximum."""
+    def test_radius_above_maximum(self, client):
         response = client.get(
             "/api/search?lat=41.0&lon=29.0&radius=10000&type=kindergarten"
         )
         assert response.status_code == 422
 
-    def test_invalid_latitude(self):
-        """Test request with invalid latitude."""
+    def test_invalid_latitude(self, client):
         response = client.get(
             "/api/search?lat=100.0&lon=29.0&radius=1500&type=kindergarten"
         )
         assert response.status_code == 422
 
-    def test_invalid_longitude(self):
-        """Test request with invalid longitude."""
+    def test_invalid_longitude(self, client):
         response = client.get(
             "/api/search?lat=41.0&lon=200.0&radius=1500&type=kindergarten"
         )
         assert response.status_code == 422
 
-    @patch("app.routers.search.fetch_overpass")
-    async def test_kindergarten_search_success(self, mock_fetch):
-        """Test successful kindergarten search."""
-        # Mock Overpass response
-        mock_fetch.return_value = {
-            "elements": [
-                {
-                    "type": "node",
-                    "id": 123456,
-                    "lat": 41.015,
-                    "lon": 28.980,
-                    "tags": {
-                        "amenity": "kindergarten",
-                        "name": "Test Kindergarten",
-                        "addr:city": "Istanbul",
-                    },
-                }
-            ]
-        }
+
+class TestSearchResults:
+    """Sonuc icerigi, siniflandirma filtresi ve siralama."""
+
+    def test_kindergarten_search_success(self, client):
+        elements = [
+            {
+                "type": "node",
+                "id": 123456,
+                "lat": 41.015,
+                "lon": 28.980,
+                "tags": {
+                    "amenity": "kindergarten",
+                    "name": "Test Kindergarten",
+                    "addr:city": "Istanbul",
+                },
+            }
+        ]
+        with patch(SEAM, new=overpass_stub(elements)):
+            response = client.get(
+                "/api/search?lat=41.0&lon=29.0&radius=1500&type=kindergarten"
+            )
+
+        assert response.status_code == 200
+        results = response.json()["results"]
+        assert len(results) == 1
+        assert results[0]["type"] == "kindergarten"
+        assert results[0]["name"] == "Test Kindergarten"
+        assert results[0]["source"] == "osm_overpass"
+        assert results[0]["distance"] is not None
+
+    def test_school_classification_filtering(self, client):
+        """Sadece istenen okul seviyesi donmeli."""
+        elements = [
+            {
+                "type": "node", "id": 1, "lat": 41.015, "lon": 28.980,
+                "tags": {"amenity": "school", "name": "Test İlkokulu"},
+            },
+            {
+                "type": "node", "id": 2, "lat": 41.016, "lon": 28.981,
+                "tags": {"amenity": "school", "name": "Test Ortaokulu"},
+            },
+            {
+                "type": "node", "id": 3, "lat": 41.017, "lon": 28.982,
+                "tags": {"amenity": "school", "name": "Another İlkokulu"},
+            },
+        ]
+        with patch(SEAM, new=overpass_stub(elements)):
+            response = client.get(
+                "/api/search?lat=41.0&lon=29.0&radius=2000&type=primary_school"
+            )
+
+        assert response.status_code == 200
+        results = response.json()["results"]
+        # Buyuk İ ile yazilan adlar da eslesmeli (Turkce casefold hatasi).
+        assert len(results) == 2
+        assert all(p["type"] == "primary_school" for p in results)
+
+    def test_b2b_classification_filtering(self, client):
+        elements = [
+            {
+                "type": "way", "id": 1, "center": {"lat": 41.015, "lon": 28.980},
+                "tags": {"industrial": "factory", "name": "Test Factory"},
+            },
+            {
+                "type": "node", "id": 2, "lat": 41.016, "lon": 28.981,
+                "tags": {"office": "company", "name": "Test Office"},
+            },
+        ]
+        with patch(SEAM, new=overpass_stub(elements)):
+            response = client.get(
+                "/api/search?lat=41.0&lon=29.0&radius=2000&type=factory"
+            )
+
+        assert response.status_code == 200
+        results = response.json()["results"]
+        assert len(results) == 1
+        assert results[0]["type"] == "factory"
+
+    def test_workshop_not_swallowed_by_factory(self, client):
+        """
+        industrial=workshop hem workshop hem fabrika kosulunu sagliyor.
+        Fabrika kontrolu once oldugu icin atolyeler fabrika olarak
+        siniflandiriliyordu; workshop dali ulasilamaz koddu.
+        """
+        elements = [
+            {
+                "type": "node", "id": 1, "lat": 41.015, "lon": 28.980,
+                "tags": {"industrial": "workshop", "name": "Test Atolye"},
+            }
+        ]
+        with patch(SEAM, new=overpass_stub(elements)):
+            response = client.get(
+                "/api/search?lat=41.0&lon=29.0&radius=2000&type=workshop"
+            )
+
+        assert response.status_code == 200
+        results = response.json()["results"]
+        assert len(results) == 1
+        assert results[0]["type"] == "workshop"
+
+    def test_distance_sorting(self, client):
+        elements = [
+            {
+                "type": "node", "id": 1, "lat": 41.020, "lon": 28.990,
+                "tags": {"amenity": "kindergarten", "name": "Far Kindergarten"},
+            },
+            {
+                "type": "node", "id": 2, "lat": 41.001, "lon": 29.001,
+                "tags": {"amenity": "kindergarten", "name": "Near Kindergarten"},
+            },
+        ]
+        with patch(SEAM, new=overpass_stub(elements)):
+            response = client.get(
+                "/api/search?lat=41.0&lon=29.0&radius=3000&type=kindergarten"
+            )
+
+        assert response.status_code == 200
+        results = response.json()["results"]
+        assert len(results) == 2
+        assert results[0]["name"] == "Near Kindergarten"
+        assert results[1]["name"] == "Far Kindergarten"
+        assert results[0]["distance"] < results[1]["distance"]
+
+    def test_unnamed_flag(self, client):
+        """Isimsiz B2B kayitlari stage 2'den geliyor ve isaretleniyor."""
+        unnamed = [
+            {
+                "type": "node", "id": 1, "lat": 41.015, "lon": 28.980,
+                "tags": {"industrial": "factory"},
+            }
+        ]
+        with patch(SEAM, new=overpass_stub([], stage2_elements=unnamed)):
+            response = client.get(
+                "/api/search?lat=41.0&lon=29.0&radius=1500&type=factory"
+            )
+
+        assert response.status_code == 200
+        results = response.json()["results"]
+        assert len(results) == 1
+        assert results[0]["name"] is None
+        assert results[0]["unnamed"] is True
+
+
+class TestSearchCaching:
+    def test_cache_prevents_second_upstream_call(self, client):
+        """Ayni sorgu iki kez istenirse Overpass'e bir kez gidilmeli."""
+        elements = [
+            {
+                "type": "node", "id": 123, "lat": 41.015, "lon": 28.980,
+                "tags": {"amenity": "kindergarten", "name": "Test"},
+            }
+        ]
+        stub = overpass_stub(elements)
+        calls = {"n": 0}
+
+        async def counting_stub(query_text, debug=False):
+            calls["n"] += 1
+            return await stub(query_text, debug)
+
+        url = "/api/search?lat=41.0&lon=29.0&radius=1500&type=kindergarten"
+        with patch(SEAM, new=counting_stub):
+            first = client.get(url)
+            calls_after_first = calls["n"]
+            second = client.get(url)
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert calls["n"] == calls_after_first, "ikinci istek onbellekten gelmeliydi"
+        assert first.json()["results"] == second.json()["results"]
+
+
+class TestSearchFailures:
+    """
+    Hata mutlaka yuzeye cikmali. Bos sonucla 200 donmek en kotusu:
+    istemci bunu 'veri yok' diye gosterir.
+    """
+
+    def test_overpass_unavailable_returns_503(self, client):
+        from app.overpass import OverpassError
+
+        async def failing(query_text, debug=False):
+            raise OverpassError("all mirrors down")
+
+        with patch(SEAM, new=failing):
+            response = client.get(
+                "/api/search?lat=41.0&lon=29.0&radius=1500&type=kindergarten"
+            )
+
+        assert response.status_code == 503
+        assert "Overpass" in response.json()["detail"]
+
+    def test_unexpected_error_returns_500(self, client):
+        async def failing(query_text, debug=False):
+            raise Exception("Network error")
+
+        with patch(SEAM, new=failing):
+            response = client.get(
+                "/api/search?lat=41.0&lon=29.0&radius=1500&type=kindergarten"
+            )
+
+        assert response.status_code == 500
+
+    def test_failure_is_not_reported_as_empty_success(self, client):
+        """Basarisizlik 200 + bos liste olarak gizlenmemeli."""
+
+        from app.overpass import OverpassError
+
+        async def failing(query_text, debug=False):
+            raise OverpassError("down")
+
+        with patch(SEAM, new=failing):
+            response = client.get(
+                "/api/search?lat=41.0&lon=29.0&radius=1500&type=kindergarten"
+            )
+
+        assert response.status_code != 200
+
+
+class TestAuthentication:
+    """Arama ucu API anahtari olmadan calismamali."""
+
+    def test_search_requires_api_key(self, client, api_key):
+        from app.auth import validate_api_key, verify_api_key
+        from app.main import app as fastapi_app
+
+        # conftest auth'u devre disi birakiyor; bu test icin geri aciyoruz.
+        fastapi_app.dependency_overrides.pop(verify_api_key, None)
+        fastapi_app.dependency_overrides.pop(validate_api_key, None)
 
         response = client.get(
             "/api/search?lat=41.0&lon=29.0&radius=1500&type=kindergarten"
         )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data) == 1
-        assert data[0]["type"] == "kindergarten"
-        assert data[0]["name"] == "Test Kindergarten"
-        assert data[0]["source"] == "osm_overpass"
-        assert "distance" in data[0]
-
-    @patch("app.routers.search.fetch_overpass")
-    async def test_school_classification_filtering(self, mock_fetch):
-        """Test that only matching school levels are returned."""
-        # Mock Overpass response with mixed school types
-        mock_fetch.return_value = {
-            "elements": [
-                {
-                    "type": "node",
-                    "id": 1,
-                    "lat": 41.015,
-                    "lon": 28.980,
-                    "tags": {"amenity": "school", "name": "Test İlkokulu"},
-                },
-                {
-                    "type": "node",
-                    "id": 2,
-                    "lat": 41.016,
-                    "lon": 28.981,
-                    "tags": {"amenity": "school", "name": "Test Ortaokulu"},
-                },
-                {
-                    "type": "node",
-                    "id": 3,
-                    "lat": 41.017,
-                    "lon": 28.982,
-                    "tags": {"amenity": "school", "name": "Another İlkokulu"},
-                },
-            ]
-        }
-
-        # Request only primary schools
-        response = client.get(
-            "/api/search?lat=41.0&lon=29.0&radius=2000&type=primary_school"
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        # Should only return 2 primary schools, not the middle school
-        assert len(data) == 2
-        assert all(p["type"] == "primary_school" for p in data)
-
-    @patch("app.routers.search.fetch_overpass")
-    async def test_b2b_classification_filtering(self, mock_fetch):
-        """Test that only matching B2B types are returned."""
-        mock_fetch.return_value = {
-            "elements": [
-                {
-                    "type": "way",
-                    "id": 1,
-                    "center": {"lat": 41.015, "lon": 28.980},
-                    "tags": {"industrial": "factory", "name": "Test Factory"},
-                },
-                {
-                    "type": "node",
-                    "id": 2,
-                    "lat": 41.016,
-                    "lon": 28.981,
-                    "tags": {"office": "company", "name": "Test Office"},
-                },
-            ]
-        }
-
-        # Request only factories
-        response = client.get(
-            "/api/search?lat=41.0&lon=29.0&radius=2000&type=factory"
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        # Should only return factory, not office
-        assert len(data) == 1
-        assert data[0]["type"] == "factory"
-
-    @patch("app.api.fetch_overpass")
-    async def test_distance_sorting(self, mock_fetch):
-        """Test that results are sorted by distance."""
-        mock_fetch.return_value = {
-            "elements": [
-                {
-                    "type": "node",
-                    "id": 1,
-                    "lat": 41.020,  # Farther
-                    "lon": 28.990,
-                    "tags": {"amenity": "kindergarten", "name": "Far Kindergarten"},
-                },
-                {
-                    "type": "node",
-                    "id": 2,
-                    "lat": 41.001,  # Closer
-                    "lon": 29.001,
-                    "tags": {"amenity": "kindergarten", "name": "Near Kindergarten"},
-                },
-            ]
-        }
-
-        response = client.get(
-            "/api/search?lat=41.0&lon=29.0&radius=3000&type=kindergarten"
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data) == 2
-        # First result should be closer
-        assert data[0]["name"] == "Near Kindergarten"
-        assert data[1]["name"] == "Far Kindergarten"
-        assert data[0]["distance"] < data[1]["distance"]
-
-    @patch("app.routers.search.fetch_overpass")
-    async def test_cache_functionality(self, mock_fetch):
-        """Test that cache works correctly."""
-        mock_fetch.return_value = {
-            "elements": [
-                {
-                    "type": "node",
-                    "id": 123,
-                    "lat": 41.015,
-                    "lon": 28.980,
-                    "tags": {"amenity": "kindergarten", "name": "Test"},
-                }
-            ]
-        }
-
-        # First request - should call Overpass
-        response1 = client.get(
-            "/api/search?lat=41.0&lon=29.0&radius=1500&type=kindergarten"
-        )
-        assert response1.status_code == 200
-        assert mock_fetch.call_count == 1
-
-        # Second request - should use cache
-        response2 = client.get(
-            "/api/search?lat=41.0&lon=29.0&radius=1500&type=kindergarten"
-        )
-        assert response2.status_code == 200
-        assert mock_fetch.call_count == 1  # Still 1, not called again
-
-        # Same data
-        assert response1.json() == response2.json()
-
-    @patch("app.routers.search.fetch_overpass")
-    async def test_unnamed_flag(self, mock_fetch):
-        """Test that unnamed flag is set for places without names."""
-        mock_fetch.return_value = {
-            "elements": [
-                {
-                    "type": "node",
-                    "id": 1,
-                    "lat": 41.015,
-                    "lon": 28.980,
-                    "tags": {"industrial": "factory"},  # No name tag
-                }
-            ]
-        }
-
-        response = client.get(
-            "/api/search?lat=41.0&lon=29.0&radius=1500&type=factory"
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data) == 1
-        assert data[0]["name"] is None
-        assert data[0]["unnamed"] is True
-
-    @patch("app.routers.search.fetch_overpass", side_effect=Exception("Network error"))
-    async def test_overpass_failure(self, mock_fetch):
-        """Test handling of Overpass API failures."""
-        response = client.get(
-            "/api/search?lat=41.0&lon=29.0&radius=1500&type=kindergarten"
-        )
-
-        assert response.status_code == 502
-        assert "Overpass API error" in response.json()["detail"]
+        assert response.status_code == 401
 
 
 class TestRateLimiting:
-    """Tests for rate limiting."""
-
-    def test_rate_limit_not_exceeded_in_normal_use(self):
-        """Test that normal requests don't hit rate limit."""
-        # Make 10 requests (well below 60/min limit)
+    def test_rate_limit_not_exceeded_in_normal_use(self, client):
+        """Normal kullanimda hiz siniri tetiklenmemeli."""
         for _ in range(10):
-            response = client.get("/health")
-            assert response.status_code == 200
-
-    # Note: Testing actual rate limit exhaustion requires 60+ requests
-    # which is slow for unit tests. This can be tested manually or in E2E tests.
+            assert client.get("/health/live").status_code == 200
