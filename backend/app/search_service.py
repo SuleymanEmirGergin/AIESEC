@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import List, Literal, Optional, Tuple
 
 from geopy.distance import geodesic
@@ -11,9 +12,20 @@ from app.geo import bbox_from_radius
 from app.models import Place
 from app.overpass import build_overpass_query, overpass_client
 
-# Lead quality thresholds for triggering Stage 2
-MIN_STAGE1_B2B = 30
-MIN_STAGE1_SCHOOL = 20
+# Stage 2 (isimsiz kayitlar) esikleri: stage 1 bu sayidan az sonuc
+# dondurduyse ikinci bir Overpass turu yapiliyor.
+#
+# Her tur tam bir Overpass sorgusu demek. Olcumde ayni aramada stage 1
+# 50.6 sn, stage 2 174.9 sn surdu; gereksiz bir stage 2 toplam surenin
+# buyuk kismini yiyor.
+#
+# Esikler kategoriye gore ayrildi:
+# - Egitim: okullar OSM'de neredeyse her zaman isimli. Stage 2 cogunlukla
+#   bosa giden bir tur, bu yuzden esik dusuk.
+# - B2B: isimsiz sanayi alanlarini bulmak ozelligin asil amaci
+#   (README: "Helps identify industrial zones"), esik yuksek kaliyor.
+MIN_STAGE1_B2B = int(os.getenv("MIN_STAGE1_B2B", "25"))
+MIN_STAGE1_SCHOOL = int(os.getenv("MIN_STAGE1_SCHOOL", "8"))
 
 logger = logging.getLogger(__name__)
 

@@ -224,9 +224,14 @@ def build_overpass_query(
     timeout_cfg = int(os.getenv("OVERPASS_TIMEOUT", "60"))
    
     query_body = "\n".join(query_lines)
+
+    # `qt`: sonuclari id yerine quadtile (mekansal) sirasina gore dondur.
+    # Overpass'in varsayilan id siralamasi ek bir siralama adimi gerektiriyor;
+    # qt bu adimi atliyor. Sonuc kumesi ayni, sadece sira degisiyor ve
+    # sonuclar zaten mesafeye gore yeniden siralaniyor.
     query = f"""[out:json][timeout:{timeout_cfg}];
 (
 {query_body}
 );
-out tags center;"""
+out tags center qt;"""
     return query
