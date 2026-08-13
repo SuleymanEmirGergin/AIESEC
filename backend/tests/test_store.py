@@ -195,6 +195,29 @@ class TestReplaceMemberships:
         )
         assert len(result.scalars().all()) == 2
 
+    async def test_cagri_ici_tekrar_eden_place_id_cogaltilmaz(self, db):
+        # Review bulgusu: bir way/relation, ingest bbox'i timeout sonrasi
+        # ceyreklere bolununce (T6 split_bbox) birden fazla ceyrekten
+        # donebiliyor, yani ayni district_id icin ayni place_id tek
+        # replace_memberships cagrisinda iki kez gelebiliyor. ON CONFLICT
+        # olmadan bu toplu INSERT SQLite'ta "UNIQUE constraint failed"
+        # ile patlardi -- upsert_places'in zaten cozdugu sorunun aynisi.
+        await upsert_places(db, [place_row_values(
+            {"type": "node", "id": 3003, "lat": 41.0, "lon": 29.0,
+             "tags": {"man_made": "works"}}, "factory", 60, None)])
+
+        await replace_memberships(
+            db, "tr-34-kadikoy",
+            [("osm:node:3003", True), ("osm:node:3003", False)],
+        )
+
+        result = await db.execute(
+            select(PlaceDistrict).where(PlaceDistrict.district_id == "tr-34-kadikoy")
+        )
+        rows = result.scalars().all()
+        assert len(rows) == 1
+        assert rows[0].is_inside is False
+
 
 @pytest.mark.asyncio
 class TestIngestState:

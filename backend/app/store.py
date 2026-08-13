@@ -133,21 +133,33 @@ async def replace_memberships(
     Yalnizca bu district_id'ye ait satirlar siliniyor: ayni kayit baska
     ilcelerin de uyesi olabiliyor (Kadikoy'un icinde VE Atasehir'in
     tamponunda) ve o satirlar korunmali.
+
+    ON CONFLICT gerekli: bir way/relation, ingest bbox'i timeout sonrasi
+    ceyreklere bolununce (split_bbox) birden fazla ceyrekten donebiliyor,
+    yani `memberships` ayni place_id'yi tek cagride birden fazla kez
+    tasiyabilir -- upsert_places'in coktan cozdugu sorunun aynisi. Duz
+    INSERT bu toplu ekleme icinde bile UNIQUE(place_id, district_id)
+    ihlaliyle patlardi; ON CONFLICT DO UPDATE ile SQLite ayni toplu
+    INSERT icindeki tekrarlari da sirayla isler, son deger kazanir.
     """
     await db.execute(
         delete(PlaceDistrict).where(PlaceDistrict.district_id == district_id)
     )
 
     if memberships:
+        statement = sqlite_insert(PlaceDistrict).values([
+            {
+                "place_id": place_id,
+                "district_id": district_id,
+                "is_inside": is_inside,
+            }
+            for place_id, is_inside in memberships
+        ])
         await db.execute(
-            sqlite_insert(PlaceDistrict).values([
-                {
-                    "place_id": place_id,
-                    "district_id": district_id,
-                    "is_inside": is_inside,
-                }
-                for place_id, is_inside in memberships
-            ])
+            statement.on_conflict_do_update(
+                index_elements=["place_id", "district_id"],
+                set_={"is_inside": statement.excluded.is_inside},
+            )
         )
 
     await db.commit()
