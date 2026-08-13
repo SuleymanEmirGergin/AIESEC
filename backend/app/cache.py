@@ -121,6 +121,7 @@ def build_cache_key(
     ref_lon: Optional[float] = None,
     mode: str = "auto",
     ov_ver: str = "0",
+    bbox: Optional[tuple] = None,
 ) -> str:
     """Build grid-quantized cache key."""
     q_lat, q_lon = quantize_location(lat, lon)
@@ -128,6 +129,12 @@ def build_cache_key(
         f"grid:{q_lat},{q_lon};r:{radius};t:{place_type};"
         f"l:{limit};m:{mode};v:{ov_ver}"
     )
+
+    # Acik bbox anahtarin parcasi olmali: ayni merkez ve yaricapla
+    # farkli dikdortgenler istenebiliyor, aksi halde birbirinin
+    # sonucunu servis ederlerdi.
+    if bbox is not None:
+        key += ";bbox:" + ",".join(f"{c:.4f}" for c in bbox)
 
     if ref_lat is not None and ref_lon is not None:
         # Reference points are NOT quantized as they affect sorting strictly

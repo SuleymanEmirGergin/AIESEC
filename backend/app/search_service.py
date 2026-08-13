@@ -172,14 +172,23 @@ async def run_search_orchestration(
     lon: float,
     ref_lat: Optional[float] = None,
     ref_lon: Optional[float] = None,
-    db: Optional[AsyncSession] = None
+    db: Optional[AsyncSession] = None,
+    explicit_bbox: Optional[Tuple[float, float, float, float]] = None
 ) -> Tuple[List[Place], bool]:
     """
     Perform 2-stage search orchestration for a specific mode and radius.
     Handles Stage 1 (named) and conditional Stage 2 (unnamed) retrieval.
+
+    explicit_bbox verilirse (south, west, north, east) o alan aynen
+    taranir. Cagiran gercek bir dikdortgen biliyorsa (orn. haritanin
+    goruntu alani) bunu daireye cevirip tekrar dikdortgene donmek
+    gereksiz genis bir alan taratiyordu.
     """
-    bbox = bbox_from_radius(lat, lon, radius) if mode == "bbox" else None
-    
+    if explicit_bbox is not None:
+        bbox = explicit_bbox
+    else:
+        bbox = bbox_from_radius(lat, lon, radius) if mode == "bbox" else None
+
     # Apply Grid Snapping (0.01 degree) for consistency
     lat = round(lat / 0.01) * 0.01
     lon = round(lon / 0.01) * 0.01

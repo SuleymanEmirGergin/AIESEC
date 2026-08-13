@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { rateLimit } from "../../../server/rateLimit";
-import { apiUrl } from "../../../server/backend";
+import { apiUrl, resolveApiKey } from "../../../server/backend";
 import CacheService from "../../../server/cache";
 import crypto from "crypto";
 import type { Place } from "../../../lib/types";
@@ -24,6 +24,37 @@ export const dynamic = "force-dynamic";
 /** Backend'in kabul ettigi ust sinir (free planda 2000, orada zorlanir). */
 const MAX_RADIUS_M = 5000;
 const CACHE_TTL_S = 600;
+
+/**
+ * Backend'in kullandigi izgara adimi (app/geo.py: snap_bbox_outward).
+ * Ayni deger olmali; onbellek anahtari bu varsayima dayaniyor.
+ */
+const GRID_DEG = 0.01;
+
+/**
+ * Bbox'i izgaraya disari dogru oturtur - backend'deki snap_bbox_outward
+ * ile ayni kural.
+ *
+ * Yalnizca ONBELLEK ANAHTARI icin kullaniliyor; backend'e gonderilen
+ * bbox ham (kirpilmis) haliyle gidiyor. Ayrim onemli: backend plan
+ * kontrolunu aldigi bbox uzerinden yapiyor, snap'lenmis bir kutu
+ * gondermek sinira yakin istekleri gereksiz yere 403'e dusururdu.
+ *
+ * Anahtari snap'lenmis kutudan uretmek dogru, cunku backend de ayni
+ * izgaraya oturtuyor: ayni snap'e dusen iki viewport backend'de
+ * birebir ayni sorguyu ve ayni sonucu uretiyor, dolayisiyla onbellek
+ * girdisini paylasmalari gerekiyor. Onceden anahtar ham koordinatlardan
+ * uretildigi icin 1 piksel pan bile yeni anahtar demekti ve Redis
+ * katmani panlamada neredeyse hic isabet etmiyordu.
+ */
+function snapKeyBox(minLon: number, minLat: number, maxLon: number, maxLat: number) {
+  return [
+    Math.floor(minLon / GRID_DEG) * GRID_DEG,
+    Math.floor(minLat / GRID_DEG) * GRID_DEG,
+    Math.ceil(maxLon / GRID_DEG) * GRID_DEG,
+    Math.ceil(maxLat / GRID_DEG) * GRID_DEG,
+  ].map((c) => c.toFixed(2));
+}
 
 /** Iki nokta arasi mesafe (metre). Yaricabi bbox'tan turetmek icin. */
 function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -75,15 +106,37 @@ export async function POST(req: NextRequest) {
     const centerLon = (minLon + maxLon) / 2;
 
     // Viewport'u tamamen kapsayan yaricap = merkezden koseye mesafe.
+    // Backend plan sinirini yaricap uzerinden uyguluyor, o yuzden bbox
+    // gonderirken de bu deger belirleyici.
     const viewportRadius = Math.round(
       haversine(centerLat, centerLon, maxLat, maxLon)
     );
     const radius = Math.min(viewportRadius, MAX_RADIUS_M);
     const clamped = viewportRadius > MAX_RADIUS_M;
 
+    // Sinir asiliyorsa bbox'i merkezine dogru kucultuyoruz; en-boy orani
+    // korunuyor. Alternatif backend'in 403 donmesiydi, ama bu calisan bir
+    // aramayi hataya cevirirdi: mevcut davranis merkez cevresini tarayip
+    // kullaniciyi uyarmak.
+    // %2 pay: burada ve backend'de yaricap ayri ayri hesaplaniyor ve
+    // yuvarlama farki birkac metre olabiliyor. Tam sinira nisan almak,
+    // sinirin 2 m ustune tasan bir istegin 403 almasi demekti.
+    const shrink = clamped ? (MAX_RADIUS_M * 0.98) / viewportRadius : 1;
+    const halfLat = ((maxLat - minLat) / 2) * shrink;
+    const halfLon = ((maxLon - minLon) / 2) * shrink;
+
+    // Backend GeoJSON sirasi bekliyor: minLon,minLat,maxLon,maxLat
+    const effectiveBbox = [
+      centerLon - halfLon,
+      centerLat - halfLat,
+      centerLon + halfLon,
+      centerLat + halfLat,
+    ].map((c) => c.toFixed(6));
+
     // Kimlik: kullanicinin kendi anahtari varsa o, yoksa sunucunun anahtari.
-    // Boylece son kullanici anahtar girmeden arama yapabiliyor.
-    const apiKey = req.headers.get("x-api-key") || process.env.SEARCH_API_KEY;
+    // Ayni kural /api/export ve /api/me icin de gecerli; kurali tek yerde
+    // tutmak icin resolveApiKey kullaniliyor.
+    const { key: apiKey } = resolveApiKey(req);
     if (!apiKey) {
       return NextResponse.json(
         {
@@ -94,11 +147,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Anahtar izgaraya oturtulmus kutudan: haritayi birkac piksel
+    // kaydirmak ayni anahtari vermeli. Ham koordinatlarla anahtar
+    // uretmek her pan hareketinde Redis'i isabetsiz birakiyordu.
+    const keyBox = snapKeyBox(
+      Number(effectiveBbox[0]),
+      Number(effectiveBbox[1]),
+      Number(effectiveBbox[2]),
+      Number(effectiveBbox[3])
+    );
     const cacheKey =
       "search:" +
       crypto
         .createHash("md5")
-        .update(JSON.stringify({ centerLat, centerLon, radius, category, limit }))
+        .update(JSON.stringify({ bbox: keyBox, category, limit }))
         .digest("hex");
 
     const cached = await CacheService.get<any>(cacheKey);
@@ -109,10 +171,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // radius yerine bbox: uc, viewport'u daireye cevirmeden tam olarak
+    // bu dikdortgeni tariyor. Cember yolu, kullanicinin gordugu alanin
+    // zoom'a gore 2-2.6 katini taratiyordu.
+    // lat/lon yine gerekiyor: mesafe hesabi ve siralama merkeze gore.
     const query = new URLSearchParams({
       lat: String(centerLat),
       lon: String(centerLon),
-      radius: String(radius),
+      bbox: effectiveBbox.join(","),
       type: category,
       limit: String(Math.min(Number(limit) || 250, 1000)),
     });
@@ -151,11 +217,15 @@ export async function POST(req: NextRequest) {
       meta: {
         cached: false,
         provider: "backend",
+        // Esdeger yaricap: gercekte taranan sey dikdortgen, ama plan
+        // siniri ve kullaniciya gosterilen mesafe yaricap cinsinden.
         radiusUsed: radius,
         viewportRadius,
         // Istemci bunu ust seritte kullaniciya gosteriyor: harita
         // cok genisse kenarlardaki yerler sonuca girmiyor.
         radiusClamped: clamped,
+        // Gercekte taranan dikdortgen; hata ayiklamayi kolaylastiriyor.
+        bboxUsed: effectiveBbox.join(","),
       },
     };
 
