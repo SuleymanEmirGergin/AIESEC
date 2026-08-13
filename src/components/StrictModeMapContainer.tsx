@@ -87,7 +87,13 @@ function StrictModeMapContainerComponent(
   const [context, setContext] = useState<LeafletContextInterface | null>(null);
   const mapInstanceRef = useRef<LeafletMap | null>(null);
 
-  useImperativeHandle(forwardedRef, () => context?.map ?? null, [context]);
+  // Harita ilk render'da henuz kurulmadigi icin handle gercekten null
+  // olabiliyor; generic'ler bu yuzden acik veriliyor.
+  useImperativeHandle<LeafletMap | null, LeafletMap | null>(
+    forwardedRef,
+    () => context?.map ?? null,
+    [context],
+  );
 
   const mapRef = useCallback((node: HTMLDivElement | null) => {
     // Muhafiz closure degil ref okuyor: StrictMode ref'i ikinci kez baglasa
