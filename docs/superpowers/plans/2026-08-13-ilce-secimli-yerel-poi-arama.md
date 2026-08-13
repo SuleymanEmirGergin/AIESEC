@@ -790,9 +790,9 @@ if __name__ == "__main__":
 
 - [ ] **Step 6: Testleri çalıştır, geçtiğini doğrula**
 
-Run: `cd backend && python -m pytest tests/test_fetch_districts.py -v`
+Run: `cd backend && .venv/Scripts/python.exe -m pytest tests/test_fetch_districts.py -v`
 
-Expected: PASS (14 test)
+Expected: PASS (11 test)
 
 - [ ] **Step 7: Scripti gerçekten çalıştır**
 
