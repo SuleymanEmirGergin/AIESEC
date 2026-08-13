@@ -21,10 +21,17 @@ RADIUS_PRESETS = {
 }
 
 # Tag whitelist for result cleanup
+#
+# Iletisim etiketleri OSM'de iki bicimde yasiyor: duz (`phone`, `email`)
+# ve `contact:` onekli (`contact:phone`). Onekli olanlar asagida prefix
+# kuraliyla toptan geciyor, duz olanlarin burada tek tek sayilmasi
+# gerekiyor. `email`, `mobile` ve `fax` listede yoktu; bu yuzden yalnizca
+# duz `email` etiketi tasiyan kayitlarin iletisim bilgisi arayuze
+# hic ulasmiyordu.
 TAG_WHITELIST = {
     "name", "official_name", "amenity", "office", "craft",
     "industrial", "man_made", "building", "shop", "website",
-    "phone", "opening_hours", "operator", "brand"
+    "phone", "email", "mobile", "fax", "opening_hours", "operator", "brand"
 }
 
 

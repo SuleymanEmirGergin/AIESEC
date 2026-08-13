@@ -15,19 +15,37 @@ from app.models import ExportRequest
 router = APIRouter(prefix="/api", tags=["export"])
 
 
+# OSM iletisim bilgisini iki semayla tutuyor: duz (`phone`) ve `contact:`
+# onekli (`contact:phone`). Sira oncelik demek. Ayni oncelik listesi
+# arayuzde src/lib/contact.ts icinde yasiyor; ikisi ayni sonucu vermeli,
+# yoksa kullanici ekranda gordugu numarayi CSV'de bulamaz.
+PHONE_KEYS = ("phone", "contact:phone", "telephone", "contact:mobile", "mobile")
+EMAIL_KEYS = ("email", "contact:email")
+WEBSITE_KEYS = ("website", "contact:website", "url", "contact:url")
+
+
+def pick_tag(tags: Dict[str, Any], keys: tuple) -> str:
+    """Return the first non-empty tag value following the given priority."""
+    for key in keys:
+        value = (tags.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
 def build_csv(items: List[Dict[str, Any]]) -> str:
     """Construct CSV string from OSM items."""
     output = io.StringIO()
     writer = csv.writer(output)
-    
+
     # Headers
     writer.writerow([
-        "name", "type", "subtype", "lat", "lon", 
-        "city", "district", "street", "phone", "website", "osm_id"
+        "name", "type", "subtype", "lat", "lon",
+        "city", "district", "street", "phone", "email", "website", "osm_id"
     ])
-    
+
     for item in items:
-        tags = item.get("tags", {})
+        tags = item.get("tags", {}) or {}
         writer.writerow([
             item.get("name") or "",
             item.get("type") or "",
@@ -37,11 +55,12 @@ def build_csv(items: List[Dict[str, Any]]) -> str:
             tags.get("addr:city") or "",
             tags.get("addr:district") or tags.get("addr:suburb") or "",
             tags.get("addr:street") or "",
-            tags.get("contact:phone") or tags.get("phone") or "",
-            tags.get("contact:website") or tags.get("website") or "",
+            pick_tag(tags, PHONE_KEYS),
+            pick_tag(tags, EMAIL_KEYS),
+            pick_tag(tags, WEBSITE_KEYS),
             item.get("id") or ""
         ])
-    
+
     return output.getvalue()
 
 
@@ -81,12 +100,21 @@ async def export_leads(
     await db.commit()
     
     # 4. Build CSV
-    csv_data = build_csv(request.items)
-    
+    #
+    # BOM sart: Excel BOM'suz bir CSV'yi Windows'ta sistem kod sayfasiyla
+    # aciyor ve Turkce karakterler bozuluyor ("Istanbul" -> "Ä°stanbul").
+    # Dosyanin ilk hedefi Excel oldugu icin BOM'u biz ekliyoruz.
+    csv_data = "\ufeff" + build_csv(request.items)
+
+    # Dosya adi istek govdesinden geliyor; tirnak ya da satir sonu iceren
+    # bir deger Content-Disposition basligini bolebilir. Guvenli alfabeye
+    # indirgiyoruz.
+    safe_type = "".join(c for c in request.type if c.isalnum() or c in "-_") or "export"
+
     return Response(
         content=csv_data,
-        media_type="text/csv",
+        media_type="text/csv; charset=utf-8",
         headers={
-            "Content-Disposition": f'attachment; filename="leads_{request.type}.csv"'
+            "Content-Disposition": f'attachment; filename="leads_{safe_type}.csv"'
         }
     )
