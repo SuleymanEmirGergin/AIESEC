@@ -930,20 +930,28 @@ class TestBufferDegrees:
         Anizotropi kilidi.
 
         Izotropik buffer(2000/111320) uygulanirsa dogu yonundeki tampon
-        derece cinsinden ayni kalir, ama 41N'de 1 derece boylam ~84 km
-        oldugu icin bu ~2.4 km'ye karsilik gelir. Yani sinirin 2.4 km
-        dogusundaki bir nokta yanlislikla tampon icinde sayilir.
+        derece cinsinden kuzeyle ayni kalir (0.017966 derece), ama 41N'de
+        1 derece boylam ~84 km (1 derece enlemden dusuk) oldugu icin bu
+        derece-tamponu gercekte yalnizca ~1510 m'ye karsilik gelir —
+        istenen 2000 m'nin ~%75'i. Yani sinirin 2000 m dogusuna yakin,
+        gercekte tamponun icinde olmasi gereken bir nokta yanlislikla
+        DISARIDA sayilir.
+
+        Kontrol noktalari 2 km hedefin hemen icinde/disinda (1.9/2.1 km)
+        seciliyor: 1/3 km gibi gevsek bir aralik hem duzeltilmemis
+        (~1510 m) hem de ters olceklenmis (yanlislikla ~1140 m) tamponu
+        da "dogru" gibi gecirir, cunku ikisi de 1-3 km arasinda kalir.
         Bu test dogru olcekleme yapilmadikca gecmez.
         """
         geom = _kare()
         tamponlu = buffer_degrees(geom, 2000, REF_LAT)
         metre_per_derece_lon = 111320.0 * math.cos(math.radians(REF_LAT))
 
-        bir_km_lon = 1000 / metre_per_derece_lon
-        uc_km_lon = 3000 / metre_per_derece_lon
+        hedefin_icinde = 1900 / metre_per_derece_lon
+        hedefin_disinda = 2100 / metre_per_derece_lon
 
-        assert point_in_geometry(tamponlu, 41.05, 29.1 + bir_km_lon) is True
-        assert point_in_geometry(tamponlu, 41.05, 29.1 + uc_km_lon) is False
+        assert point_in_geometry(tamponlu, 41.05, 29.1 + hedefin_icinde) is True
+        assert point_in_geometry(tamponlu, 41.05, 29.1 + hedefin_disinda) is False
 
     def test_tampon_orijinali_kapsar(self):
         geom = _kare()
@@ -1148,18 +1156,22 @@ def buffer_degrees(
 
     Dogrudan buffer(buffer_m / 111320) uygulamak yanlis: 1 derece enlem
     her yerde ~111320 m ama 1 derece boylam 111320*cos(lat) m. Turkiye
-    enlemlerinde cos(lat) 0.74-0.81, yani izotropik tampon dogu-bati
-    yonunde gerektiginden ~%25 genis olur ve komsu ilcelerin kayitlari
-    sonuca sizar.
+    enlemlerinde cos(lat) 0.74-0.81, yani bir boylam derecesi bir enlem
+    derecesinden daha az gercek mesafeye karsilik gelir. Duzeltilmemis
+    (izotropik) bir tampon bu farki gormezden gelir ve dogu-bati
+    yonunde gercekte istenenden ~%19-26 DAR kalir: sinira yakin, tamponun
+    kapsamasi gereken noktalar yanlislikla disarida sayilir.
 
-    Cozum: boylami 1/cos(lat) ile olcekleyip uzayi yerel olarak izotropik
-    yap, tamponu uygula, geri olcekle. Tek bir ilce icinde hata %1'in
-    altinda kalir.
+    Cozum: boylami (x) cos(lat) ile olcekleyip enlemi (y) oldugu gibi
+    birakmak, uzayi yerel olarak izotropik yapar — olcekten sonra hem
+    x hem y ekseninde 1 birim ayni gercek mesafeye (~111320 m) karsilik
+    gelir. Tamponu bu izotropik uzayda uygula, sonra geri olcekle. Tek
+    bir ilce icinde hata %1'in altinda kalir.
     """
     if buffer_m <= 0:
         return geom
 
-    k = 1.0 / cos(radians(ref_lat))
+    k = cos(radians(ref_lat))
     # shapely x=lon, y=lat: xfact boylami olcekliyor.
     scaled = scale(geom, xfact=k, yfact=1.0, origin=(0.0, 0.0))
     buffered = scaled.buffer(buffer_m / METERS_PER_DEGREE_LAT)
@@ -1269,7 +1281,7 @@ Expected: PASS. `districts.geojson` T2'de üretildiyse veri testleri de çalış
 
 - [ ] **Step 5: Anizotropi testinin gerçekten koruduğunu doğrula**
 
-Tamponu geçici olarak izotropik yap (`buffer_degrees` içinde `k = 1.0`), testi çalıştır:
+Tamponu geçici olarak izotropik yap (`buffer_degrees` içinde `k = 1.0`), testi çalıştır. **Kontrol noktalarının 1.9/2.1 km olması şart** — planın ilk hâli 1/3 km kullanıyordu ve o aralık hem düzeltilmemiş (~1510 m) hem de ters ölçeklenmiş (~1140 m) tamponu da geçiriyordu, yani test hiçbir şeyi korumuyordu:
 
 Run: `cd backend && python -m pytest tests/test_districts_geo.py::TestBufferDegrees::test_tampon_doguya_dogru_da_metrik -v`
 

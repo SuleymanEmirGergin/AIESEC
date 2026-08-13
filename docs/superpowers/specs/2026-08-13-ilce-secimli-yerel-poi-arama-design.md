@@ -182,9 +182,15 @@ Overpass'e ilçe bbox'ı + tampon ile gidilir; dönen sonuçlar ilçe poligonunu
 2 km tamponlanmış haline göre filtrelenir. Sınırın 500 m dışındaki fabrika
 geçerli lead olarak kalır.
 
-Tampon anizotropik ölçek hilesiyle: `lon`'u `1/cos(lat)` ile ölçekle →
+Tampon anizotropik ölçek hilesiyle: `lon`'u **`cos(lat)`** ile ölçekle →
 `2000/111320` derece `buffer()` → geri ölçekle. Türkiye enlemlerinde
 (36–42°, `cos` 0.74–0.81) hata %1'in altında.
+
+Ölçek yönü kritik ve bu tasarım başta **ters** yazmıştı (`1/cos(lat)`).
+41°N'de ölçüm: doğru formül tam 2000 m verir, ters formül 1139 m, hiç
+düzeltme yapmamak 1509 m — yani ters ölçekleme düzeltmesizden de kötü.
+Düzeltilmemiş tampon doğu-batı yönünde gerektiğinden **dar** kalır (geniş
+değil): sınıra yakın, kapsanması gereken kayıtlar dışarıda sayılır.
 
 `DISTRICT_BUFFER_M=2000` env değişkeni. Tamponlanmış geometri ilçe başına
 bellekte memoize edilir.
