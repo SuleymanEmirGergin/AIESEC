@@ -67,23 +67,63 @@ docker-compose down
 
 ```
 ├── src/
-│   ├── app/
-│   │   ├── api/search/       # API route (external API proxy)
-│   │   ├── layout.tsx         # Root layout
-│   │   ├── page.tsx           # Ana sayfa
-│   │   └── globals.css        # Global styles
+│   ├── app/                          # Next.js App Router
+│   │   ├── admin/
+│   │   │   ├── page.tsx              # Admin paneli (raporlar)
+│   │   │   └── overrides/page.tsx    # Admin paneli (override'lar)
+│   │   ├── api/                      # Backend'e proxy route handler'lar
+│   │   │   ├── admin/[...path]/      # Admin API passthrough
+│   │   │   ├── admin/reports/
+│   │   │   ├── export/
+│   │   │   ├── me/
+│   │   │   ├── presets/
+│   │   │   ├── report/
+│   │   │   └── search/
+│   │   ├── layout.tsx                # Root layout
+│   │   ├── page.tsx                  # Ana sayfa (arama + harita)
+│   │   └── globals.css               # Global styles
 │   ├── components/
-│   │   ├── MapContainer.tsx   # Leaflet map wrapper
-│   │   ├── SearchControls.tsx # Arama kontrolleri
-│   │   └── PlaceList.tsx      # Sonuç listesi
-│   └── lib/
-│       ├── types.ts           # TypeScript tanımları
-│       ├── api-client.ts      # API client fonksiyonları
-│       └── map-utils.ts       # Harita yardımcı fonksiyonları
-├── public/                     # Static dosyalar
-├── Dockerfile                  # Multi-stage production build
-├── docker-compose.yml          # Docker Compose config
-└── tailwind.config.ts          # Tailwind tema
+│   │   ├── MapView.tsx               # react-leaflet harita
+│   │   ├── PlaceList.tsx             # Sonuç listesi
+│   │   ├── Filters.tsx               # Arama filtreleri
+│   │   ├── ExportToolbar.tsx         # Dışa aktarma
+│   │   ├── ReportModal.tsx           # Hata bildirimi
+│   │   ├── SettingsModal.tsx         # Ayarlar
+│   │   ├── UpgradeModal.tsx          # Plan yükseltme
+│   │   ├── AdminReportsTable.tsx     # Admin: rapor listesi
+│   │   ├── AdminReportDetail.tsx     # Admin: rapor detayı
+│   │   ├── OverridesTable.tsx        # Admin: override listesi
+│   │   └── OverrideForm.tsx          # Admin: override formu
+│   ├── lib/                          # İstemci tarafı yardımcılar
+│   │   ├── types.ts, configTypes.ts  # TypeScript tanımları
+│   │   ├── api.ts                    # Ana API client (retry + timeout)
+│   │   ├── api-client.ts             # Basit arama client'ı
+│   │   ├── adminApi.ts               # Admin uçları
+│   │   ├── labels.ts                 # Yer tipi etiketleri / grupları
+│   │   ├── presets.ts                # Tip bazlı varsayılan yarıçaplar
+│   │   ├── presetsCache.ts           # Preset localStorage cache (24 saat)
+│   │   ├── cache.ts                  # Arama sonucu cache (5 dk TTL)
+│   │   ├── retry.ts                  # Exponential backoff
+│   │   ├── fetchTimeout.ts           # İstemci tarafı timeout
+│   │   ├── debounce.ts               # Debounce
+│   │   └── normalize.ts              # Overpass elementi → Place
+│   ├── server/                       # Yalnızca sunucuda çalışan kod
+│   │   ├── backend.ts                # Backend'e HTTP istekleri
+│   │   ├── cache.ts                  # Sunucu içi cache
+│   │   └── rateLimit.ts              # Rate limiting
+│   └── shared/                       # İstemci/sunucu ortak kod
+│       ├── types.ts
+│       ├── categories.ts
+│       └── normalize.ts
+├── backend/                          # FastAPI backend (ayrı servis)
+├── design-system/                    # Tasarım sistemi kaynağı (MASTER.md)
+├── expo-osm-map/                     # Expo (React Native) harita uygulaması
+├── docs/                             # Plan ve tasarım dokümanları
+├── shared/types.ts                   # Repo düzeyinde paylaşılan tipler
+├── public/markers/                   # Yer tipi marker SVG'leri
+├── Dockerfile                        # Multi-stage production build
+├── docker-compose.yml                # Docker Compose config
+└── tailwind.config.ts                # Tailwind tema
 ```
 
 ## 🎨 Tasarım Sistemi
