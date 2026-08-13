@@ -134,6 +134,12 @@ class TestB2BClassification:
         result = classify_b2b_type(tags, "way")
         assert result == "factory"
 
+    def test_factory_by_building_warehouse(self):
+        """Test factory classification by building=warehouse tag."""
+        tags = {"building": "warehouse"}
+        result = classify_b2b_type(tags, "way")
+        assert result == "factory"
+
     def test_office_by_office_tag(self):
         """Test office classification by office tag."""
         tags = {"office": "company"}
@@ -143,6 +149,12 @@ class TestB2BClassification:
     def test_office_by_building(self):
         """Test office classification by building tag."""
         tags = {"building": "commercial"}
+        result = classify_b2b_type(tags, "way")
+        assert result == "office"
+
+    def test_office_by_building_office(self):
+        """Test office classification by building=office tag."""
+        tags = {"building": "office"}
         result = classify_b2b_type(tags, "way")
         assert result == "office"
 
@@ -156,6 +168,15 @@ class TestB2BClassification:
         """Test workshop classification by industrial tag."""
         tags = {"industrial": "workshop"}
         result = classify_b2b_type(tags, "node")
+        assert result == "workshop"
+
+    def test_workshop_wins_over_building_warehouse(self):
+        """Test that craft tag takes priority over building=warehouse."""
+        # Atolyeler sik sik depo binasinda oturur. building=warehouse
+        # fabrika dalinda oldugu icin, craft kontrolu onunde kalmazsa
+        # bu kayitlar fabrika olarak siniflanir. Sirayi kilitleyen test.
+        tags = {"building": "warehouse", "craft": "carpenter"}
+        result = classify_b2b_type(tags, "way")
         assert result == "workshop"
 
     def test_no_match_returns_none(self):
