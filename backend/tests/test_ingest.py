@@ -268,9 +268,86 @@ class TestIngestDistrict:
         with patch("app.ingest.overpass_client.query", new=AsyncMock(side_effect=_query)):
             result = await ingest_district(db, "tr-34-kadikoy", 2000, force=True)
 
-        # 4 ceyrek yeniden denendi: toplam sorgu 4'ten fazla olmali.
-        assert result.query_count > 4
-        assert result.status in ("ok", "partial")
+        # Deterministik sayim: b2b/stage1 ilk deneme basarisiz (1) + 4
+        # ceyrek (hepsi basarili) = 5; kalan 3 aile/asama kombinasyonu
+        # (b2b/stage2, education/stage1, education/stage2) ilk denemede
+        # basarili = 1'er sorgu. Toplam 5 + 1 + 1 + 1 = 8.
+        #
+        # Gevsek bir ">4" siniri "4 ceyrege bolunup yeniden denendi" ile
+        # "orijinal bbox'la sadece bir kez yeniden denendi" (5 > 4, hala
+        # yanlislikla yesil doner) ayrimini yapamaz -- tam sayi kasitli.
+        assert result.query_count == 8
+
+        # 4 ceyregin tamami basarili oldugu icin bu senaryoda all_ok hic
+        # False'a dusmuyor: sonuc deterministik olarak "ok", "partial"
+        # degil. "in (\"ok\", \"partial\")" ayrimi yapmadan her iki sonucu
+        # da kabul ederdi. status="partial"/"failed" dallari asagidaki iki
+        # ayri test tarafindan pinleniyor.
+        assert result.status == "ok"
+
+    async def test_ceyrek_basarisizligi_partial_uretir(self, db):
+        """
+        Bir ceyrek yeniden denemesi de basarisiz olursa _fetch_family_stage
+        o aile/asama icin ok=False donuyor ve ingest_district'teki
+        `all_ok = all_ok and ok` bunu dongunun geri kalaninda tasimali --
+        sonraki basarili kombinasyonlar all_ok'u True'ya geri dondurmemeli.
+        En az bir kayit toplanmis olsa bile status 'partial' olmali.
+        """
+        lat, lon = await self._kadikoy_merkez()
+        elements = [{
+            "type": "node", "id": 9007, "lat": lat, "lon": lon,
+            "tags": {"name": "A", "man_made": "works"},
+        }]
+        cagri_sayaci = {"n": 0}
+
+        async def _query(query_text: str, debug: bool = False):
+            cagri_sayaci["n"] += 1
+            n = cagri_sayaci["n"]
+            # call 1: b2b/stage1 ilk deneme -> basarisiz, 4 ceyrege boler.
+            # call 3: o 4 ceyrekten ikincisi de basarisiz.
+            # Diger tum cagrilar (2, 4, 5, 6, 7, 8) basarili.
+            if n in (1, 3):
+                raise OverpassTransientError("HTTP 504")
+            stage = 2 if '[!"name"]' in query_text else 1
+            return {"elements": list(elements) if stage == 1 else []}
+
+        with patch(
+            "app.ingest.overpass_client.query", new=AsyncMock(side_effect=_query)
+        ):
+            result = await ingest_district(db, "tr-34-kadikoy", 2000, force=True)
+
+        # b2b/stage1: 1 basarisiz ilk deneme + 4 ceyrek (biri basarisiz,
+        # ucu basarili) = 5. Kalan 3 kombinasyon 1'er basarili sorgu = 3.
+        assert result.query_count == 8
+        # Kalici basarisiz kalan ceyrek all_ok'u False'a dusurdu; diger
+        # ceyrekler ve diger aile/asama kombinasyonlari yine de kayit
+        # getirdigi icin rows bos degil -> "partial" (all_ok=False ama
+        # rows dolu). "failed" olsaydi rows'un da bos kalmasi gerekirdi.
+        assert result.status == "partial"
+        assert result.place_count == 1
+
+    async def test_tum_sorgular_basarisiz_olursa_failed_uretir(self, db):
+        """
+        TUM aile/asama kombinasyonlari (ilk deneme + 4 ceyrek retry'nin
+        hepsi) basarisiz olursa hicbir eleman toplanamaz. all_ok False
+        VE rows bos -- ingest_district'teki
+        `"partial" if rows else "failed"` ayriminin "failed" ucunu
+        pinliyor; partial testi zaten "rows dolu" ucunu kapsiyor.
+        """
+        await self._kadikoy_merkez()  # districts.geojson yoksa skip eder
+
+        async def _query(query_text: str, debug: bool = False):
+            raise OverpassTransientError("HTTP 504")
+
+        with patch(
+            "app.ingest.overpass_client.query", new=AsyncMock(side_effect=_query)
+        ):
+            result = await ingest_district(db, "tr-34-kadikoy", 2000, force=True)
+
+        # 4 aile/asama kombinasyonu x (1 ilk deneme + 4 ceyrek) = 20.
+        assert result.query_count == 20
+        assert result.status == "failed"
+        assert result.place_count == 0
 
     async def test_isimsiz_atolye_stage2_de_korunur(self, db):
         """
