@@ -163,6 +163,25 @@ def build_feature_collection(districts: list[dict]) -> dict:
     }
 
 
+def _select_relation_candidate(candidates: list[dict], relation_id: int) -> dict | None:
+    """
+    /search adaylari arasindan hedef relation'a esit olani secer.
+
+    osm_id yalnizca tur icinde tekildir: bir node/way, hedef relation ile
+    ayni numarayi tasiyabilir. /search polygon_geojson=1 ile tum turler
+    icin istendigi icin oyle bir node kendi (yanlis ama gecerli) geojson'ini
+    dondurebilir; osm_type kontrolu olmadan bu sessizce kabul edilirdi.
+    attach_geometry'deki by_relation filtresiyle ayni kontrol (bkz. orada).
+    """
+    return next(
+        (
+            c for c in candidates
+            if c.get("osm_id") == relation_id and c.get("osm_type") == "relation"
+        ),
+        None,
+    )
+
+
 def _overpass_query(province_name: str) -> str:
     """Bir ildeki admin_level=6 ilce relation'larini ister (geometri yok)."""
     return f"""[out:json][timeout:120];
@@ -288,16 +307,14 @@ async def _fetch_geometries_by_search(
     Yedek yol: /lookup geometri dondurmedigi durumda ilce basina /search.
 
     Ada eslestirmesine guvenilmiyor (OSM adlandirmasi tutarsiz olabiliyor);
-    adaylar arasindan osm_id relation ID'sine esit olan seciliyor.
+    adaylar arasindan _select_relation_candidate ile relation ID'sine esit
+    olan seciliyor (bkz. orada: osm_type kontrolu de gerekiyor).
     """
     results: list[dict] = []
     for meta in metas:
         print(f"[NOMINATIM] {meta['name']} ({meta['province']}) araniyor...")
         candidates = await _query_nominatim_search(client, meta)
-        match = next(
-            (c for c in candidates if c.get("osm_id") == meta["osm_relation_id"]),
-            None,
-        )
+        match = _select_relation_candidate(candidates, meta["osm_relation_id"])
         if match:
             results.append(match)
         # Nominatim kullanim politikasi 1 istek/saniye siniri koyuyor.

@@ -12,6 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from fetch_districts import (  # noqa: E402
+    _select_relation_candidate,
     attach_geometry,
     build_feature_collection,
     district_id,
@@ -133,3 +134,57 @@ class TestBuildFeatureCollection:
         assert props["bbox"] == [41.0, 29.0, 41.1, 29.1]
         assert props["center"] == [41.05, 29.05]
         assert fc["features"][0]["geometry"]["type"] == "Polygon"
+
+
+class TestSelectRelationCandidate:
+    """
+    Fix round 1, Important #2: osm_id sadece tur icinde tekildir. /search
+    polygon_geojson=1 ile tum turleri istedigi icin bir node, hedef
+    relation ile ayni numarayi tasiyip kendi (yanlis) geojson'unu
+    getirebilir. osm_type kontrolu olmadan bu sessizce kabul edilirdi —
+    tam da attach_geometry'nin onlemeye calistigi "sessizce eksik/yanlis
+    veri" durumu.
+    """
+
+    def _cakisan_node(self, relation_id):
+        # Hedef relation ile ayni numarali, kendi (yanlis) gecerli
+        # geojson'unu tasiyan bir node adayi.
+        return {
+            "osm_type": "node",
+            "osm_id": relation_id,
+            "geojson": {"type": "Point", "coordinates": [29.05, 41.05]},
+        }
+
+    def _dogru_relation(self, relation_id):
+        coords = [[29.0, 41.0], [29.1, 41.0], [29.1, 41.1], [29.0, 41.1], [29.0, 41.0]]
+        return {
+            "osm_type": "relation",
+            "osm_id": relation_id,
+            "geojson": {"type": "Polygon", "coordinates": [coords]},
+        }
+
+    def test_ayni_id_tasiyan_node_yerine_relation_secilir(self):
+        node = self._cakisan_node(1234)
+        relation = self._dogru_relation(1234)
+
+        # Node listede relation'dan once geliyor: siraya degil, osm_type
+        # kontrolune guvenildigini kanitlar.
+        result = _select_relation_candidate([node, relation], 1234)
+
+        assert result is relation
+
+    def test_sadece_cakisan_node_varsa_yanlis_geometri_kabul_edilmez(self):
+        # Bug senaryosu: /search yalnizca id'si cakisan bir node dondurdu,
+        # gercek relation adaylar arasinda yok. Fix'ten once bu durumda
+        # node'un Point geojson'u "bulundu" sayilip ilceye yanlis geometri
+        # olarak eklenirdi. Fix sonrasi None donmeli ki cagiran taraf bunu
+        # "bulunamadi" sayabilsin (attach_geometry zaten bu durumda
+        # ValueError firlatiyor).
+        node = self._cakisan_node(1234)
+
+        result = _select_relation_candidate([node], 1234)
+
+        assert result is None
+
+    def test_eslesen_aday_yoksa_none_doner(self):
+        assert _select_relation_candidate([], 1234) is None
