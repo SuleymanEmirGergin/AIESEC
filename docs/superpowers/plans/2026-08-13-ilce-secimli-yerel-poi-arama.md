@@ -1544,7 +1544,7 @@ git commit -m "feat: places, place_districts ve district_ingest tablolarini ekle
   - `CONTACT_TAGS: frozenset[str]`
   - `derive_has_contact(tags: dict) -> bool`
   - `extract_contact(tags: dict) -> tuple[str | None, str | None, str | None]` — `(phone, email, website)`
-  - `place_row_values(element: dict, place_type: str | None, confidence: int, address: str | None) -> dict` — `PlaceRow` kolonlarına karşılık gelen sözlük
+  - `place_row_values(element: dict, place_type: str | None, confidence: int, address: str | None) -> dict | None` — `PlaceRow` kolonlarına karşılık gelen sözlük; koordinat bulunamazsa `None`
   - `async upsert_places(db: AsyncSession, rows: list[dict]) -> int`
   - `async replace_memberships(db: AsyncSession, district_id: str, memberships: list[tuple[str, bool]]) -> int`
   - `async mark_ingest(db, district_id: str, place_count: int, query_count: int, status: str) -> None`
