@@ -154,17 +154,22 @@ def classify_b2b_type(tags: dict, element_type: str) -> Optional[str]:
     if craft_tag or industrial_tag == "workshop":
         return "workshop"
 
+    # building=warehouse ve building=office ingest'in b2b ailesinde
+    # cekiliyor (ingest.py SELECTOR_FAMILIES) ama burada karsiligi yoktu;
+    # o kayitlar place_type=NULL ile saklanip filtrelerde gizleniyordu.
+    # Depo bir sanayi/lojistik tesisi oldugu icin fabrika tarafinda.
     if (
         industrial_tag
         or man_made_tag == "works"
-        or building_tag == "industrial"
+        or building_tag in ("industrial", "warehouse")
         or landuse_tag == "industrial"
     ):
         return "factory"
 
     # Office indicators
+    # building=office icin de ayni bosluk vardi; bkz. yukaridaki not.
     office_tag = tags.get("office")
-    if office_tag or building_tag == "commercial":
+    if office_tag or building_tag in ("commercial", "office"):
         return "office"
 
     return None
