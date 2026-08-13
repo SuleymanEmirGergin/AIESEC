@@ -4,8 +4,8 @@ import os
 import datetime
 from typing import Optional, List
 from sqlalchemy import (
-    Column, Integer, String, Float, DateTime, Boolean, JSON, 
-    Index, func, select, update
+    Column, Integer, String, Float, DateTime, Boolean, JSON,
+    ForeignKey, Index, func, select, update
 )
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -90,10 +90,75 @@ class ExportLog(Base):
 class GlobalState(Base):
     """Global system status like overrides last updated timestamp."""
     __tablename__ = "global_state"
-    
+
     key = Column(String, primary_key=True)
     value = Column(String)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+class PlaceRow(Base):
+    """
+    Ingest edilmis POI. Yerel arama bu tablo uzerinde calisiyor;
+    sorgu yolunda Overpass'e hic gidilmiyor.
+
+    place_type NULL olabilir: OSM'de `building=school` tasiyip
+    `amenity=school` tasimayan kayitlar siniflandirilamiyor. Veriyi
+    atmak yerine saklaniyor, filtrelerde varsayilan olarak gizleniyor
+    (include_unclassified ile gorulebilir).
+    """
+    __tablename__ = "places"
+
+    id = Column(String, primary_key=True)  # osm:node:123
+    lat = Column(Float, nullable=False)
+    lon = Column(Float, nullable=False)
+    name = Column(String, nullable=True)
+    place_type = Column(String, nullable=True, index=True)
+    subtype = Column(String, nullable=True)
+    confidence = Column(Integer, default=0)
+    # Turetilmis ve indeksli: filtre panelinin en cok kullanilan kosulu.
+    has_contact = Column(Boolean, nullable=False, default=False, index=True)
+    phone = Column(String, nullable=True)
+    email = Column(String, nullable=True)
+    website = Column(String, nullable=True)
+    address = Column(String, nullable=True)
+    tags_json = Column(String, nullable=False, default="{}")
+    fetched_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
+
+class PlaceDistrict(Base):
+    """
+    POI - ilce uyeligi (cok-a-cok).
+
+    Neden ayri tablo: 2 km tampon yuzunden sinirdaki bir kayit iki
+    ilceye de ait — Kadikoy'un icinde VE Atasehir'in tamponunda.
+    places tablosunda tek district_id kolonu olsa ingest sirasi hangisi
+    ise o kazanir ve kayit sessizce yanlis ilceye yazilirdi.
+
+    is_inside: True = kesin sinir ici, False = tampon bolgesi.
+    """
+    __tablename__ = "place_districts"
+
+    place_id = Column(
+        String, ForeignKey("places.id", ondelete="CASCADE"), primary_key=True
+    )
+    district_id = Column(String, primary_key=True, index=True)
+    is_inside = Column(Boolean, nullable=False, default=True)
+
+class DistrictIngest(Base):
+    """
+    Ilce basina ingest durumu. Idempotency ve tazelik hatirlatmasi
+    bu tabloya bakiyor.
+
+    status: ok | partial | failed
+      - ok:      dort sorgu da basarili
+      - partial: bbox dortte bolunmesine ragmen bazi parcalar alinamadi
+      - failed:  hicbir sorgu tamamlanmadi
+    """
+    __tablename__ = "district_ingest"
+
+    district_id = Column(String, primary_key=True)
+    fetched_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
+    place_count = Column(Integer, nullable=False, default=0)
+    query_count = Column(Integer, nullable=False, default=0)
+    status = Column(String, nullable=False, default="ok", index=True)
 
 async def init_db():
     """Initialize database tables."""
