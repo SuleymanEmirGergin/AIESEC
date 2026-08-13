@@ -121,6 +121,31 @@ export async function fetchPresets(options?: { signal?: AbortSignal }): Promise<
   return response.json();
 }
 
+export interface AccountInfo {
+  name: string;
+  is_active: boolean;
+  plan: "free" | "pro" | "enterprise" | string;
+  daily_limit: number;
+  used_today: number;
+}
+
+/**
+ * Kullanicinin anahtarinin plan/kota durumu.
+ * Anahtar yoksa veya gecersizse null doner; cagiran taraf bunu
+ * "durum bilinmiyor" olarak ele almali, hata olarak degil.
+ */
+export async function fetchAccount(): Promise<AccountInfo | null> {
+  if (typeof window !== "undefined" && !localStorage.getItem("api_key")) {
+    return null;
+  }
+  try {
+    const response = await fetchWithAuth("/api/me");
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
 export interface ExportContext {
   /** Aramanin kategorisi; CSV dosya adinda ve export kaydinda kullaniliyor. */
   type: string;

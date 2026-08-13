@@ -8,7 +8,8 @@ import ExportToolbar from "../components/ExportToolbar";
 import ReportModal from "../components/ReportModal";
 import SettingsModal from "../components/SettingsModal";
 import UpgradeModal from "../components/UpgradeModal";
-import { searchPlaces, exportLeads } from "../lib/api";
+import { searchPlaces, exportLeads, fetchAccount } from "../lib/api";
+import type { AccountInfo } from "../lib/api";
 import type { Place, PlaceType } from "../lib/types";
 import { Search, KeyRound } from "lucide-react";
 
@@ -39,6 +40,34 @@ export default function Home() {
   const [exporting, setExporting] = useState(false);
   /** Arama uzun surunce gosterilen bilgi; spinner tek basina yeterli degil. */
   const [slowSearch, setSlowSearch] = useState(false);
+  /** Kullanicinin anahtar durumu; null ise anahtar yok veya gecersiz. */
+  const [account, setAccount] = useState<AccountInfo | null>(null);
+
+  const reloadAccount = useCallback(() => {
+    fetchAccount().then(setAccount);
+  }, []);
+
+  useEffect(() => {
+    reloadAccount();
+  }, [reloadAccount]);
+
+  /**
+   * Export'un neden yapilamayacagini onceden belirle. Backend 'free'
+   * planda 403, kota dolunca 429 donuyordu; kullanici bunu ancak butona
+   * bastiktan sonra ogreniyordu.
+   * Export 2 kota birimi harciyor, kontrol de ona gore.
+   */
+  const exportBlockedReason = (() => {
+    if (!account) return "Dışa aktarım için API anahtarı gerekli.";
+    if (!account.is_active) return "API anahtarınız devre dışı.";
+    if (account.plan === "free") {
+      return "CSV dışa aktarım ücretsiz planda kapalı. Pro veya Enterprise gerekir.";
+    }
+    if (account.daily_limit - account.used_today < 2) {
+      return "Günlük kotanız dışa aktarım için yetersiz (2 birim gerekir).";
+    }
+    return null;
+  })();
 
   const toggleBasket = useCallback((place: Place) => {
     setBasket((prev) => {
@@ -74,6 +103,11 @@ export default function Home() {
       setNotice("Islem zaman asimina ugradi. Lutfen tekrar deneyin.");
       return;
     }
+    // Backend 'free' planda 403 donuyor; bu tam olarak UpgradeModal'in konusu.
+    if (/plan|upgrade|disabled for/i.test(message)) {
+      setUpgradeOpen(true);
+      return;
+    }
     if (/API-KEY|api key|401|yetki/i.test(message)) {
       setNotice("Bu islem icin API anahtari gerekli.");
       setSettingsOpen(true);
@@ -106,12 +140,15 @@ export default function Home() {
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
+
+      // Export 2 birim harcadi; kalan kota gostergesi guncellensin.
+      reloadAccount();
     } catch (err) {
       handleApiError(err);
     } finally {
       setExporting(false);
     }
-  }, [basket, category, bbox, exporting, handleApiError]);
+  }, [basket, category, bbox, exporting, handleApiError, reloadAccount]);
 
   const performSearch = useCallback(async () => {
     if (!category || !bbox) {
@@ -270,6 +307,9 @@ export default function Home() {
             onSelectAll={selectAllVisible}
             onClearSelection={clearBasket}
             onExport={handleExport}
+            exportBlockedReason={exportBlockedReason}
+            quotaRemaining={account ? account.daily_limit - account.used_today : null}
+            isExporting={exporting}
           />
           <div className="flex-1 overflow-hidden bg-white rounded-2xl shadow-sm border border-slate-200 p-1">
             <MapView
@@ -303,6 +343,8 @@ export default function Home() {
         onSaved={() => {
           setSettingsOpen(false);
           setNotice(null);
+          // Yeni anahtarin plan/kota durumu hemen yansisin.
+          reloadAccount();
         }}
       />
 

@@ -8,6 +8,14 @@ interface ExportToolbarProps {
   onSelectAll: () => void;
   onClearSelection: () => void;
   onExport: () => void;
+  /**
+   * Doluysa export butonu devre disi ve sebep gosteriliyor.
+   * Kullanici basip 403/429 almadan once durumu bilsin diye.
+   */
+  exportBlockedReason?: string | null;
+  /** Kalan gunluk kota; bilinmiyorsa gosterilmiyor. */
+  quotaRemaining?: number | null;
+  isExporting?: boolean;
 }
 
 export default function ExportToolbar({
@@ -16,8 +24,13 @@ export default function ExportToolbar({
   onSelectAll,
   onClearSelection,
   onExport,
+  exportBlockedReason,
+  quotaRemaining,
+  isExporting,
 }: ExportToolbarProps) {
   if (totalResults === 0) return null;
+
+  const disabled = selectedCount === 0 || !!exportBlockedReason || !!isExporting;
 
   return (
     <div className="mb-6 animate-in slide-in-from-top-4">
@@ -52,14 +65,30 @@ export default function ExportToolbar({
           </div>
         </div>
 
-        <button
-          onClick={onExport}
-          disabled={selectedCount === 0}
-          className="flex-1 sm:flex-none flex items-center justify-center gap-3 px-8 py-4 bg-primary text-white font-black rounded-2xl shadow-lg shadow-primary/20 hover:shadow-primary/40 hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 disabled:shadow-none"
-        >
-          <Download className="w-5 h-5" />
-          CSV OLARAK İNDİR
-        </button>
+        <div className="flex flex-col items-stretch gap-2 flex-1 sm:flex-none">
+          <button
+            onClick={onExport}
+            disabled={disabled}
+            title={exportBlockedReason || undefined}
+            className="flex items-center justify-center gap-3 px-8 py-4 bg-primary text-white font-black rounded-2xl shadow-lg shadow-primary/20 hover:shadow-primary/40 hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 disabled:shadow-none disabled:cursor-not-allowed"
+          >
+            <Download className="w-5 h-5" />
+            {isExporting ? "HAZIRLANIYOR…" : "CSV OLARAK İNDİR"}
+          </button>
+
+          {exportBlockedReason && (
+            <p className="text-[10px] font-bold text-amber-400 text-center max-w-xs">
+              {exportBlockedReason}
+            </p>
+          )}
+
+          {!exportBlockedReason && typeof quotaRemaining === "number" && (
+            // Export 2 kota birimi harciyor; kullanici bunu onceden gormeli.
+            <p className="text-[10px] font-bold text-slate-500 text-center">
+              Bugün kalan kota: {quotaRemaining} · dışa aktarım 2 birim harcar
+            </p>
+          )}
+        </div>
       </div>
 
       {selectedCount > 1000 && (
