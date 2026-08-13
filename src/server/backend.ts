@@ -31,6 +31,31 @@ export function rootUrl(path: string): string | null {
   return origin ? `${origin}${path}` : null;
 }
 
+export type ApiKeyScope = "personal" | "server";
+
+export interface ResolvedApiKey {
+  key: string | null;
+  scope: ApiKeyScope;
+}
+
+/**
+ * Istekte kullanilacak API anahtarini secer.
+ *
+ * Oncelik kullanicinin kendi anahtarinda: kota ve plan onun uzerinden
+ * islesin. Anahtar yoksa sunucunun kendi anahtari (SEARCH_API_KEY)
+ * devreye giriyor. Bu geri dusme su an yalnizca /api/search'te
+ * kullaniliyor; /api/export ve /api/me istemcinin anahtarini aynen
+ * geciriyor (proxyToBackend -> authHeaders yolu).
+ *
+ * Anahtarin kendisi tarayiciya hicbir zaman gitmiyor; yalnizca Next.js
+ * sunucusundan backend'e giden istekte tasiniyor.
+ */
+export function resolveApiKey(req: NextRequest): ResolvedApiKey {
+  const personal = req.headers.get("x-api-key");
+  if (personal) return { key: personal, scope: "personal" };
+  return { key: process.env.SEARCH_API_KEY ?? null, scope: "server" };
+}
+
 /**
  * Istemciden gelen kimlik basliklarini backend'e tasir.
  * Baska hicbir basligi gecirmiyoruz: host/cookie gibi basliklarin
