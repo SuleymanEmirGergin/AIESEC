@@ -361,6 +361,33 @@ class APIKeyCreateResponse(APIKeyResponse):
     key: str
 
 
+class APIKeyAdminResponse(APIKeyResponse):
+    """
+    Yonetim listesindeki anahtar kaydi.
+
+    `id` yalnizca burada var: PATCH /admin/keys/{id} icin gerekli.
+    Ad (`name`) benzersiz degil - ayni adla birden fazla anahtar
+    uretilebiliyor - dolayisiyla guncelleme adres olarak id kullaniyor.
+    Duz anahtar hicbir kosulda donmuyor; veritabaninda yalnizca SHA256
+    ozeti duruyor.
+    """
+    id: int
+
+
+class APIKeyAdminUpdate(BaseModel):
+    """
+    Mevcut bir anahtarin plan/kota/aktiflik durumunu degistirir.
+
+    Neden gerekli: plan yalnizca anahtar uretilirken belirlenebiliyordu.
+    Bir hesabi Pro'ya cikarmanin tek yolu ya yeni anahtar uretmek ya da
+    SQLite dosyasina elle mudahale etmekti; ikisi de mevcut kullanicinin
+    anahtarini gecersiz kiliyor ya da izlenemez bir degisiklik biraliyor.
+    """
+    plan: Optional[Literal["free", "pro", "enterprise"]] = None
+    daily_limit: Optional[int] = Field(None, ge=1, le=1_000_000)
+    is_active: Optional[bool] = None
+
+
 class PresetResponse(BaseModel):
     """Radius presets and UI labels for client UI."""
     max_radius: int

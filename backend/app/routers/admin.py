@@ -13,8 +13,9 @@ from app.auth import hash_key, verify_admin_key
 from app.cache import cache
 from app.database import APIKey, GlobalState, Override, Report, get_db
 from app.models import (
-    APIKeyCreateResponse, APIKeyResponse, OverrideCreate, OverrideResponse,
-    OverrideUpdate, ReportDetailedResponse, ReportListResponse, ReportUpdateAdmin
+    APIKeyAdminResponse, APIKeyAdminUpdate, APIKeyCreateResponse, APIKeyResponse,
+    OverrideCreate, OverrideResponse, OverrideUpdate, ReportDetailedResponse,
+    ReportListResponse, ReportUpdateAdmin
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -204,6 +205,53 @@ async def create_api_key(
         "plan": new_key.plan,
         "key": plain_key # ONLY return plain key on creation
     }
+
+
+@router.get("/keys", response_model=List[APIKeyAdminResponse])
+async def list_api_keys(
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(verify_admin_key)
+):
+    """
+    Kayitli anahtarlari listeler (duz anahtar donmez, yalnizca ozet var).
+
+    Bir hesabin planini degistirmek icin once id'sini bilmek gerekiyor;
+    onceden uc yoktu ve id'yi ogrenmenin tek yolu SQLite dosyasini
+    acmakti.
+    """
+    result = await db.execute(select(APIKey).order_by(APIKey.id))
+    return result.scalars().all()
+
+
+@router.patch("/keys/{key_id}", response_model=APIKeyAdminResponse)
+async def update_api_key(
+    key_id: int,
+    data: APIKeyAdminUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(verify_admin_key)
+):
+    """
+    Mevcut bir anahtarin planini/kotasini/aktifligini gunceller.
+
+    Anahtarin kendisi degismiyor: kullanicinin tarayicisinda ya da
+    SEARCH_API_KEY'de duran deger gecerli kalir, yalnizca yetkileri
+    degisir. Plan yukseltmesinin dogru yolu budur - yeni anahtar uretmek
+    eskisini kullanan herkesi disarida birakirdi.
+    """
+    key_obj = await db.get(APIKey, key_id)
+    if not key_obj:
+        raise HTTPException(status_code=404, detail=f"API key {key_id} not found")
+
+    changes = data.model_dump(exclude_unset=True, exclude_none=True)
+    if not changes:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    for field, value in changes.items():
+        setattr(key_obj, field, value)
+
+    await db.commit()
+    await db.refresh(key_obj)
+    return key_obj
 
 
 # --- Advanced Stats ---
