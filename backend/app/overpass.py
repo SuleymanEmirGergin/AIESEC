@@ -45,8 +45,16 @@ class OverpassEndpoint:
             return True
         return False
 
-    def mark_failure(self, max_fails: int = 2, cooldown_sec: int = 60):
-        """Register a failure and trigger cooldown if threshold met."""
+    def mark_failure(self, max_fails: int = 1, cooldown_sec: int = 60):
+        """
+        Register a failure and trigger cooldown if threshold met.
+
+        max_fails=1 (eskiden 2): basarisiz olan aynayi hemen devre disi
+        birak. Onceki davranista ayni yavas ayna bir kez daha deneniyordu;
+        olcumde bu tek basina 60 sn israf ediyordu (deneme 1 ve 2 ayni
+        endpoint'e gidiyordu). Elimizde birden fazla ayna varken dogru
+        hamle beklemek degil digerine gecmek.
+        """
         self.fail_count += 1
         if self.fail_count >= max_fails:
             self.cooldown_until = datetime.now() + timedelta(seconds=cooldown_sec)
@@ -92,9 +100,16 @@ class OverpassClient:
         Returns:
             Dict containing OSM results and debug metadata
         """
+        # Deneme sayisi 5'ten 3'e indirildi ve bekleme suresi kisaltildi.
+        # Failover artik ilk basarisizlikta devreye girdigi icin 3 deneme
+        # 3 farkli aynaya karsilik geliyor; ayni aynayi tekrar denemek
+        # yerine siradakine geciliyor.
+        #
+        # Olculen en kotu durum: 5 x 60 sn + 24 sn backoff = ~324 sn
+        # Yeni en kotu durum:    3 x 60 sn +  3 sn backoff = ~183 sn
         @retry(
-            stop=stop_after_attempt(5),
-            wait=wait_exponential(multiplier=1, min=2, max=10),
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=1, max=4),
             retry=retry_if_exception_type((OverpassTransientError, httpx.RequestError)),
             reraise=True
         )
