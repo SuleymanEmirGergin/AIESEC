@@ -37,6 +37,8 @@ export default function Home() {
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  /** Arama uzun surunce gosterilen bilgi; spinner tek basina yeterli degil. */
+  const [slowSearch, setSlowSearch] = useState(false);
 
   const toggleBasket = useCallback((place: Place) => {
     setBasket((prev) => {
@@ -66,6 +68,10 @@ export default function Home() {
     const message = String(err?.message ?? "");
     if (message === "QUOTA_EXCEEDED") {
       setUpgradeOpen(true);
+      return;
+    }
+    if (err?.name === "TimeoutError") {
+      setNotice("Islem zaman asimina ugradi. Lutfen tekrar deneyin.");
       return;
     }
     if (/API-KEY|api key|401|yetki/i.test(message)) {
@@ -117,7 +123,11 @@ export default function Home() {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    abortControllerRef.current = new AbortController();
+    // Bu cagriya ait controller yerelde tutuluyor: iptal edilen eski bir
+    // cagri, kendisinden sonra baslayan aramanin state'ini ezmemeli.
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const isCurrent = () => abortControllerRef.current === controller;
 
     setLoading(true);
     try {
@@ -125,7 +135,9 @@ export default function Home() {
         bbox,
         category,
         limit: 250
-      }, { signal: abortControllerRef.current.signal });
+      }, { signal: controller.signal });
+
+      if (!isCurrent()) return;
 
       setPlaces(results);
 
@@ -142,20 +154,40 @@ export default function Home() {
       }
     } catch (err: any) {
       // AbortError kullanicinin yeni aramasi demek, hata degil.
-      if (err?.name === "AbortError") return;
+      // TimeoutError ayri bir tip: sessizce yutulmamali.
+      if (err?.name === "AbortError" || !isCurrent()) return;
 
       // Onceden bu hata yalnizca console'a yaziliyordu; kullanici
       // 502/429 aldiginda "Sonuc bulunamadi" gorup veri yok saniyordu.
       setPlaces([]);
       if (err?.message === "QUOTA_EXCEEDED") {
         setUpgradeOpen(true);
+      } else if (err?.name === "TimeoutError") {
+        setNotice(
+          "Arama zaman asimina ugradi. Harita servisi su an yavas; " +
+            "daha dar bir alana yakinlasip tekrar deneyin."
+        );
       } else {
         setNotice(err?.message || "Arama basarisiz oldu.");
       }
     } finally {
-      setLoading(false);
+      // catch icindeki `return` bile finally'yi calistirir. Guard olmadan
+      // iptal edilen eski cagri, devam eden yeni aramanin spinner'ini
+      // kapatiyor ve arayuz bosta gorunuyordu.
+      if (isCurrent()) setLoading(false);
     }
   }, [category, bbox]);
+
+  // Aramalar soguk cache'te 1 dakikayi asabiliyor. 12 sn sonra kullaniciya
+  // isin surdugunu soyluyoruz, yoksa arayuz donmus gibi gorunuyor.
+  useEffect(() => {
+    if (!loading) {
+      setSlowSearch(false);
+      return;
+    }
+    const timer = setTimeout(() => setSlowSearch(true), 12_000);
+    return () => clearTimeout(timer);
+  }, [loading]);
 
   // Debounce search on bbox/category change
   useEffect(() => {
@@ -197,6 +229,13 @@ export default function Home() {
           <button onClick={() => setNotice(null)} className="text-amber-600 hover:text-amber-900">
             kapat
           </button>
+        </div>
+      )}
+
+      {slowSearch && loading && (
+        <div className="px-6 py-2 bg-slate-100 border-b border-slate-200 text-xs font-semibold text-slate-600 flex items-center gap-2">
+          <span className="w-3 h-3 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
+          Arama sürüyor. Harita servisi şu an yavaş; geniş alanlarda bu bir dakikayı aşabilir.
         </div>
       )}
 

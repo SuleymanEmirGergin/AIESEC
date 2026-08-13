@@ -1,6 +1,10 @@
 import type { AdminReport, AdminOverride, AdminStats } from "./types";
+import { TimeoutError, withTimeout } from "./fetchTimeout";
 
 const getAdminKey = () => typeof window !== "undefined" ? sessionStorage.getItem("admin_key") : "";
+
+/** Admin uclari dogrudan veritabanina gidiyor; Overpass beklemesi yok. */
+const ADMIN_TIMEOUT_MS = 15_000;
 
 const fetchAdmin = async (url: string, options: any = {}) => {
   const adminKey = getAdminKey();
@@ -10,7 +14,20 @@ const fetchAdmin = async (url: string, options: any = {}) => {
     "X-ADMIN-KEY": adminKey,
   };
 
-  const response = await fetch(url, { ...options, headers });
+  const timeout = withTimeout(ADMIN_TIMEOUT_MS, options.signal);
+
+  let response: Response;
+  try {
+    response = await fetch(url, { ...options, headers, signal: timeout.signal });
+  } catch (error: any) {
+    if (error?.name === "AbortError" && timeout.timedOut()) {
+      throw new TimeoutError(ADMIN_TIMEOUT_MS);
+    }
+    throw error;
+  } finally {
+    timeout.cleanup();
+  }
+
   if (response.status === 401) {
     if (typeof window !== "undefined") {
       sessionStorage.removeItem("admin_key");
