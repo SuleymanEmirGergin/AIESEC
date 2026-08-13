@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import validate_api_key, verify_api_key
 from app.cache import build_cache_key, cache, get_ttl_for_type
 from app.database import APIKey, GlobalState, Report, get_db
+from app.geo import bbox_circumscribed_radius_m, snap_bbox_outward
 from app.models import RADIUS_PRESETS, ReportRequest, SearchParams, SearchResponse
 from app.overpass import OverpassError
 from app.policy import SearchPolicyInput, decide_policy
@@ -27,6 +28,46 @@ SUPPORTED_TYPES = frozenset(RADIUS_PRESETS.keys())
 # girmiyordu. Sinirlar burada acikca uygulaniyor.
 MIN_RADIUS_M = 100
 MAX_RADIUS_M = 5000
+
+
+def _parse_bbox(raw: str | None):
+    """
+    "minLon,minLat,maxLon,maxLat" -> (south, west, north, east)
+
+    Dis API GeoJSON sirasini kullaniyor cunku istemciler bbox'i boyle
+    tutuyor; ic konvansiyon (ve Overpass) ise south/west/north/east.
+    Cevrim tek yerde, burada yapiliyor.
+    """
+    if raw is None:
+        return None
+
+    parts = [p.strip() for p in raw.split(",")]
+    if len(parts) != 4:
+        raise HTTPException(
+            status_code=422,
+            detail="bbox formati: minLon,minLat,maxLon,maxLat (4 sayi).",
+        )
+
+    try:
+        min_lon, min_lat, max_lon, max_lat = (float(p) for p in parts)
+    except ValueError:
+        raise HTTPException(
+            status_code=422, detail="bbox degerleri sayi olmali."
+        )
+
+    if not (-90 <= min_lat <= 90 and -90 <= max_lat <= 90):
+        raise HTTPException(status_code=422, detail="bbox enlemi -90..90 araliginda olmali.")
+    if not (-180 <= min_lon <= 180 and -180 <= max_lon <= 180):
+        raise HTTPException(status_code=422, detail="bbox boylami -180..180 araliginda olmali.")
+    if min_lat >= max_lat or min_lon >= max_lon:
+        raise HTTPException(
+            status_code=422,
+            detail="bbox bos veya ters: min degerler max degerlerden kucuk olmali.",
+        )
+
+    # Onbellek isabeti icin izgaraya disari dogru oturtuluyor: haritayi
+    # birkac piksel kaydiran kullanici ayni sorguyu tekrar tetiklemesin.
+    return snap_bbox_outward((min_lat, min_lon, max_lat, max_lon))
 
 
 def _validate_search_input(place_type: str, radius: int | None) -> None:
@@ -62,40 +103,70 @@ async def search_places(
     ref_lat: float = Query(None, ge=-90, le=90),
     ref_lon: float = Query(None, ge=-180, le=180),
     mode: str = Query("auto"),
+    bbox: str = Query(
+        None,
+        description=(
+            "Taranacak dikdortgen: minLon,minLat,maxLon,maxLat (GeoJSON sirasi). "
+            "Verilirse radius ve mode yok sayilir."
+        ),
+    ),
     db: AsyncSession = Depends(get_db),
     api_key: APIKey = Depends(verify_api_key)
 ) -> SearchResponse:
     """
     Unified search with Plans, Confidence, and Grid Caching.
+
+    `bbox` verildiginde tam olarak o dikdortgen taranir. Cagiran gercek
+    bir goruntu alani biliyorsa bu daha ucuz: daireye cevirip tekrar
+    dikdortgene donmek, dikdortgeni tamamen kapsayan cember yuzunden
+    16:9 bir viewport'ta yaklasik %60 fazla alan taratiyor.
     """
     debug_mode = os.getenv("DEBUG_OVERPASS", "false").lower() == "true"
 
     # 0. Girdi dogrulamasi (plan kontrolunden once: gecersiz istek
     #    kullanicinin planiyla ilgili degil)
     _validate_search_input(type, radius)
+    parsed_bbox = _parse_bbox(bbox)
 
     # 1. Plan Enforcement
     max_allowed_radius = 5000
     if api_key.plan == "free":
         max_allowed_radius = 2000
-    
-    current_radius = radius or 1500  # Default if None
+
+    if parsed_bbox is not None:
+        # Plan siniri yaricap uzerinden tanimli; bbox'in esdeger yaricapi
+        # (merkezden koseye) kullaniliyor ki bbox plan sinirini atlatmanin
+        # yolu olmasin.
+        current_radius = bbox_circumscribed_radius_m(parsed_bbox)
+    else:
+        current_radius = radius or 1500  # Default if None
+
     if current_radius > max_allowed_radius:
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                f"Radius {current_radius}m exceeds plan limit "
-                f"({max_allowed_radius}m) for '{api_key.plan}' plan."
-            )
+        detail = (
+            f"Radius {current_radius}m exceeds plan limit "
+            f"({max_allowed_radius}m) for '{api_key.plan}' plan."
         )
+        if parsed_bbox is not None:
+            detail = (
+                f"Bbox alani plan sinirini asiyor: esdeger yaricap "
+                f"{current_radius}m > {max_allowed_radius}m "
+                f"('{api_key.plan}' plani). Daha dar bir alan secin."
+            )
+        raise HTTPException(status_code=403, detail=detail)
 
     # 2. Consult Search Policy
-    policy_input = SearchPolicyInput(
-        type=type, lat=lat, lon=lon, radius=current_radius, mode=mode
-    )
-    decision = decide_policy(policy_input)
-    eff_radius = decision.effective_radius
-    eff_mode = decision.effective_mode
+    if parsed_bbox is not None:
+        # Acik bbox varken politika motorunun mod secmesine gerek yok:
+        # taranacak alan zaten kesin olarak verilmis.
+        eff_radius = current_radius
+        eff_mode = "bbox"
+    else:
+        policy_input = SearchPolicyInput(
+            type=type, lat=lat, lon=lon, radius=current_radius, mode=mode
+        )
+        decision = decide_policy(policy_input)
+        eff_radius = decision.effective_radius
+        eff_mode = decision.effective_mode
 
     # 3. Check Cache with Override Version Partitioning
     ov_query = select(GlobalState).where(
@@ -107,7 +178,8 @@ async def search_places(
     
     # We cache based on effective params + current overrides version
     cache_key = build_cache_key(
-        lat, lon, eff_radius, type, limit, ref_lat, ref_lon, eff_mode, ov_ver
+        lat, lon, eff_radius, type, limit, ref_lat, ref_lon, eff_mode, ov_ver,
+        bbox=parsed_bbox,
     )
     cached = cache.get(cache_key)
     if cached:
@@ -129,13 +201,16 @@ async def search_places(
     results = []
     stage2_used = False
     
+    # Acik bbox varken alternatif moda dusmek anlamsiz: cagiran taranacak
+    # dikdortgeni kesin olarak vermis, "around" moduna gecmek baska bir
+    # alani taramak olurdu.
     modes_to_try = [eff_mode]
-    if decision.fallback_mode:
+    if parsed_bbox is None and decision.fallback_mode:
         modes_to_try.append(decision.fallback_mode)
-    
+
     last_err = None
     applied_mode = eff_mode
-    
+
     for attempt_mode in modes_to_try:
         try:
             applied_mode = attempt_mode
@@ -147,7 +222,8 @@ async def search_places(
                 lon=lon,
                 ref_lat=ref_lat,
                 ref_lon=ref_lon,
-                db=db
+                db=db,
+                explicit_bbox=parsed_bbox
             )
             # If we found something, break
             if results:
