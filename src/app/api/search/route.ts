@@ -25,6 +25,37 @@ export const dynamic = "force-dynamic";
 const MAX_RADIUS_M = 5000;
 const CACHE_TTL_S = 600;
 
+/**
+ * Backend'in kullandigi izgara adimi (app/geo.py: snap_bbox_outward).
+ * Ayni deger olmali; onbellek anahtari bu varsayima dayaniyor.
+ */
+const GRID_DEG = 0.01;
+
+/**
+ * Bbox'i izgaraya disari dogru oturtur - backend'deki snap_bbox_outward
+ * ile ayni kural.
+ *
+ * Yalnizca ONBELLEK ANAHTARI icin kullaniliyor; backend'e gonderilen
+ * bbox ham (kirpilmis) haliyle gidiyor. Ayrim onemli: backend plan
+ * kontrolunu aldigi bbox uzerinden yapiyor, snap'lenmis bir kutu
+ * gondermek sinira yakin istekleri gereksiz yere 403'e dusururdu.
+ *
+ * Anahtari snap'lenmis kutudan uretmek dogru, cunku backend de ayni
+ * izgaraya oturtuyor: ayni snap'e dusen iki viewport backend'de
+ * birebir ayni sorguyu ve ayni sonucu uretiyor, dolayisiyla onbellek
+ * girdisini paylasmalari gerekiyor. Onceden anahtar ham koordinatlardan
+ * uretildigi icin 1 piksel pan bile yeni anahtar demekti ve Redis
+ * katmani panlamada neredeyse hic isabet etmiyordu.
+ */
+function snapKeyBox(minLon: number, minLat: number, maxLon: number, maxLat: number) {
+  return [
+    Math.floor(minLon / GRID_DEG) * GRID_DEG,
+    Math.floor(minLat / GRID_DEG) * GRID_DEG,
+    Math.ceil(maxLon / GRID_DEG) * GRID_DEG,
+    Math.ceil(maxLat / GRID_DEG) * GRID_DEG,
+  ].map((c) => c.toFixed(2));
+}
+
 /** Iki nokta arasi mesafe (metre). Yaricabi bbox'tan turetmek icin. */
 function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
@@ -116,13 +147,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Anahtar bbox uzerinden: ayni merkez ve yaricapla farkli en-boy
-    // oranlari (dikey/yatay pencere) farkli alanlar demek.
+    // Anahtar izgaraya oturtulmus kutudan: haritayi birkac piksel
+    // kaydirmak ayni anahtari vermeli. Ham koordinatlarla anahtar
+    // uretmek her pan hareketinde Redis'i isabetsiz birakiyordu.
+    const keyBox = snapKeyBox(
+      Number(effectiveBbox[0]),
+      Number(effectiveBbox[1]),
+      Number(effectiveBbox[2]),
+      Number(effectiveBbox[3])
+    );
     const cacheKey =
       "search:" +
       crypto
         .createHash("md5")
-        .update(JSON.stringify({ bbox: effectiveBbox, category, limit }))
+        .update(JSON.stringify({ bbox: keyBox, category, limit }))
         .digest("hex");
 
     const cached = await CacheService.get<any>(cacheKey);
