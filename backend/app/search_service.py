@@ -75,9 +75,12 @@ def normalize_and_dedupe(places: List[Place], distance_threshold_m: float = 20.0
         same_name = prev.name and curr.name and prev.name.lower() == curr.name.lower()
         
         if same_name:
+            # Place modeli duz lat/lon tutuyor; coordinates diye bir alan yok.
+            # Bu erisim AttributeError firlatiyor ve arama, ayni isimli iki
+            # kayit gelir gelmez sessizce bos donuyordu.
             dist = geodesic(
-                (prev.coordinates.lat, prev.coordinates.lng),
-                (curr.coordinates.lat, curr.coordinates.lng)
+                (prev.lat, prev.lon),
+                (curr.lat, curr.lon)
             ).meters
             
             if dist < distance_threshold_m:

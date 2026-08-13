@@ -121,16 +121,36 @@ export default function Home() {
 
     setLoading(true);
     try {
-      const results = await searchPlaces({
+      const { places: results, meta } = await searchPlaces({
         bbox,
         category,
         limit: 250
       }, { signal: abortControllerRef.current.signal });
-      
+
       setPlaces(results);
+
+      // Harita sinirdan genisse kullanici neyin tarandigini bilmeli,
+      // yoksa eksik sonuclari "hic yok" sanir.
+      if (meta?.radiusClamped) {
+        setNotice(
+          `Harita cok genis. Merkez cevresinde ${Math.round(
+            (meta.radiusUsed ?? 0) / 1000
+          )} km taraniyor; daha fazlasi icin yakinlasin.`
+        );
+      } else {
+        setNotice(null);
+      }
     } catch (err: any) {
-      if (err.name !== "AbortError") {
-        console.error("Search failed:", err);
+      // AbortError kullanicinin yeni aramasi demek, hata degil.
+      if (err?.name === "AbortError") return;
+
+      // Onceden bu hata yalnizca console'a yaziliyordu; kullanici
+      // 502/429 aldiginda "Sonuc bulunamadi" gorup veri yok saniyordu.
+      setPlaces([]);
+      if (err?.message === "QUOTA_EXCEEDED") {
+        setUpgradeOpen(true);
+      } else {
+        setNotice(err?.message || "Arama basarisiz oldu.");
       }
     } finally {
       setLoading(false);

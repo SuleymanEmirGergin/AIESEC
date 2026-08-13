@@ -25,10 +25,27 @@ async function fetchWithAuth(url: string, options: any = {}) {
   return response;
 }
 
+export interface SearchMeta {
+  cached: boolean;
+  provider: string;
+  /** Backend'e gonderilen yaricap (m). */
+  radiusUsed: number;
+  /** Viewport'u kapsamak icin gereken yaricap (m). */
+  viewportRadius: number;
+  /** true ise harita sinirdan genis; kenarlardaki yerler sonuca girmedi. */
+  radiusClamped: boolean;
+}
+
+export interface SearchResult {
+  places: Place[];
+  total: number;
+  meta: SearchMeta;
+}
+
 export async function searchPlaces(
   params: { bbox: [number, number, number, number]; category: string; limit?: number },
   options?: { signal?: AbortSignal }
-): Promise<Place[]> {
+): Promise<SearchResult> {
   const response = await fetchWithAuth("/api/search", {
     method: "POST",
     headers: {
@@ -39,7 +56,11 @@ export async function searchPlaces(
   });
 
   const data = await response.json();
-  return data.data || [];
+  return {
+    places: data.data ?? [],
+    total: data.total ?? 0,
+    meta: data.meta ?? {},
+  };
 }
 
 export async function reportPlace(report: ReportData): Promise<{ success: boolean }> {

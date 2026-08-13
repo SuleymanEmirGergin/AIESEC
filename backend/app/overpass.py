@@ -70,6 +70,13 @@ class OverpassClient:
         self.timeout = int(os.getenv("OVERPASS_TIMEOUT", "60"))
         self._lock = threading.Lock()
 
+        # Overpass kullanim politikasi kendini tanitan bir User-Agent
+        # zorunlu kiliyor. Bu header olmadan sunucu istekleri
+        # 406 Not Acceptable ile reddediyor.
+        self.user_agent = os.getenv(
+            "OVERPASS_USER_AGENT", "nearby-place-finder/1.0 (backend)"
+        )
+
     def _get_best_endpoint(self) -> OverpassEndpoint:
         """Return first healthy endpoint, or first endpoint as fallback."""
         with self._lock:
@@ -98,7 +105,10 @@ class OverpassClient:
                     response = await client.post(
                         endpoint.url,
                         data={"data": query_text},
-                        headers={"Content-Type": "application/x-www-form-urlencoded"},
+                        headers={
+                            "Content-Type": "application/x-www-form-urlencoded",
+                            "User-Agent": self.user_agent,
+                        },
                     )
                
                 if response.status_code == 429:

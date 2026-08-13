@@ -1,4 +1,5 @@
 import asyncio
+import os
 from datetime import datetime
 from app.database import AsyncSessionLocal
 from app.search_service import run_search_orchestration
@@ -20,7 +21,17 @@ async def run_warmup():
     """
     Pre-fetch common search results on startup.
     Impact: Massive speed boost for first-time regional users.
+
+    Her acilista 20 es zamanli Overpass sorgusu atiyor. Overpass IP basina
+    2 es zamanli slot veriyor, bu yuzden sik yeniden baslatilan ortamlarda
+    (gelistirme, container recreate) kotayi tuketip aynalari saglıksiz
+    isaretliyor. Varsayilan davranis korunuyor; WARMUP_ENABLED=false ile
+    kapatilabiliyor.
     """
+    if os.getenv("WARMUP_ENABLED", "true").lower() in ("false", "0", "no"):
+        print("[WARMUP] WARMUP_ENABLED=false, atlaniyor.")
+        return
+
     print(f"[WARMUP] Starting cache warmup for {len(WARMUP_CITIES)} cities...")
     start_time = datetime.utcnow()
     

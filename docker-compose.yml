@@ -13,7 +13,9 @@ services:
       # Container agi: 'localhost' degil servis adi kullanilir
       - NEXT_PUBLIC_API_BASE=http://backend:8000/api
       - REDIS_URL=redis://redis:6379
-      - OVERPASS_URL=${OVERPASS_URL:-https://overpass-api.de/api/interpreter}
+      # Not: frontend artik Overpass'e dogrudan gitmiyor; tum aramalar
+      # backend uzerinden geciyor. Mirror listesi backend/.env icinde
+      # OVERPASS_URLS olarak failover'li tanimli.
       - NEXT_PUBLIC_DEFAULT_LAT=${NEXT_PUBLIC_DEFAULT_LAT:-41.0082}
       - NEXT_PUBLIC_DEFAULT_LNG=${NEXT_PUBLIC_DEFAULT_LNG:-28.9784}
       - NEXT_PUBLIC_DEFAULT_ZOOM=${NEXT_PUBLIC_DEFAULT_ZOOM:-12}
@@ -45,6 +47,15 @@ services:
     environment:
       - LOG_LEVEL=info
       - CORS_ORIGINS=http://localhost:3000,http://localhost:3004
+      # SQLite dosyasi volume'a tasindi. Varsayilan ./storage.db container
+      # katmaninda duruyordu; her yeniden yaratmada API anahtarlari,
+      # raporlar ve override'lar siliniyordu.
+      - DATABASE_URL=sqlite+aiosqlite:////app/data/storage.db
+      # Yerel gelistirmede kapali: her acilista 20 es zamanli Overpass
+      # sorgusu atiyor ve IP kotasini tuketiyor. Uretimde true birakilabilir.
+      - WARMUP_ENABLED=${WARMUP_ENABLED:-false}
+    volumes:
+      - backend_data:/app/data
     env_file:
       # ADMIN_API_KEY ve OVERPASS_URLS burada. Imaja gomulmez, calisma aninda enjekte edilir.
       - path: ./backend/.env
@@ -56,6 +67,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    # Not: redis yalnizca onbellek; kalici veri tutmuyor, volume gerekmiyor.
     # container_name kullanilmiyor: sabit isim, ayni isimli eski container'larla
     # cakisiyor ve olceklemeyi engelliyor. Compose otomatik isimlendirsin.
     ports:
@@ -66,3 +78,6 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+
+volumes:
+  backend_data:
