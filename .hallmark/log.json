@@ -1,0 +1,15 @@
+[
+  {
+    "date": "2026-08-13",
+    "scope": "app",
+    "macrostructure": "Map / Diagram (app-map) + Workbench (app-data)",
+    "theme": "Cobalt",
+    "theme_axes": "cool-light / grotesk-sans / cool-electric-blue",
+    "genre": "modern-minimal",
+    "enrichment": "none",
+    "design_system": "design.md",
+    "nav": "flush bordered app bar",
+    "footer": "inline hairline status strip",
+    "brief": "POI Finder - B2B lead-gen harita araci. Onceki sistem 'kids/education/playful' moduyla uretilmisti (Baloo 2 + Comic Neue); urun ise fabrika/ofis tarayan, CSV cikaran bir veri araci."
+  }
+]

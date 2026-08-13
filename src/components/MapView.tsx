@@ -1,11 +1,14 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
+import { useEffect, useState } from "react";
+import { TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import MarkerClusterGroup from "react-leaflet-cluster";
 import "leaflet/dist/leaflet.css";
+import ContactLinks from "./ContactLinks";
+import { StrictModeMapContainer } from "./StrictModeMapContainer";
 import type { Place } from "../lib/types";
+import { PLACE_TYPE_LABELS } from "../lib/labels";
 
 // Leaflet default icon fix
 const DefaultIcon = L.icon({
@@ -74,18 +77,23 @@ function MapController({
   return null;
 }
 
-export default function MapView({ 
-  places, 
-  center, 
-  zoom, 
-  onBoundsChange, 
-  selectedPlaceId 
+export default function MapView({
+  places,
+  center,
+  zoom,
+  onBoundsChange,
+  selectedPlaceId
 }: MapViewProps) {
   const [tileUrl, setTileUrl] = useState("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png");
 
   return (
-    <div className="w-full h-full relative rounded-2xl overflow-hidden shadow-inner bg-slate-100">
-      <MapContainer
+    // Golge yok: derinlik hairline'dan geliyor. Harita zaten yogun bir
+    // yuzey; ustune ic golge koymak kenarlari bulaniklastiriyordu.
+    <div className="w-full h-full relative overflow-hidden bg-paper-3">
+      {/* react-leaflet'in MapContainer'i yerine kendi sarmalayicimiz:
+          4.2.1'in StrictMode'da ayni dugume ikinci harita kurma hatasi
+          icin bkz. StrictModeMapContainer. */}
+      <StrictModeMapContainer
         center={center}
         zoom={zoom}
         className="w-full h-full z-0"
@@ -110,12 +118,36 @@ export default function MapView({
               key={place.id} 
               position={[place.coordinates.lat, place.coordinates.lng]}
             >
-              <Popup>
-                <div className="p-1">
-                  <h3 className="font-bold text-slate-900">{place.name}</h3>
-                  <p className="text-xs text-slate-500 mt-1">{place.address}</p>
-                  <div className="mt-2 text-[10px] uppercase tracking-wider font-semibold text-slate-400">
-                    {place.type}
+              <Popup minWidth={230} maxWidth={300}>
+                {/* Popup Leaflet'in kendi DOM'unda yasiyor; Tailwind
+                    siniflari gecerli ama prose stilleri gecmiyor.
+                    Balonun kabugu (yaricap, hairline, golge) globals.css
+                    icindeki .leaflet-popup-* kurallarindan geliyor. */}
+                <div className="space-y-2.5">
+                  <div>
+                    <h3 className="font-display text-sm font-semibold text-ink leading-snug">
+                      {place.name}
+                    </h3>
+                    {place.address && place.address !== "Adres bilgisi yok" && (
+                      <p className="mt-1 text-2xs text-ink-3">{place.address}</p>
+                    )}
+                  </div>
+
+                  <div className="rule-t pt-2.5">
+                    <ContactLinks
+                      tags={place.tags}
+                      variant="popup"
+                      emptyLabel="Bu kayıt için iletişim bilgisi girilmemiş."
+                    />
+                  </div>
+
+                  <div className="rule-t pt-2 flex items-center gap-2">
+                    <span className="mono-label">
+                      {PLACE_TYPE_LABELS[place.type] ?? place.type}
+                    </span>
+                    <span className="mono-label tabular ml-auto">
+                      {place.coordinates.lat.toFixed(4)}, {place.coordinates.lng.toFixed(4)}
+                    </span>
                   </div>
                 </div>
               </Popup>
@@ -128,7 +160,7 @@ export default function MapView({
           places={places} 
           selectedPlaceId={selectedPlaceId}
         />
-      </MapContainer>
+      </StrictModeMapContainer>
     </div>
   );
 }

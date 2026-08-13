@@ -11,13 +11,19 @@ import UpgradeModal from "../components/UpgradeModal";
 import { searchPlaces, exportLeads, fetchAccount } from "../lib/api";
 import type { AccountInfo } from "../lib/api";
 import type { Place, PlaceType } from "../lib/types";
-import { Search, KeyRound } from "lucide-react";
+import { KeyRound, X } from "lucide-react";
 
 // Client-side only map import
-const MapView = dynamic(() => import("../components/MapView"), { 
+const MapView = dynamic(() => import("../components/MapView"), {
   ssr: false,
-  loading: () => <div className="w-full h-full bg-slate-100 animate-pulse rounded-2xl" />
+  loading: () => <div className="w-full h-full bg-paper-3" />,
 });
+
+const PLAN_LABELS: Record<string, string> = {
+  free: "Ücretsiz",
+  pro: "Pro",
+  enterprise: "Enterprise",
+};
 
 export default function Home() {
   const [places, setPlaces] = useState<Place[]>([]);
@@ -40,7 +46,7 @@ export default function Home() {
   const [exporting, setExporting] = useState(false);
   /** Arama uzun surunce gosterilen bilgi; spinner tek basina yeterli degil. */
   const [slowSearch, setSlowSearch] = useState(false);
-  /** Kullanicinin anahtar durumu; null ise anahtar yok veya gecersiz. */
+  /** Bu oturumda gecerli plan/kota; null ise durum okunamadi. */
   const [account, setAccount] = useState<AccountInfo | null>(null);
 
   const reloadAccount = useCallback(() => {
@@ -56,15 +62,22 @@ export default function Home() {
    * planda 403, kota dolunca 429 donuyordu; kullanici bunu ancak butona
    * bastiktan sonra ogreniyordu.
    * Export 2 kota birimi harciyor, kontrol de ona gore.
+   *
+   * "API anahtari gerekli" kosulu kaldirildi: indirme artik tipki arama
+   * gibi sunucunun anahtarina geri dusuyor, dolayisiyla kisisel anahtar
+   * bir on kosul degil. Burada kalan tek engel gercek olanlar - plan ve
+   * kota.
    */
   const exportBlockedReason = (() => {
-    if (!account) return "Dışa aktarım için API anahtarı gerekli.";
-    if (!account.is_active) return "API anahtarınız devre dışı.";
+    if (!account) {
+      return "Hesap durumu okunamadı; dışa aktarım şu an kullanılamıyor.";
+    }
+    if (!account.is_active) return "Kullanılan API anahtarı devre dışı.";
     if (account.plan === "free") {
-      return "CSV dışa aktarım ücretsiz planda kapalı. Pro veya Enterprise gerekir.";
+      return "CSV dışa aktarım ücretsiz planda kapalı.";
     }
     if (account.daily_limit - account.used_today < 2) {
-      return "Günlük kotanız dışa aktarım için yetersiz (2 birim gerekir).";
+      return "Günlük kota dışa aktarım için yetersiz (2 birim gerekir).";
     }
     return null;
   })();
@@ -100,7 +113,7 @@ export default function Home() {
       return;
     }
     if (err?.name === "TimeoutError") {
-      setNotice("Islem zaman asimina ugradi. Lutfen tekrar deneyin.");
+      setNotice("İşlem zaman aşımına uğradı. Lütfen tekrar deneyin.");
       return;
     }
     // Backend 'free' planda 403 donuyor; bu tam olarak UpgradeModal'in konusu.
@@ -109,11 +122,11 @@ export default function Home() {
       return;
     }
     if (/API-KEY|api key|401|yetki/i.test(message)) {
-      setNotice("Bu islem icin API anahtari gerekli.");
+      setNotice("Bu işlem için API anahtarı gerekli.");
       setSettingsOpen(true);
       return;
     }
-    setNotice(message || "Islem basarisiz oldu.");
+    setNotice(message || "İşlem başarısız oldu.");
   }, []);
 
   const handleExport = useCallback(async () => {
@@ -168,11 +181,10 @@ export default function Home() {
 
     setLoading(true);
     try {
-      const { places: results, meta } = await searchPlaces({
-        bbox,
-        category,
-        limit: 250
-      }, { signal: controller.signal });
+      const { places: results, meta } = await searchPlaces(
+        { bbox, category, limit: 250 },
+        { signal: controller.signal }
+      );
 
       if (!isCurrent()) return;
 
@@ -182,9 +194,9 @@ export default function Home() {
       // yoksa eksik sonuclari "hic yok" sanir.
       if (meta?.radiusClamped) {
         setNotice(
-          `Harita cok genis. Merkez cevresinde ${Math.round(
+          `Harita çok geniş. Merkez çevresinde ${Math.round(
             (meta.radiusUsed ?? 0) / 1000
-          )} km taraniyor; daha fazlasi icin yakinlasin.`
+          )} km taranıyor; daha fazlası için yakınlaşın.`
         );
       } else {
         setNotice(null);
@@ -201,11 +213,11 @@ export default function Home() {
         setUpgradeOpen(true);
       } else if (err?.name === "TimeoutError") {
         setNotice(
-          "Arama zaman asimina ugradi. Harita servisi su an yavas; " +
-            "daha dar bir alana yakinlasip tekrar deneyin."
+          "Arama zaman aşımına uğradı. Harita servisi şu an yavaş; " +
+            "daha dar bir alana yakınlaşıp tekrar deneyin."
         );
       } else {
-        setNotice(err?.message || "Arama basarisiz oldu.");
+        setNotice(err?.message || "Arama başarısız oldu.");
       }
     } finally {
       // catch icindeki `return` bile finally'yi calistirir. Guard olmadan
@@ -235,55 +247,95 @@ export default function Home() {
     return () => clearTimeout(timer);
   }, [performSearch]);
 
+  const planLabel = account ? PLAN_LABELS[account.plan] ?? account.plan : null;
+  const quotaRemaining = account
+    ? Math.max(0, account.daily_limit - account.used_today)
+    : null;
+
   return (
-    <main className="flex flex-col h-screen bg-slate-50 text-slate-900 font-sans">
-      {/* Header */}
-      <header className="h-16 px-6 border-b border-slate-200 bg-white flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
-            <Search size={18} className="text-white" />
+    <main className="flex flex-col h-screen bg-paper text-ink-2">
+      {/*
+        Flush bordered app bar - kenardan ayrilmis yuzen bir cubuk degil.
+        Uygulama kabugu enstruman paneli gibi davranmali: tek hairline,
+        golge yok.
+      */}
+      <header className="shrink-0 rule-b bg-paper">
+        <div className="flex h-14 items-center gap-3 px-4">
+          <div className="flex items-baseline gap-2 min-w-0">
+            <span className="font-display text-sm font-semibold tracking-tight text-ink">
+              POI Finder
+            </span>
+            <span className="mono-label hidden sm:inline">Lead araması</span>
           </div>
-          <h1 className="font-bold text-xl tracking-tight">POI Finder</h1>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setSettingsOpen(true)}
-            className="flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-900 border border-slate-200 rounded-full px-3 py-1.5 transition-colors"
-          >
-            <KeyRound size={14} />
-            API Anahtarı
-          </button>
-          <div className="text-xs text-slate-400 font-medium bg-slate-100 px-3 py-1.5 rounded-full uppercase tracking-widest">
-            v2.0 Beta
+
+          <div className="ml-auto flex items-center gap-2">
+            {/* Plan durumu artik gercek: /api/me efektif kimligi
+                raporluyor. Onceden burada yalnizca statik bir surum
+                rozeti vardi ve kullanici hangi planla calistigini
+                arayuzden hic goremiyordu. */}
+            {account && (
+              <span className="hidden sm:inline-flex items-center gap-2 rounded-input border border-rule px-2.5 py-1.5">
+                <span className="mono-label text-ink-2">{planLabel}</span>
+                {quotaRemaining !== null && (
+                  <span className="mono-label tabular text-ink-4">
+                    {quotaRemaining}
+                  </span>
+                )}
+              </span>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              className="btn btn--ghost px-2.5 py-1.5"
+            >
+              <KeyRound size={13} />
+              <span className="hidden sm:inline">Anahtar</span>
+            </button>
           </div>
         </div>
       </header>
 
       {notice && (
-        <div className="px-6 py-2 bg-amber-50 border-b border-amber-200 text-xs font-semibold text-amber-800 flex items-center justify-between">
-          <span>{notice}</span>
-          <button onClick={() => setNotice(null)} className="text-amber-600 hover:text-amber-900">
-            kapat
-          </button>
+        <div className="shrink-0 rule-b bg-caution-bg">
+          <div className="flex items-start gap-3 px-4 py-2">
+            <p className="text-xs text-caution leading-relaxed">{notice}</p>
+            <button
+              type="button"
+              onClick={() => setNotice(null)}
+              aria-label="Bildirimi kapat"
+              className="ml-auto shrink-0 text-caution hover:text-ink transition-colors duration-fast ease-out"
+            >
+              <X size={14} />
+            </button>
+          </div>
         </div>
       )}
 
       {slowSearch && loading && (
-        <div className="px-6 py-2 bg-slate-100 border-b border-slate-200 text-xs font-semibold text-slate-600 flex items-center gap-2">
-          <span className="w-3 h-3 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
-          Arama sürüyor. Harita servisi şu an yavaş; geniş alanlarda bu bir dakikayı aşabilir.
+        <div className="shrink-0 rule-b bg-paper-2">
+          <div className="flex items-center gap-2.5 px-4 py-2">
+            <span aria-hidden="true" className="w-3 h-3 shrink-0 rounded-full border-2 border-rule border-t-accent animate-spin" />
+            <p className="text-xs text-ink-3">
+              Arama sürüyor. Harita servisi şu an yavaş; geniş alanlarda bu bir
+              dakikayı aşabilir.
+            </p>
+          </div>
         </div>
       )}
 
-      {/* Main Content */}
-      <div className="flex flex-1 overflow-hidden p-4 gap-4">
-        {/* Sidebar */}
-        <div className="w-80 flex flex-col bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden shrink-0">
-          <Filters 
-            selectedCategory={category} 
-            onCategoryChange={setCategory} 
-          />
+      {/*
+        Map / Diagram: harita sayfayi orgutluyor, kenar cubugu onun
+        lejanti. Mobilde kenar cubugu haritanin altina iniyor - dar
+        ekranda once mekani gormek, sonra listeyi taramak dogru sira.
+      */}
+      <div className="flex flex-1 flex-col-reverse overflow-hidden lg:flex-row">
+        {/* Not: `rule-r` bir Tailwind utility'si degil, globals.css'teki
+            bilesen sinifi - `lg:` oneki ona uygulanmaz. Kirilim noktasina
+            bagli kenarlik icin gercek utility'ler kullaniliyor. */}
+        <aside className="flex w-full shrink-0 flex-col overflow-hidden bg-paper lg:w-[19rem] lg:border-r lg:border-rule">
+          <Filters selectedCategory={category} onCategoryChange={setCategory} />
+
           <PlaceList
             places={places}
             loading={loading}
@@ -293,25 +345,20 @@ export default function Home() {
             onToggleCheck={toggleBasket}
             onReport={setReportTarget}
           />
-          <div className="p-4 bg-slate-50 border-t border-slate-200 text-[10px] text-slate-400 font-medium flex justify-between">
-            <span>{places.length} sonuç bulundu</span>
-            {basket.size > 0 && <span>{basket.size} kayıt seçili</span>}
-          </div>
-        </div>
 
-        {/* Map Area */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <ExportToolbar
-            selectedCount={basket.size}
-            totalResults={places.length}
-            onSelectAll={selectAllVisible}
-            onClearSelection={clearBasket}
-            onExport={handleExport}
-            exportBlockedReason={exportBlockedReason}
-            quotaRemaining={account ? account.daily_limit - account.used_today : null}
-            isExporting={exporting}
-          />
-          <div className="flex-1 overflow-hidden bg-white rounded-2xl shadow-sm border border-slate-200 p-1">
+          {/* Durum seridi: sayfanin footer'i bu. */}
+          <div className="shrink-0 rule-t bg-paper-2 px-4 py-2.5 flex items-center justify-between">
+            <span className="mono-label tabular">{places.length} sonuç</span>
+            {basket.size > 0 && (
+              <span className="mono-label tabular text-accent">
+                {basket.size} seçili
+              </span>
+            )}
+          </div>
+        </aside>
+
+        <div className="flex min-h-[45vh] flex-1 flex-col overflow-hidden lg:min-h-0">
+          <div className="relative flex-1 overflow-hidden">
             <MapView
               places={places}
               center={[41.0082, 28.9784]} // İstanbul default
@@ -320,6 +367,17 @@ export default function Home() {
               selectedPlaceId={selectedPlaceId}
             />
           </div>
+
+          <ExportToolbar
+            selectedCount={basket.size}
+            totalResults={places.length}
+            onSelectAll={selectAllVisible}
+            onClearSelection={clearBasket}
+            onExport={handleExport}
+            exportBlockedReason={exportBlockedReason}
+            quotaRemaining={quotaRemaining}
+            isExporting={exporting}
+          />
         </div>
       </div>
 
@@ -332,13 +390,14 @@ export default function Home() {
           onClose={() => setReportTarget(null)}
           onSuccess={() => {
             setReportTarget(null);
-            setNotice("Bildiriminiz alindi, tesekkurler.");
+            setNotice("Bildiriminiz alındı, teşekkürler.");
           }}
         />
       )}
 
       <SettingsModal
         isOpen={settingsOpen}
+        account={account}
         onClose={() => setSettingsOpen(false)}
         onSaved={() => {
           setSettingsOpen(false);

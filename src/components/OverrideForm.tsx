@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { PLACE_TYPE_LABELS } from "@/lib/labels";
 import type { PlaceType, AdminOverride } from "@/lib/types";
-import { X, Save, AlertCircle } from "lucide-react";
+import { AlertCircle } from "lucide-react";
+import ModalShell from "./ModalShell";
 
 interface OverrideFormProps {
   override?: AdminOverride | null;
@@ -12,133 +13,173 @@ interface OverrideFormProps {
   preFill?: { placeId?: string; type?: string };
 }
 
-export default function OverrideForm({ override, onClose, onSave, preFill }: OverrideFormProps) {
+export default function OverrideForm({
+  override,
+  onClose,
+  onSave,
+  preFill,
+}: OverrideFormProps) {
   const [placeId, setPlaceId] = useState(override?.place_id || preFill?.placeId || "");
-  const [forcedType, setForcedType] = useState<PlaceType>(override?.forced_type || (preFill?.type as PlaceType) || "factory");
+  const [forcedType, setForcedType] = useState<PlaceType>(
+    override?.forced_type || (preFill?.type as PlaceType) || "factory"
+  );
   const [forcedSubtype, setForcedSubtype] = useState(override?.forced_subtype || "");
   const [notes, setNotes] = useState(override?.notes || "");
   const [isActive, setIsActive] = useState(override ? override.is_active : true);
   const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
+    setError(null);
     try {
       await onSave({
-        place_id: placeId,
+        place_id: placeId.trim(),
         forced_type: forcedType,
-        forced_subtype: forcedSubtype,
-        notes,
+        // Bos alt tip gonderilmiyor: backend bos stringi gecerli bir
+        // alt tip sanip sonuclara bos bir etiket yaziyordu.
+        forced_subtype: forcedSubtype.trim() || undefined,
+        notes: notes.trim() || undefined,
         is_active: isActive,
       });
       onClose();
-    } catch (error) {
-      alert("Hata: " + (error instanceof Error ? error.message : "Kaydedilemedi"));
+    } catch (err) {
+      // Onceden burada alert() vardi: tarayici diyalogu formun disinda
+      // duruyor, girilen degerleri gostermiyor ve hatayi duzeltirken
+      // kullaniciyi baglamdan koparıyordu.
+      setError(err instanceof Error ? err.message : "Kaydedilemedi.");
     } finally {
       setIsSaving(false);
     }
   };
 
+  const fieldClass =
+    "w-full rounded-input border border-rule-2 bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-4 transition-colors duration-fast ease-out hover:border-ink-4 focus:border-accent disabled:opacity-50 disabled:hover:border-rule-2";
+
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in" onClick={onClose} />
-      
-      <div className="relative w-full max-w-lg bg-white dark:bg-slate-800 rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95">
-        <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
-          <h2 className="text-xl font-heading font-bold dark:text-white">
-            {override ? "Override Düzenle" : "Yeni Override Oluştur"}
-          </h2>
-          <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg">
-            <X className="w-5 h-5 text-slate-400" />
-          </button>
+    <ModalShell
+      isOpen
+      onClose={onClose}
+      eyebrow="Sınıflandırma"
+      title={override ? "Override düzenle" : "Yeni override"}
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-2">
+          <label htmlFor="ov-place-id" className="block text-xs font-medium text-ink">
+            Place ID
+          </label>
+          <input
+            id="ov-place-id"
+            type="text"
+            value={placeId}
+            onChange={(e) => setPlaceId(e.target.value)}
+            // Mevcut bir kaydin place_id'si degistirilemez: backend bunu
+            // benzersiz anahtar olarak kullaniyor.
+            disabled={!!override}
+            placeholder="osm:node:12345678"
+            autoComplete="off"
+            spellCheck={false}
+            required
+            className={`tabular ${fieldClass}`}
+          />
         </div>
 
-        <form onSubmit={handleSubmit} className="p-8 space-y-6">
-          <div>
-            <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Place ID</label>
-            <input
-              type="text"
-              value={placeId}
-              onChange={(e) => setPlaceId(e.target.value)}
-              disabled={!!override}
-              className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 rounded-xl text-sm font-mono outline-none border-2 border-transparent focus:border-primary transition-all dark:text-white disabled:opacity-50"
-              placeholder="node/12345678"
-              required
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Zorunlu Tip</label>
-              <select
-                value={forcedType}
-                onChange={(e) => setForcedType(e.target.value as PlaceType)}
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 rounded-xl text-sm outline-none border-2 border-transparent focus:border-primary transition-all dark:text-white"
-              >
-                {Object.entries(PLACE_TYPE_LABELS).map(([val, label]) => (
-                  <option key={val} value={val}>{label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Alt Tip (Opsiyonel)</label>
-              <input
-                type="text"
-                value={forcedSubtype}
-                onChange={(e) => setForcedSubtype(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 rounded-xl text-sm outline-none border-2 border-transparent focus:border-primary transition-all dark:text-white"
-                placeholder="Örn: CNC Atölyesi"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Notlar</label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              className="w-full h-24 px-4 py-3 bg-slate-50 dark:bg-slate-900 rounded-xl text-sm font-body outline-none border-2 border-transparent focus:border-primary transition-all dark:text-white resize-none"
-              placeholder="Override nedeni veya detaylar..."
-            />
-          </div>
-
-          <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl">
-            <div className="flex items-center gap-3">
-              <div className={`w-3 h-3 rounded-full ${isActive ? "bg-emerald-500" : "bg-slate-300"}`} />
-              <span className="text-sm font-bold dark:text-white">Override Aktif</span>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input 
-                type="checkbox" 
-                className="sr-only peer" 
-                checked={isActive}
-                onChange={(e) => setIsActive(e.target.checked)}
-              />
-              <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary"></div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <label htmlFor="ov-type" className="block text-xs font-medium text-ink">
+              Zorunlu tür
             </label>
+            <select
+              id="ov-type"
+              value={forcedType}
+              onChange={(e) => setForcedType(e.target.value as PlaceType)}
+              className={fieldClass}
+            >
+              {Object.entries(PLACE_TYPE_LABELS).map(([val, label]) => (
+                <option key={val} value={val}>
+                  {label}
+                </option>
+              ))}
+            </select>
           </div>
 
-          <div className="flex gap-4 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 py-4 bg-slate-100 dark:bg-slate-700 rounded-2xl font-bold text-slate-600 dark:text-slate-300 transition-all"
-            >
-              Vazgeç
-            </button>
-            <button
-              type="submit"
-              disabled={isSaving}
-              className="flex-1 py-4 bg-primary text-white font-bold rounded-2xl shadow-lg hover:shadow-primary/30 transition-all disabled:opacity-50"
-            >
-              <div className="flex items-center justify-center gap-2">
-                <Save className="w-5 h-5" />
-                {isSaving ? "Kaydediliyor..." : "Kaydet"}
-              </div>
-            </button>
+          <div className="space-y-2">
+            <label htmlFor="ov-subtype" className="block text-xs font-medium text-ink">
+              Alt tür <span className="font-normal text-ink-4">· isteğe bağlı</span>
+            </label>
+            <input
+              id="ov-subtype"
+              type="text"
+              value={forcedSubtype}
+              onChange={(e) => setForcedSubtype(e.target.value)}
+              placeholder="Örn. CNC atölyesi"
+              className={fieldClass}
+            />
           </div>
-        </form>
-      </div>
-    </div>
+        </div>
+
+        <div className="space-y-2">
+          <label htmlFor="ov-notes" className="block text-xs font-medium text-ink">
+            Not <span className="font-normal text-ink-4">· isteğe bağlı</span>
+          </label>
+          <textarea
+            id="ov-notes"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={3}
+            placeholder="Override nedeni"
+            className={`resize-none ${fieldClass}`}
+          />
+        </div>
+
+        {/*
+          Onceden burada özel bir "toggle switch" vardi: gorunur bir
+          checkbox degil, sr-only bir input + peer secicileriyle cizilmis
+          bir kaydirak. Klavye odaginda hicbir gorsel iz birakmiyordu.
+          Standart bir checkbox hem odak halkasini hem de durumu tarayici
+          duzeyinde dogru veriyor.
+        */}
+        <label className="flex cursor-pointer items-center gap-2.5 rounded-input border border-rule bg-paper-2 px-3 py-2.5">
+          <input
+            type="checkbox"
+            checked={isActive}
+            onChange={(e) => setIsActive(e.target.checked)}
+            className="h-3.5 w-3.5 accent-accent"
+          />
+          <span className="text-xs text-ink">Override aktif</span>
+          <span className="mono-label ml-auto">
+            {isActive ? "Uygulanıyor" : "Devre dışı"}
+          </span>
+        </label>
+
+        {error && (
+          <p
+            role="alert"
+            className="flex items-start gap-2 rounded-input border border-rule bg-paper-2 px-3 py-2.5 text-xs text-critical"
+          >
+            <AlertCircle size={14} className="mt-px shrink-0" />
+            <span>{error}</span>
+          </p>
+        )}
+
+        <div className="flex gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            className="btn btn--ghost flex-1 px-4 py-2.5"
+          >
+            Vazgeç
+          </button>
+          <button
+            type="submit"
+            disabled={isSaving || !placeId.trim()}
+            className="btn btn--primary flex-1 px-4 py-2.5"
+          >
+            {isSaving ? "Kaydediliyor…" : "Kaydet"}
+          </button>
+        </div>
+      </form>
+    </ModalShell>
   );
 }

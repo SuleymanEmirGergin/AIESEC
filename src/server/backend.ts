@@ -31,15 +31,49 @@ export function rootUrl(path: string): string | null {
   return origin ? `${origin}${path}` : null;
 }
 
+/** Anahtarin kime ait oldugu; arayuz bunu kullaniciya farkli gosteriyor. */
+export type ApiKeyScope = "personal" | "server";
+
+export interface ResolvedApiKey {
+  key: string | null;
+  scope: ApiKeyScope;
+}
+
+/**
+ * Istekte kullanilacak API anahtarini secer.
+ *
+ * Oncelik kullanicinin kendi anahtarinda: kota ve plan onun uzerinden
+ * islesin. Anahtar yoksa sunucunun kendi anahtari (SEARCH_API_KEY)
+ * devreye giriyor. Bu geri dusme daha once yalnizca /api/search'te vardi;
+ * export ve hesap durumu bilincli olarak disinda birakilmisti ve sonucta
+ * son kullanici anahtar girmeden arama yapabiliyor ama indirdigi veriyi
+ * CSV olarak alamiyordu.
+ *
+ * Anahtarin kendisi tarayiciya hicbir zaman gitmiyor; yalnizca Next.js
+ * sunucusundan backend'e giden istekte tasiniyor.
+ */
+export function resolveApiKey(req: NextRequest): ResolvedApiKey {
+  const personal = req.headers.get("x-api-key");
+  if (personal) return { key: personal, scope: "personal" };
+  return { key: process.env.SEARCH_API_KEY ?? null, scope: "server" };
+}
+
 /**
  * Istemciden gelen kimlik basliklarini backend'e tasir.
  * Baska hicbir basligi gecirmiyoruz: host/cookie gibi basliklarin
  * sizmasi istenmiyor.
  */
-function authHeaders(req: NextRequest): Record<string, string> {
+function authHeaders(
+  req: NextRequest,
+  apiKeyOverride?: string | null
+): Record<string, string> {
   const headers: Record<string, string> = {};
 
-  const apiKey = req.headers.get("x-api-key");
+  // `undefined` = "sen karar ver" (istemci basligini kullan),
+  // `null` = "anahtar yok" (baslik hic gonderilmesin). Ikisini ayirmak
+  // gerekiyor, yoksa acikca bos gecilen anahtar sessizce istemcininkine
+  // geri duserdi.
+  const apiKey = apiKeyOverride !== undefined ? apiKeyOverride : req.headers.get("x-api-key");
   if (apiKey) headers["X-API-KEY"] = apiKey;
 
   const adminKey = req.headers.get("x-admin-key");
@@ -56,6 +90,16 @@ interface ProxyOptions {
   body?: unknown;
   /** Hata mesajlarinda kullanilacak insan okur etiket */
   label: string;
+  /**
+   * Istemcininki yerine kullanilacak anahtar (resolveApiKey ciktisi).
+   * Verilmezse istegin kendi X-API-KEY basligi aynen gecirilir.
+   */
+  apiKey?: string | null;
+  /**
+   * Basarili JSON cevabina eklenecek alanlar. Backend'in bilmedigi ama
+   * arayuzun ihtiyac duydugu bilgi icin (orn. anahtarin kime ait oldugu).
+   */
+  augment?: Record<string, unknown>;
 }
 
 /**
@@ -66,7 +110,7 @@ interface ProxyOptions {
  */
 export async function proxyToBackend(
   req: NextRequest,
-  { url, method, body, label }: ProxyOptions
+  { url, method, body, label, apiKey, augment }: ProxyOptions
 ): Promise<NextResponse> {
   if (!url) {
     return NextResponse.json(
@@ -80,7 +124,7 @@ export async function proxyToBackend(
     response = await fetch(url, {
       method,
       headers: {
-        ...authHeaders(req),
+        ...authHeaders(req, apiKey),
         ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -94,14 +138,18 @@ export async function proxyToBackend(
     );
   }
 
-  return passThrough(response, label);
+  return passThrough(response, label, augment);
 }
 
 /**
  * Backend cevabini istemciye aktarir.
  * CSV gibi JSON olmayan cevaplar govdesi bozulmadan gecer.
  */
-async function passThrough(response: Response, label: string): Promise<NextResponse> {
+async function passThrough(
+  response: Response,
+  label: string,
+  augment?: Record<string, unknown>
+): Promise<NextResponse> {
   const contentType = response.headers.get("content-type") || "";
 
   if (!contentType.includes("application/json")) {
@@ -124,6 +172,12 @@ async function passThrough(response: Response, label: string): Promise<NextRespo
         ? data.detail
         : `${label} basarisiz (HTTP ${response.status})`;
     return NextResponse.json({ message: detail }, { status: response.status });
+  }
+
+  // Ek alanlar yalnizca nesne cevaplara karisiyor; dizi ya da skaler bir
+  // govdeye alan eklemek sozlesmeyi bozardi.
+  if (augment && data && typeof data === "object" && !Array.isArray(data)) {
+    return NextResponse.json({ ...data, ...augment }, { status: response.status });
   }
 
   return NextResponse.json(data, { status: response.status });

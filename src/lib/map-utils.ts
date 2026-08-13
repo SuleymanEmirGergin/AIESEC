@@ -12,6 +12,7 @@ const TYPE_COLORS: Record<PlaceType, string> = {
   high_school: "#10B981", // green
   private_school: "#F97316", // orange
   college_keyword: "#6366F1", // indigo
+  college_university: "#0EA5E9", // sky - kolejden ayirt edilebilmeli
 };
 
 export function createCustomIcon(type: PlaceType): L.DivIcon {

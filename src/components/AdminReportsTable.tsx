@@ -1,32 +1,56 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { adminApi } from "@/lib/adminApi";
 import type { AdminReport, ReportStatus } from "@/lib/types";
 import { PLACE_TYPE_LABELS } from "@/lib/labels";
-import { Calendar, ChevronRight, Clock, Filter, Search, Tag, User } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 interface AdminReportsTableProps {
   onViewDetail: (report: AdminReport) => void;
   refreshTrigger: number;
 }
 
-export default function AdminReportsTable({ onViewDetail, refreshTrigger }: AdminReportsTableProps) {
+const PAGE_SIZE = 10;
+
+const STATUS_LABELS: Record<ReportStatus, string> = {
+  open: "Açık",
+  resolved: "Çözüldü",
+  ignored: "Yoksayıldı",
+};
+
+/**
+ * Durum rozetleri sistemin durum renklerini kullaniyor. Onceden her durum
+ * icin ayri bir Tailwind rampasi (amber/emerald/slate) ve ayri bir koyu
+ * mod varyanti vardi; koyu mod hicbir zaman devreye girmiyordu.
+ */
+const STATUS_STYLES: Record<ReportStatus, string> = {
+  open: "text-caution",
+  resolved: "text-positive",
+  ignored: "text-ink-4",
+};
+
+export default function AdminReportsTable({
+  onViewDetail,
+  refreshTrigger,
+}: AdminReportsTableProps) {
   const [reports, setReports] = useState<AdminReport[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<ReportStatus | "all">("all");
-  const [search, setSearch] = useState("");
 
-  const fetchReports = async () => {
+  const fetchReports = useCallback(async () => {
     setIsLoading(true);
     try {
-      const params: any = { page, limit: 10 };
-      if (statusFilter !== "all") params.status = statusFilter;
-      if (search) params.search = search;
-      
-      const res = await adminApi.getReports(params);
+      // Backend `offset` bekliyor. Onceden buradan `page` gonderiliyordu;
+      // uc bu parametreyi taniyip yok sayiyordu, dolayisiyla "Sonraki"
+      // her zaman ayni ilk on kaydi getiriyordu.
+      const res = await adminApi.getReports({
+        status: statusFilter,
+        limit: PAGE_SIZE,
+        offset: (page - 1) * PAGE_SIZE,
+      });
       setReports(res.data);
       setTotal(res.total);
     } catch (error) {
@@ -34,107 +58,123 @@ export default function AdminReportsTable({ onViewDetail, refreshTrigger }: Admi
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [page, statusFilter]);
 
   useEffect(() => {
     fetchReports();
-  }, [page, statusFilter, search, refreshTrigger]);
+  }, [fetchReports, refreshTrigger]);
 
-  const getStatusColor = (status: ReportStatus) => {
-    switch (status) {
-      case "open": return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400";
-      case "resolved": return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400";
-      case "ignored": return "bg-slate-100 text-slate-700 dark:bg-slate-900/30 dark:text-slate-400";
-      default: return "bg-slate-100 text-slate-700";
-    }
-  };
+  // Filtre degisince ilk sayfaya don; yoksa uc sayfadayken filtreleyip
+  // bos bir sayfada kaliniyor.
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter]);
+
+  const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const rangeStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const rangeEnd = Math.min(page * PAGE_SIZE, total);
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl overflow-hidden border border-slate-200 dark:border-slate-700">
-      <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-4 flex-1 min-w-[300px]">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input 
-              type="text" 
-              placeholder="Rapor ara (Yer adı veya ID)..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-900 rounded-lg text-sm outline-none border border-transparent focus:border-primary transition-all"
-            />
-          </div>
-          <select 
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
-            className="bg-slate-50 dark:bg-slate-900 text-sm font-bold px-4 py-2 rounded-lg outline-none border border-transparent focus:border-primary"
-          >
-            <option value="all">Tüm Durumlar</option>
-            <option value="open">Açık</option>
-            <option value="resolved">Çözüldü</option>
-            <option value="ignored">Yoksayıldı</option>
-          </select>
-        </div>
+    <div className="surface overflow-hidden">
+      <div className="flex flex-wrap items-center gap-3 rule-b px-4 py-3">
+        <label htmlFor="report-status" className="mono-label">
+          Durum
+        </label>
+        <select
+          id="report-status"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as ReportStatus | "all")}
+          className="rounded-input border border-rule-2 bg-paper px-2.5 py-1.5 text-xs text-ink transition-colors duration-fast ease-out hover:border-ink-4 focus:border-accent"
+        >
+          <option value="all">Tümü</option>
+          <option value="open">Açık</option>
+          <option value="resolved">Çözüldü</option>
+          <option value="ignored">Yoksayıldı</option>
+        </select>
+
+        <span className="mono-label tabular ml-auto">
+          {rangeStart}–{rangeEnd} / {total}
+        </span>
       </div>
 
+      {/* overflow-x-auto: genis tablo kendi kabinde kayar, sayfa govdesi
+          yatayda asla kaymaz. */}
       <div className="overflow-x-auto">
-        <table className="w-full text-left">
+        <table className="w-full min-w-[40rem] border-collapse text-left">
           <thead>
-            <tr className="bg-slate-50/50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-700">
-              <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Tarih</th>
-              <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Yer</th>
-              <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Gösterilen / Doğru</th>
-              <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Durum</th>
-              <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Aksiyon</th>
+            <tr className="rule-b">
+              <th scope="col" className="px-4 py-2.5 mono-label font-normal">Tarih</th>
+              <th scope="col" className="px-4 py-2.5 mono-label font-normal">Yer</th>
+              <th scope="col" className="px-4 py-2.5 mono-label font-normal">Düzeltme</th>
+              <th scope="col" className="px-4 py-2.5 mono-label font-normal">Durum</th>
+              <th scope="col" className="px-4 py-2.5 mono-label font-normal">
+                <span className="sr-only">İşlem</span>
+              </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+          <tbody>
             {isLoading ? (
-              [...Array(5)].map((_, i) => (
-                <tr key={i} className="animate-pulse">
-                  <td colSpan={5} className="px-6 py-4 h-16 bg-slate-50/20 dark:bg-slate-800/20"></td>
-                </tr>
-              ))
+              <tr>
+                <td colSpan={5} className="px-4 py-10 text-center">
+                  <span className="mono-label">Yükleniyor</span>
+                </td>
+              </tr>
             ) : reports.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-6 py-12 text-center text-slate-500 font-body">Rapor bulunamadı.</td>
+                <td colSpan={5} className="px-4 py-10 text-center text-xs text-ink-4">
+                  Bu filtreyle rapor yok.
+                </td>
               </tr>
             ) : (
               reports.map((report) => (
-                <tr key={report.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="flex flex-col">
-                      <span className="text-sm font-bold text-slate-900 dark:text-white">
-                        {new Date(report.created_at).toLocaleDateString("tr-TR")}
-                      </span>
-                      <span className="text-[10px] text-slate-500">{new Date(report.created_at).toLocaleTimeString("tr-TR")}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex flex-col min-w-[200px]">
-                      <span className="text-sm font-bold text-slate-900 dark:text-white truncate">{report.placeName}</span>
-                      <span className="text-[10px] text-primary font-mono">{report.placeId}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400">
-                        {PLACE_TYPE_LABELS[report.currentType]}
-                      </span>
-                      <ChevronRight className="w-3 h-3 text-slate-400" />
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-primary/10 text-primary">
-                        {PLACE_TYPE_LABELS[report.correctedType]}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`text-[10px] font-bold px-3 py-1 rounded-full ${getStatusColor(report.status)} uppercase`}>
-                      {report.status === "open" ? "Açık" : report.status === "resolved" ? "Çözüldü" : "Gizlendi"}
+                <tr
+                  key={report.id}
+                  className="rule-b last:border-b-0 transition-colors duration-fast ease-out hover:bg-paper-2"
+                >
+                  <td className="px-4 py-3 align-top">
+                    <span className="tabular block text-xs text-ink">
+                      {new Date(report.created_at).toLocaleDateString("tr-TR")}
+                    </span>
+                    <span className="tabular block text-2xs text-ink-4">
+                      {new Date(report.created_at).toLocaleTimeString("tr-TR", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                     </span>
                   </td>
-                  <td className="px-6 py-4">
-                    <button 
+
+                  <td className="px-4 py-3 align-top">
+                    <span className="block max-w-[16rem] truncate text-xs text-ink">
+                      {report.placeName || "İsimsiz"}
+                    </span>
+                    <span className="tabular block max-w-[16rem] truncate text-2xs text-ink-4">
+                      {report.placeId}
+                    </span>
+                  </td>
+
+                  <td className="px-4 py-3 align-top">
+                    <span className="inline-flex items-center gap-1.5 text-2xs">
+                      <span className="text-ink-3">
+                        {PLACE_TYPE_LABELS[report.currentType] ?? report.currentType}
+                      </span>
+                      <ArrowRight size={11} className="text-ink-4" />
+                      <span className="text-accent">
+                        {PLACE_TYPE_LABELS[report.correctedType] ?? report.correctedType}
+                      </span>
+                    </span>
+                  </td>
+
+                  <td className="px-4 py-3 align-top">
+                    <span className={`mono-label ${STATUS_STYLES[report.status]}`}>
+                      {STATUS_LABELS[report.status] ?? report.status}
+                    </span>
+                  </td>
+
+                  <td className="px-4 py-3 align-top text-right">
+                    <button
+                      type="button"
                       onClick={() => onViewDetail(report)}
-                      className="text-primary hover:text-primary-600 font-bold text-sm underline underline-offset-4 decoration-primary/30"
+                      className="text-xs font-medium text-accent underline decoration-accent-edge underline-offset-4 transition-colors duration-fast ease-out hover:decoration-accent"
                     >
                       Detay
                     </button>
@@ -146,20 +186,24 @@ export default function AdminReportsTable({ onViewDetail, refreshTrigger }: Admi
         </table>
       </div>
 
-      <div className="p-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 flex items-center justify-between">
-        <span className="text-xs text-slate-500 font-bold">Toplam {total} kayıt</span>
-        <div className="flex gap-2">
-          <button 
+      <div className="flex items-center justify-between gap-3 rule-t bg-paper-2 px-4 py-2.5">
+        <span className="mono-label tabular">
+          Sayfa {page} / {lastPage}
+        </span>
+        <div className="flex gap-1.5">
+          <button
+            type="button"
             disabled={page === 1}
-            onClick={() => setPage(page - 1)}
-            className="px-3 py-1 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-50"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            className="btn btn--ghost px-2.5 py-1.5 text-2xs"
           >
             Önceki
           </button>
-          <button 
-            disabled={page * 10 >= total}
-            onClick={() => setPage(page + 1)}
-            className="px-3 py-1 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-50"
+          <button
+            type="button"
+            disabled={page >= lastPage}
+            onClick={() => setPage((p) => p + 1)}
+            className="btn btn--ghost px-2.5 py-1.5 text-2xs"
           >
             Sonraki
           </button>

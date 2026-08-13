@@ -1,94 +1,138 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { adminApi } from "@/lib/adminApi";
 import type { AdminReport, AdminStats } from "@/lib/types";
 import AdminReportsTable from "@/components/AdminReportsTable";
 import AdminReportDetail from "@/components/AdminReportDetail";
-import { 
-  BarChart3, 
-  Settings, 
-  ShieldCheck, 
-  LayoutDashboard, 
-  Database, 
-  LogOut, 
+import {
+  LayoutDashboard,
+  Database,
+  LogOut,
   Lock,
-  ArrowUpRight,
-  TrendingUp,
-  AlertOctagon
+  RefreshCw,
+  AlertOctagon,
+  AlertCircle,
 } from "lucide-react";
 
 export default function AdminPage() {
   const router = useRouter();
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminKey, setAdminKey] = useState("");
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
   const [stats, setStats] = useState<AdminStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
   const [selectedReport, setSelectedReport] = useState<AdminReport | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [activeTab, setActiveTab] = useState<"dashboard" | "reports">("dashboard");
 
-  useEffect(() => {
-    const savedKey = sessionStorage.getItem("admin_key");
-    if (savedKey) {
-      setIsAdmin(true);
-      fetchStats();
+  const fetchStats = useCallback(async () => {
+    setStatsLoading(true);
+    try {
+      setStats(await adminApi.getStats());
+    } catch (error) {
+      console.error("Stats fetch error:", error);
+    } finally {
+      setStatsLoading(false);
     }
   }, []);
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (adminKey.length > 4) {
-      sessionStorage.setItem("admin_key", adminKey);
+  useEffect(() => {
+    if (sessionStorage.getItem("admin_key")) {
       setIsAdmin(true);
       fetchStats();
     }
+  }, [fetchStats]);
+
+  /**
+   * Giris artik anahtari gercekten dogruluyor.
+   *
+   * Onceden tek kosul `adminKey.length > 4` idi: yanlis bir anahtar da
+   * "giris yapmis" sayiliyor, panel aciliyor, sonra ilk istek 401 alip
+   * sayfayi sessizce yeniden yukluyordu. Kullanici anahtarinin yanlis
+   * oldugunu hicbir yerden ogrenemiyordu.
+   */
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const key = adminKey.trim();
+    if (!key) return;
+
+    setIsVerifying(true);
+    setLoginError(null);
+
+    const ok = await adminApi.verifyKey(key);
+
+    if (!ok) {
+      setIsVerifying(false);
+      setLoginError("Anahtar kabul edilmedi. Lütfen kontrol edip tekrar deneyin.");
+      return;
+    }
+
+    sessionStorage.setItem("admin_key", key);
+    setIsAdmin(true);
+    setIsVerifying(false);
+    fetchStats();
   };
 
   const handleLogout = () => {
     sessionStorage.removeItem("admin_key");
     setIsAdmin(false);
     setStats(null);
-  };
-
-  const fetchStats = async () => {
-    try {
-      const data = await adminApi.getStats();
-      setStats(data);
-    } catch (error) {
-      console.error("Stats fetch error:", error);
-    }
+    setAdminKey("");
   };
 
   if (!isAdmin) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-3xl shadow-2xl p-8 border border-slate-100 dark:border-slate-700 animate-in fade-in zoom-in-95">
-          <div className="text-center mb-10">
-            <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
-              <Lock className="w-8 h-8 text-primary" />
-            </div>
-            <h1 className="text-3xl font-heading font-bold text-slate-900 dark:text-white mb-2">Yönetici Paneli</h1>
-            <p className="text-slate-500 dark:text-slate-400 font-body text-sm">Lütfen yönetici anahtarınızı girerek devam edin.</p>
+      <div className="min-h-screen bg-paper flex items-center justify-center p-4">
+        <div className="w-full max-w-sm surface p-6">
+          <div className="mb-6">
+            <Lock size={18} aria-hidden="true" className="mb-3 text-ink-4" strokeWidth={1.75} />
+            <p className="mono-label mb-1">Yönetim</p>
+            <h1 className="font-display text-xl font-semibold text-ink">
+              Yönetici anahtarı
+            </h1>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-6">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Admin Anahtarı</label>
-              <input 
-                type="password" 
-                value={adminKey}
-                onChange={(e) => setAdminKey(e.target.value)}
-                className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-900/50 border-2 border-transparent focus:border-primary rounded-2xl outline-none transition-all dark:text-white"
-                placeholder="••••••••"
-                required
-              />
-            </div>
-            <button 
+          <form onSubmit={handleLogin} className="space-y-3">
+            <label htmlFor="admin-key" className="block text-xs font-medium text-ink">
+              Anahtar
+            </label>
+            <input
+              id="admin-key"
+              type="password"
+              value={adminKey}
+              onChange={(e) => {
+                setAdminKey(e.target.value);
+                setLoginError(null);
+              }}
+              autoComplete="off"
+              required
+              aria-invalid={!!loginError}
+              aria-describedby={loginError ? "admin-key-error" : undefined}
+              className={`tabular w-full rounded-input border bg-paper px-3 py-2.5 text-sm text-ink transition-colors duration-fast ease-out focus:border-accent ${
+                loginError ? "border-critical" : "border-rule-2 hover:border-ink-4"
+              }`}
+            />
+
+            {/* Alan bos olsa bile yer kapliyor (`field-note` min-height
+                tasiyor): hata belirdiginde altindaki buton asagi kaymasin. */}
+            <span id="admin-key-error" role="alert" className="field-note text-critical">
+              {loginError && (
+                <span className="flex items-start gap-1.5">
+                  <AlertCircle size={12} className="mt-0.5 shrink-0" />
+                  <span>{loginError}</span>
+                </span>
+              )}
+            </span>
+
+            <button
               type="submit"
-              className="w-full py-4 bg-primary text-white font-bold rounded-2xl shadow-lg hover:shadow-primary/30 hover:shadow-2xl transition-all"
+              disabled={isVerifying || !adminKey.trim()}
+              className="btn btn--primary w-full px-4 py-2.5"
             >
-              Giriş Yap
+              {isVerifying ? "Doğrulanıyor…" : "Giriş"}
             </button>
           </form>
         </div>
@@ -96,165 +140,152 @@ export default function AdminPage() {
     );
   }
 
+  const navItem = (active: boolean) =>
+    `w-full flex items-center gap-2.5 rounded-input px-3 py-2 text-xs font-medium transition-colors duration-fast ease-out ${
+      active ? "bg-accent text-accent-ink" : "text-ink-2 hover:bg-paper-2 hover:text-ink"
+    }`;
+
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex text-left transition-colors">
-      {/* Sidebar */}
-      <aside className="w-72 bg-white dark:bg-slate-800 border-r border-slate-100 dark:border-slate-700 hidden lg:flex flex-col">
-        <div className="p-8">
-          <div className="flex items-center gap-3 mb-10">
-            <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/30">
-              <ShieldCheck className="w-6 h-6 text-white" />
-            </div>
-            <span className="text-xl font-heading font-bold text-slate-900 dark:text-white">AIESEC Admin</span>
+    <div className="flex min-h-screen flex-col bg-paper text-ink-2 lg:flex-row">
+      <aside className="shrink-0 border-b border-rule bg-paper lg:w-56 lg:border-b-0 lg:border-r">
+        <div className="flex h-full flex-col gap-4 p-4">
+          <div>
+            <p className="mono-label mb-0.5">POI Finder</p>
+            <span className="font-display text-sm font-semibold text-ink">Yönetim</span>
           </div>
 
-          <nav className="space-y-2">
-            <button 
+          <nav className="flex flex-row gap-1 lg:flex-col">
+            <button
+              type="button"
               onClick={() => setActiveTab("dashboard")}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
-                activeTab === "dashboard" ? "bg-primary text-white shadow-lg" : "text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700/50"
-              }`}
+              aria-current={activeTab === "dashboard" ? "page" : undefined}
+              className={navItem(activeTab === "dashboard")}
             >
-              <LayoutDashboard className="w-5 h-5" /> Kontrol Paneli
+              <LayoutDashboard size={14} /> Özet
             </button>
-            <button 
+            <button
+              type="button"
               onClick={() => setActiveTab("reports")}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
-                activeTab === "reports" ? "bg-primary text-white shadow-lg" : "text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700/50"
-              }`}
+              aria-current={activeTab === "reports" ? "page" : undefined}
+              className={navItem(activeTab === "reports")}
             >
-              <AlertOctagon className="w-5 h-5" /> Raporlar
+              <AlertOctagon size={14} /> Raporlar
             </button>
-            <button 
+            <button
+              type="button"
               onClick={() => router.push("/admin/overrides")}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all"
+              className={navItem(false)}
             >
-              <Database className="w-5 h-5" /> Overrides
+              <Database size={14} /> Override
             </button>
           </nav>
-        </div>
 
-        <div className="mt-auto p-8">
-          <button 
+          <button
+            type="button"
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all"
+            className="mt-auto hidden w-full items-center gap-2.5 rounded-input px-3 py-2 text-xs font-medium text-ink-3 transition-colors duration-fast ease-out hover:bg-paper-2 hover:text-critical lg:flex"
           >
-            <LogOut className="w-5 h-5" /> Çıkış Yap
+            <LogOut size={14} /> Çıkış
           </button>
         </div>
       </aside>
 
-      {/* Main Content */}
       <main className="flex-1 overflow-y-auto">
-        <div className="max-w-6xl mx-auto p-8 lg:p-12">
-          {/* Header */}
-          <header className="flex items-center justify-between mb-12">
+        <div className="mx-auto max-w-5xl p-4 lg:p-8">
+          <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h2 className="text-3xl font-heading font-bold text-slate-900 dark:text-white mb-1">
-                {activeTab === "dashboard" ? "Kontrol Paneli" : "Hata Raporları"}
+              <p className="mono-label mb-1">
+                {activeTab === "dashboard" ? "Özet" : "Bildirimler"}
+              </p>
+              <h2 className="font-display text-2xl font-semibold text-ink">
+                {activeTab === "dashboard" ? "Sistem durumu" : "Hata raporları"}
               </h2>
-              <p className="text-slate-500 font-body text-sm">Sistem durumu ve verilerini yönetin.</p>
             </div>
-            
-            <div className="flex items-center gap-4">
-              <button 
-                onClick={() => fetchStats()}
-                className="p-3 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-all group"
-              >
-                <TrendingUp className="w-5 h-5 text-slate-500 group-hover:text-primary transition-colors" />
-              </button>
-              <div className="w-12 h-12 rounded-full border-4 border-white dark:border-slate-700 shadow-xl bg-slate-200 overflow-hidden transform hover:scale-105 transition-transform cursor-pointer">
-                <div className="w-full h-full bg-primary flex items-center justify-center text-white font-bold">A</div>
-              </div>
-            </div>
+
+            <button
+              type="button"
+              onClick={fetchStats}
+              disabled={statsLoading}
+              className="btn btn--ghost px-3 py-2"
+            >
+              <RefreshCw size={13} className={statsLoading ? "animate-spin" : undefined} />
+              Yenile
+            </button>
           </header>
 
           {activeTab === "dashboard" ? (
-            <div className="space-y-8">
-              {/* Stats Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-700 relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                    <AlertOctagon className="w-24 h-24" />
-                  </div>
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Son 7 Gün Raporları</p>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-5xl font-heading font-black dark:text-white">{stats?.last_7_days || 0}</span>
-                    <span className="text-xs font-bold text-emerald-500 flex items-center">
-                      <ArrowUpRight className="w-3 h-3" /> +12%
+            <div className="space-y-6">
+              {/*
+                Iki kutu, uc degil. Ucuncusu "SISTEM DURUMU: AKTIF" yaziyordu
+                ama hicbir saglik kontrolu yapilmiyordu - sabit metindi.
+                Yedi gunluk kutunun yaninda da sabit bir "+12%" artis rozeti
+                duruyordu; o sayi hicbir yerden hesaplanmiyordu.
+              */}
+              <div className="grid gap-3 sm:grid-cols-2">
+                {[
+                  { label: "Son 7 gün", value: stats?.last_7_days },
+                  { label: "Son 30 gün", value: stats?.last_30_days },
+                ].map((tile) => (
+                  <div key={tile.label} className="surface p-4">
+                    <p className="mono-label mb-2">{tile.label} · rapor</p>
+                    <span className="tabular font-display text-3xl font-semibold text-ink">
+                      {tile.value ?? "—"}
                     </span>
                   </div>
-                </div>
-                
-                <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-700 relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                    <BarChart3 className="w-24 h-24" />
-                  </div>
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Son 30 Gün Raporları</p>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-5xl font-heading font-black dark:text-white">{stats?.last_30_days || 0}</span>
-                    <span className="text-xs font-bold text-slate-500">Normal</span>
-                  </div>
-                </div>
-
-                <div className="bg-primary p-8 rounded-3xl shadow-2xl shadow-primary/20 relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-4 text-white/10 group-hover:text-white/20 transition-all">
-                    <ShieldCheck className="w-24 h-24" />
-                  </div>
-                  <p className="text-xs font-bold text-white/60 uppercase tracking-widest mb-2 text-left">Sistem Durumu</p>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-4xl font-heading font-black text-white">AKTİF</span>
-                  </div>
-                </div>
+                ))}
               </div>
 
-              {/* Top Places Section */}
-              <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-700 overflow-hidden">
-                <div className="p-8 border-b border-slate-50 dark:border-slate-700">
-                  <h3 className="text-xl font-heading font-bold dark:text-white">En Çok Raporlanan Yerler</h3>
+              <section className="surface overflow-hidden">
+                <div className="rule-b px-4 py-3">
+                  <h3 className="font-display text-sm font-semibold text-ink">
+                    En çok raporlanan yerler
+                  </h3>
                 </div>
-                <div className="p-8">
-                  <div className="space-y-4">
-                    {stats?.top_reported_places.map((place, i) => (
-                      <div key={place.place_id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl group hover:bg-slate-100 transition-colors">
-                        <div className="flex items-center gap-4">
-                          <span className="w-8 h-8 rounded-lg bg-white dark:bg-slate-800 shadow-sm flex items-center justify-center font-bold text-slate-400">
-                            {i + 1}
-                          </span>
-                          <div>
-                            <p className="font-bold text-slate-900 dark:text-white">{place.name}</p>
-                            <p className="text-xs text-slate-500 font-mono">{place.place_id}</p>
-                          </div>
+
+                {stats?.top_reported_places?.length ? (
+                  <ol>
+                    {stats.top_reported_places.map((place, i) => (
+                      <li
+                        key={place.place_id}
+                        className="flex items-center gap-3 rule-b px-4 py-2.5 last:border-b-0"
+                      >
+                        <span className="mono-label tabular w-5 shrink-0">{i + 1}</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs text-ink">
+                            {place.name || "İsimsiz"}
+                          </p>
+                          <p className="tabular truncate text-2xs text-ink-4">
+                            {place.place_id}
+                          </p>
                         </div>
-                        <div className="flex flex-col items-end">
-                          <span className="text-lg font-black text-primary">{place.count}</span>
-                          <span className="text-[10px] font-bold text-slate-400 uppercase">HATA BİLDİRİMİ</span>
-                        </div>
-                      </div>
+                        <span className="tabular shrink-0 text-sm font-medium text-accent">
+                          {place.count}
+                        </span>
+                      </li>
                     ))}
-                    {(!stats?.top_reported_places || stats.top_reported_places.length === 0) && (
-                      <p className="text-center py-8 text-slate-500 italic">Henüz veri toplanmadı.</p>
-                    )}
-                  </div>
-                </div>
-              </div>
+                  </ol>
+                ) : (
+                  <p className="px-4 py-8 text-center text-xs text-ink-4">
+                    Henüz rapor yok.
+                  </p>
+                )}
+              </section>
             </div>
           ) : (
-            <AdminReportsTable 
-              onViewDetail={setSelectedReport} 
-              refreshTrigger={refreshTrigger} 
+            <AdminReportsTable
+              onViewDetail={setSelectedReport}
+              refreshTrigger={refreshTrigger}
             />
           )}
         </div>
       </main>
 
-      {/* Detail Overlay */}
       {selectedReport && (
-        <AdminReportDetail 
-          report={selectedReport} 
+        <AdminReportDetail
+          report={selectedReport}
           onClose={() => setSelectedReport(null)}
           onUpdate={() => {
-            setRefreshTrigger(prev => prev + 1);
+            setRefreshTrigger((prev) => prev + 1);
             fetchStats();
           }}
           onCreateOverride={(placeId, correctedType) => {

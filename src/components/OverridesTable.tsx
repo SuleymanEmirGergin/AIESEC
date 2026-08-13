@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useMemo, useState, useEffect } from "react";
 import { adminApi } from "@/lib/adminApi";
 import type { AdminOverride } from "@/lib/types";
 import { PLACE_TYPE_LABELS } from "@/lib/labels";
-import { Edit2, Trash2, Power, Search, History, Database } from "lucide-react";
+import { Pencil, Trash2, Search, AlertCircle } from "lucide-react";
 
 interface OverridesTableProps {
   onEdit: (override: AdminOverride) => void;
@@ -15,118 +15,194 @@ export default function OverridesTable({ onEdit, refreshTrigger }: OverridesTabl
   const [overrides, setOverrides] = useState<AdminOverride[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  /** Silme iki adimli: once butona basilir, sonra onaylanir. */
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
-  const fetchOverrides = async () => {
+  const fetchOverrides = useCallback(async () => {
     setIsLoading(true);
+    setError(null);
     try {
-      const res = await adminApi.getOverrides({ search });
-      setOverrides(res);
-    } catch (error) {
-      console.error("Fetch overrides failed:", error);
+      // Backend'de arama filtresi yok; `search` parametresi gonderiliyor
+      // ama yok sayiliyordu. Uc zaten tum kayitlari tek seferde donuyor,
+      // dolayisiyla filtreleme istemci tarafinda yapiliyor - boylece
+      // kutunun yazdigi sey ile yaptigi sey ayni.
+      setOverrides(await adminApi.getOverrides({ limit: 100 }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Override'lar yüklenemedi.");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchOverrides();
-  }, [search, refreshTrigger]);
+  }, [fetchOverrides, refreshTrigger]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLocaleLowerCase("tr");
+    if (!q) return overrides;
+    return overrides.filter(
+      (ov) =>
+        ov.place_id.toLocaleLowerCase("tr").includes(q) ||
+        (ov.notes ?? "").toLocaleLowerCase("tr").includes(q)
+    );
+  }, [overrides, search]);
 
   const handleDelete = async (id: string) => {
-    if (confirm("Bu override'ı silmek istediğinize emin misiniz?")) {
-      try {
-        await adminApi.deleteOverride(id);
-        fetchOverrides();
-      } catch (error) {
-        alert("Silme hatası: " + (error instanceof Error ? error.message : "Bilinmeyen hata"));
-      }
+    setError(null);
+    try {
+      await adminApi.deleteOverride(id);
+      setPendingDelete(null);
+      fetchOverrides();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Silinemedi.");
     }
   };
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl overflow-hidden border border-slate-100 dark:border-slate-700">
-      <div className="p-6 border-b border-slate-100 dark:border-slate-700">
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input 
-            type="text" 
-            placeholder="Place ID veya notlarda ara..."
+    <div className="surface overflow-hidden">
+      <div className="rule-b px-4 py-3">
+        <div className="relative max-w-sm">
+          <Search
+            size={13}
+            aria-hidden="true"
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-4"
+          />
+          <label htmlFor="override-search" className="sr-only">
+            Place ID veya notlarda ara
+          </label>
+          <input
+            id="override-search"
+            type="search"
+            placeholder="Place ID veya not ara"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-900 rounded-lg text-sm outline-none border border-transparent focus:border-primary transition-all dark:text-white"
+            className="w-full rounded-input border border-rule-2 bg-paper py-1.5 pl-8 pr-3 text-xs text-ink placeholder:text-ink-4 transition-colors duration-fast ease-out hover:border-ink-4 focus:border-accent"
           />
         </div>
       </div>
 
+      {error && (
+        <p
+          role="alert"
+          className="flex items-start gap-2 rule-b px-4 py-2.5 text-xs text-critical"
+        >
+          <AlertCircle size={13} className="mt-px shrink-0" />
+          <span>{error}</span>
+        </p>
+      )}
+
       <div className="overflow-x-auto">
-        <table className="w-full text-left">
+        <table className="w-full min-w-[38rem] border-collapse text-left">
           <thead>
-            <tr className="bg-slate-50/50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-700">
-              <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Place ID</th>
-              <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Uygulanan Tip</th>
-              <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Durum</th>
-              <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Tarih</th>
-              <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">İşlemler</th>
+            <tr className="rule-b">
+              <th scope="col" className="px-4 py-2.5 mono-label font-normal">Place ID</th>
+              <th scope="col" className="px-4 py-2.5 mono-label font-normal">Zorunlu tür</th>
+              <th scope="col" className="px-4 py-2.5 mono-label font-normal">Durum</th>
+              <th scope="col" className="px-4 py-2.5 mono-label font-normal">Tarih</th>
+              <th scope="col" className="px-4 py-2.5 mono-label font-normal text-right">
+                <span className="sr-only">İşlem</span>
+              </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+          <tbody>
             {isLoading ? (
-              [...Array(3)].map((_, i) => (
-                <tr key={i} className="animate-pulse">
-                  <td colSpan={5} className="px-6 py-4 h-16"></td>
-                </tr>
-              ))
-            ) : overrides.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-6 py-12 text-center text-slate-500 font-body italic">Kayıtlı override bulunamadı.</td>
+                <td colSpan={5} className="px-4 py-10 text-center">
+                  <span className="mono-label">Yükleniyor</span>
+                </td>
+              </tr>
+            ) : filtered.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-10 text-center text-xs text-ink-4">
+                  {search ? "Bu aramayla eşleşen kayıt yok." : "Kayıtlı override yok."}
+                </td>
               </tr>
             ) : (
-              overrides.map((ov) => (
-                <tr key={ov.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                  <td className="px-6 py-4">
-                    <span className="text-sm font-mono font-bold text-primary">{ov.place_id}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex flex-col">
-                      <span className="text-sm font-bold text-slate-900 dark:text-white">
-                        {PLACE_TYPE_LABELS[ov.forced_type]}
+              filtered.map((ov) => (
+                <tr
+                  key={ov.id}
+                  className="rule-b last:border-b-0 transition-colors duration-fast ease-out hover:bg-paper-2"
+                >
+                  <td className="px-4 py-3 align-top">
+                    <span className="tabular block max-w-[14rem] truncate text-xs text-accent">
+                      {ov.place_id}
+                    </span>
+                    {ov.notes && (
+                      <span className="block max-w-[14rem] truncate text-2xs text-ink-4">
+                        {ov.notes}
                       </span>
-                      {ov.forced_subtype && (
-                        <span className="text-[10px] text-slate-500 italic">{ov.forced_subtype}</span>
-                      )}
-                    </div>
+                    )}
                   </td>
-                  <td className="px-6 py-4">
-                    <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase ${
-                      ov.is_active 
-                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" 
-                        : "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400"
-                    }`}>
-                      <Power className="w-3 h-3" />
+
+                  <td className="px-4 py-3 align-top">
+                    <span className="block text-xs text-ink">
+                      {PLACE_TYPE_LABELS[ov.forced_type] ?? ov.forced_type}
+                    </span>
+                    {ov.forced_subtype && (
+                      <span className="block text-2xs text-ink-4">{ov.forced_subtype}</span>
+                    )}
+                  </td>
+
+                  <td className="px-4 py-3 align-top">
+                    <span
+                      className={`mono-label ${ov.is_active ? "text-positive" : "text-ink-4"}`}
+                    >
                       {ov.is_active ? "Aktif" : "Pasif"}
-                    </div>
+                    </span>
                   </td>
-                  <td className="px-6 py-4">
-                    <span className="text-xs text-slate-500 font-bold">
+
+                  <td className="px-4 py-3 align-top">
+                    <span className="tabular text-2xs text-ink-3">
                       {new Date(ov.created_at).toLocaleDateString("tr-TR")}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button 
-                        onClick={() => onEdit(ov)}
-                        className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-all"
-                        title="Düzenle"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button 
-                        onClick={() => handleDelete(ov.id)}
-                        className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-all"
-                        title="Sil"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+
+                  <td className="px-4 py-3 align-top">
+                    <div className="flex items-center justify-end gap-1">
+                      {/*
+                        Iki adimli silme. Onceden native confirm() acilıyordu;
+                        tarayici diyalogu sayfanin disinda duruyor, hangi
+                        kaydin silinecegini gostermiyor ve stil alamiyor.
+                      */}
+                      {pendingDelete === ov.id ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(ov.id)}
+                            className="rounded-input px-2 py-1 text-2xs font-medium text-critical hover:bg-paper-3 transition-colors duration-fast ease-out"
+                          >
+                            Sil, onayla
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPendingDelete(null)}
+                            className="rounded-input px-2 py-1 text-2xs font-medium text-ink-3 hover:bg-paper-3 transition-colors duration-fast ease-out"
+                          >
+                            Vazgeç
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => onEdit(ov)}
+                            aria-label={`${ov.place_id} override'ını düzenle`}
+                            className="rounded-input p-1.5 text-ink-4 hover:bg-paper-3 hover:text-accent transition-colors duration-fast ease-out"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPendingDelete(ov.id)}
+                            aria-label={`${ov.place_id} override'ını sil`}
+                            className="rounded-input p-1.5 text-ink-4 hover:bg-paper-3 hover:text-critical transition-colors duration-fast ease-out"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
