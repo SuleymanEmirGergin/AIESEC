@@ -57,9 +57,15 @@ def decide_policy(params: SearchPolicyInput) -> SearchPolicyDecision:
     else:
         # Default to 'auto' logic
         req_mode = "auto"
+        # Bu liste search_service.py'deki ikiziyle ayni kalmak zorunda.
+        # college_university eklenmediginde tur B2B sayilip 'around'
+        # yerine 'bbox' moduna dusuyordu; varsayilan yaricap 5000 oldugu
+        # icin (>3000 dali once donuyor) su an gorunur bir etkisi yok,
+        # ama iki listenin ayrismasi tam olarak boyle basliyor.
         is_edu = params.type in [
             "kindergarten", "primary_school", "middle_school",
-            "high_school", "private_school", "college_keyword"
+            "high_school", "private_school", "college_keyword",
+            "college_university"
         ]
         
         if eff_radius > 3000:

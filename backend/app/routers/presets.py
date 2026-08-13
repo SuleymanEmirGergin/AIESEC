@@ -28,7 +28,8 @@ async def get_search_presets():
             "middle_school": "Ortaokul",
             "high_school": "Lise",
             "private_school": "Özel Okul",
-            "college_keyword": "Kolej"
+            "college_keyword": "Kolej",
+            "college_university": "Üniversite"
         },
         type_groups_tr=[
             {
@@ -39,7 +40,8 @@ async def get_search_presets():
                 "group": "Eğitim Kurumları",
                 "types": [
                     "kindergarten", "primary_school", "middle_school",
-                    "high_school", "private_school", "college_keyword"
+                    "high_school", "private_school", "college_keyword",
+                    "college_university"
                 ]
             }
         ]

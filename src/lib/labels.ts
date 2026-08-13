@@ -9,7 +9,12 @@ export const PLACE_TYPE_LABELS: Record<PlaceType, string> = {
   middle_school: "Ortaokul",
   high_school: "Lise",
   private_school: "Özel Okul",
-  college_keyword: "Üniversite",
+  // "Üniversite" etiketi yanlislikla college_keyword'e bagliydi: kullanici
+  // Universite'ye basinca sorgu amenity=school cekiyor, siniflandirma da
+  // bu turu universiteler icin hic uretmiyordu. Turkiye'de "kolej"
+  // cogunlukla ozel bir K-12 okulu demek; ikisi ayri tur.
+  college_keyword: "Kolej",
+  college_university: "Üniversite",
 };
 
 export const PLACE_TYPE_GROUPS: Record<string, PlaceType[]> = {
@@ -20,6 +25,7 @@ export const PLACE_TYPE_GROUPS: Record<string, PlaceType[]> = {
     "middle_school", 
     "high_school", 
     "private_school",
-    "college_keyword"
+    "college_keyword",
+    "college_university"
   ],
 };

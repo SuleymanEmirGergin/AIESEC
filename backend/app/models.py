@@ -13,6 +13,8 @@ RADIUS_PRESETS = {
     "high_school": 2500,
     "private_school": 2500,
     "college_keyword": 2500,
+    # Universiteler seyrek dagildigi icin varsayilan yaricap genis.
+    "college_university": 5000,
     "office": 2000,
     "workshop": 3000,
     "factory": 5000,

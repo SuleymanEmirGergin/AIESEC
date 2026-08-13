@@ -40,6 +40,14 @@ def classify_school_level(tags: dict, name: str) -> Optional[str]:
     if tags.get("amenity") == "kindergarten":
         return "kindergarten"
 
+    # Yuksekogretim de ayri bir amenity tasiyor ve bu kontrol asagidaki
+    # erken cikistan ONCE gelmeli. Onceden universite dali fonksiyonun
+    # ilerisindeydi, ama amenity != "school" kontrolu oraya varmadan
+    # None donduruyordu: dal ulasilamaz koddu ve universiteler hicbir
+    # zaman siniflandirilamiyordu. (craft/workshop hatasinin ayni sekli.)
+    if tags.get("amenity") in ("university", "college"):
+        return "college_university"
+
     # Not a school amenity
     if tags.get("amenity") != "school":
         return None
@@ -84,9 +92,8 @@ def classify_school_level(tags: dict, name: str) -> Optional[str]:
     official_name_lower = tr_fold(tags.get("official_name", ""))
     combined_name = f"{name_lower} {official_name_lower}"
 
-    # Gercek yuksekogretim kurumu: etiketten anlasiliyor.
-    if tags.get("amenity") in ["university", "college"]:
-        return "college_university"
+    # Not: amenity=university|college kontrolu yukari, erken cikistan
+    # once tasindi. Burada tekrarlamak olu kod olurdu.
 
     # Adinda "kolej" gecen okullar. Turkiye'de kolej cogunlukla ozel bir
     # K-12 okulu demek, universite degil; bu yuzden ayri bir tur.

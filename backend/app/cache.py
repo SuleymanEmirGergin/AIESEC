@@ -98,6 +98,7 @@ def get_ttl_for_type(place_type: str) -> int:
     school_types = {
         "kindergarten", "primary_school", "middle_school",
         "high_school", "private_school", "college_keyword",
+        "college_university",
     }
     if place_type in school_types:
         return 86400  # 24h

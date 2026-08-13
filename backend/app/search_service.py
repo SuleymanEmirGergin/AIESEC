@@ -204,7 +204,7 @@ async def run_search_orchestration(
     # 2. Stage 2: Unnamed objects
     is_edu = place_type in [
         "kindergarten", "primary_school", "middle_school", "high_school",
-        "private_school", "college_keyword"
+        "private_school", "college_keyword", "college_university"
     ]
     threshold = MIN_STAGE1_SCHOOL if is_edu else MIN_STAGE1_B2B
    
