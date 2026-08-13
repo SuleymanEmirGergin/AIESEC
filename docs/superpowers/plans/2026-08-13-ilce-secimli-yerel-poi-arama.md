@@ -2011,7 +2011,7 @@ git commit -m "feat: POI veri erisim katmani ve has_contact turetimi"
   - `classify_element(tags: dict, element_type: str) -> str | None`
   - `async ingest_district(db, district_id, buffer_m, force) -> IngestResult`
   - `@dataclass(frozen=True) IngestResult`: `district_id: str`, `place_count: int`, `query_count: int`, `status: str`, `skipped: bool`
-  - `async ingest_many(db_factory, district_ids, concurrency, buffer_m, force) -> list[IngestResult]`
+  - `async ingest_many(district_ids, concurrency, buffer_m, force) -> list[IngestResult]` — `db_factory` parametresi YOK; her ilce kendi oturumunu `AsyncSessionLocal` ile aciyor, paylasilan AsyncSession es zamanli kullanimda guvenli degil
   - `main(argv) -> int`
 
 - [ ] **Step 1: Testi yaz**
