@@ -13,8 +13,8 @@ import os
 # once ayarlanmali. Testler gercek storage.db'ye dokunmamali.
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_storage.db")
 os.environ.setdefault("ADMIN_API_KEY", "test-admin-key")
-# Aksi halde her test oturumu acilista 20 es zamanli Overpass sorgusu atar.
-os.environ.setdefault("WARMUP_ENABLED", "false")
+# Ingest artik startup'ta calismiyor (app/ingest.py elle tetikleniyor),
+# bu yuzden eski WARMUP_ENABLED bayragina gerek kalmadi.
 
 from datetime import datetime, timezone  # noqa: E402
 

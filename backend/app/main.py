@@ -1,5 +1,3 @@
-import asyncio
-
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -11,7 +9,6 @@ from app import __version__
 from app.database import init_db
 from app.middleware import MetricsMiddleware
 from app.routers import account, admin, export, health, metrics, presets, search
-from app.services.warmup import run_warmup
 
 
 # Rate limiter setup (IP-based)
@@ -29,11 +26,18 @@ app = FastAPI(
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialise storage and security policies on boot."""
+    """Initialise storage on boot.
+
+    Onceden burada run_warmup() arka plan gorevi baslatiliyordu: her
+    acilista 20 es zamanli Overpass sorgusu atiyordu ve Overpass IP
+    basina 2 slot verdigi icin sik yeniden baslatilan ortamlarda kotayi
+    tuketip aynalari sagliksiz isaretliyordu.
+
+    Yerine app/ingest.py geldi: elle calistirilan, kaldigi yerden devam
+    eden, 80 ilcenin tamamini kapsayan bir CLI. Startup'ta hicbir ag
+    cagrisi yapilmiyor.
+    """
     await init_db()
-    
-    # Trigger background warmup (No session passed, warmup creates its own)
-    asyncio.create_task(run_warmup())
 
 # Add metrics middleware
 app.add_middleware(MetricsMiddleware)
