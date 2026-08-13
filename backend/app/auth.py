@@ -9,6 +9,7 @@ from fastapi import Depends, Header, HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import APIKey, get_db
 
 
@@ -59,6 +60,23 @@ def hash_key(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
 
 
+# LOCAL_MODE'da dondurulen sanal anahtar.
+#
+# Veritabaninda karsiligi yok ve olmasi da gerekmiyor: kota sayaci
+# islemedigi icin hicbir alani guncellenmiyor. Modul seviyesinde tek
+# ornek olmasi bilincli - testler used_today'in artmadigini bu ornek
+# uzerinden dogruluyor.
+LOCAL_API_KEY = APIKey(
+    name="local",
+    key_hash="local-mode",
+    is_active=True,
+    plan="enterprise",
+    daily_limit=10**9,
+    used_today=0,
+    last_reset_date=datetime.now(timezone.utc).replace(tzinfo=None),
+)
+
+
 async def _get_api_key_obj(x_api_key: str, db: AsyncSession) -> APIKey:
     """Internal helper to find and validate API key object."""
     key_h = hash_key(x_api_key)
@@ -82,6 +100,9 @@ async def validate_api_key(
     db: AsyncSession = Depends(get_db)
 ) -> APIKey:
     """Validate key exists and is active, without incrementing usage."""
+    if settings.local_mode:
+        return LOCAL_API_KEY
+
     if not x_api_key:
         raise HTTPException(status_code=401, detail="X-API-KEY required")
     return await _get_api_key_obj(x_api_key, db)
@@ -92,9 +113,14 @@ async def verify_api_key(
     db: AsyncSession = Depends(get_db)
 ) -> APIKey:
     """Validate API key and increment daily usage."""
+    # LOCAL_MODE: kota sayaci islemiyor, bu yuzden used_today
+    # artirilmiyor ve db'ye yazilmiyor.
+    if settings.local_mode:
+        return LOCAL_API_KEY
+
     if not x_api_key:
         raise HTTPException(status_code=401, detail="X-API-KEY required")
-        
+
     key_obj = await _get_api_key_obj(x_api_key, db)
 
     # Check limit
