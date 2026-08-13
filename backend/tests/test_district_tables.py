@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.database import AsyncSessionLocal, DistrictIngest, PlaceDistrict, PlaceRow, init_db
 
@@ -87,6 +88,33 @@ async def test_place_type_null_olabilir(db):
 
     result = await db.execute(select(PlaceRow).where(PlaceRow.id == "osm:node:1002"))
     assert result.scalar_one().place_type is None
+
+
+@pytest.mark.asyncio
+async def test_confidence_null_reddedilir(db):
+    """
+    place_type'in aksine confidence'in NULL olmasina izin verilmiyor
+    (Interfaces listesinde `confidence: int`, `int | None` degil).
+
+    PlaceRow(confidence=None) ile INSERT denemek bu kisiti SINAMAZ:
+    Column(..., default=0) SQLAlchemy ORM'de yalnizca INSERT'e uygulaniyor
+    ve flush aninda acik None'i sessizce 0'a ceviriyor - satir NULL
+    olarak degil confidence=0 olarak yazilir, kisit hic tetiklenmez.
+    default UPDATE'e uygulanmadigi icin kisit UPDATE yolunda test
+    ediliyor: gecerli bir satir once yazilip sonra confidence'i None'a
+    cekiyoruz, bu sefer acik None literal NULL olarak gonderiliyor ve
+    NOT NULL kisitina carpiyor.
+    """
+    row = _place("osm:node:1004")
+    db.add(row)
+    await db.commit()
+
+    row.confidence = None
+    with pytest.raises(IntegrityError):
+        await db.commit()
+    # Basarisiz commit oturumu "rollback bekliyor" durumunda birakir;
+    # fixture teardown'unun ayni oturumla devam edebilmesi icin temizle.
+    await db.rollback()
 
 
 @pytest.mark.asyncio

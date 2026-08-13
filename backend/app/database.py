@@ -113,7 +113,7 @@ class PlaceRow(Base):
     name = Column(String, nullable=True)
     place_type = Column(String, nullable=True, index=True)
     subtype = Column(String, nullable=True)
-    confidence = Column(Integer, default=0)
+    confidence = Column(Integer, nullable=False, default=0)
     # Turetilmis ve indeksli: filtre panelinin en cok kullanilan kosulu.
     has_contact = Column(Boolean, nullable=False, default=False, index=True)
     phone = Column(String, nullable=True)
