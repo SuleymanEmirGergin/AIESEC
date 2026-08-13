@@ -75,6 +75,31 @@ class TestBboxParsing:
         )
         assert response.status_code == 422
 
+    def test_plan_limit_uses_raw_bbox_not_snapped(self, client, api_key):
+        """
+        Plan kontrolu kullanicinin istedigi alana bakmali, bizim
+        onbellek optimizasyonumuza degil.
+
+        Izgaraya oturtma alani disari dogru buyutuyor (kenar basina 0.01
+        dereceye kadar). Kontrol snap'ten sonra yapilirsa, sinirin altinda
+        kalan bir istek bizim optimizasyonumuz yuzunden 403 aliyor.
+
+        Asagidaki bbox'in ham esdeger yaricapi 4752 m (pro siniri 5000),
+        snap'lenmis hali ise 5122 m - yani snap uzerinden kontrol
+        edilseydi reddedilirdi.
+        """
+        api_key.plan = "pro"
+        seen, stub = _capture_queries()
+        with patch(SEAM, new=stub):
+            response = client.get(
+                "/api/search?lat=41.01&lon=28.975&type=kindergarten"
+                "&bbox=28.923767,40.991776,29.026234,41.028224"
+            )
+
+        assert response.status_code == 200, (
+            "sinira oturan bbox reddedildi; plan kontrolu snap'ten once yapilmali"
+        )
+
     def test_bbox_respects_plan_limit(self, client, api_key):
         """
         Bbox plan sinirini atlatmanin yolu olmamali: cok genis bir

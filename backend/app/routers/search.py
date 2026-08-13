@@ -1,4 +1,4 @@
-import os
+﻿import os
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -65,9 +65,11 @@ def _parse_bbox(raw: str | None):
             detail="bbox bos veya ters: min degerler max degerlerden kucuk olmali.",
         )
 
-    # Onbellek isabeti icin izgaraya disari dogru oturtuluyor: haritayi
-    # birkac piksel kaydiran kullanici ayni sorguyu tekrar tetiklemesin.
-    return snap_bbox_outward((min_lat, min_lon, max_lat, max_lon))
+    # HAM bbox donuyor. Izgaraya oturtma bilincli olarak burada
+    # yapilmiyor: snap bir onbellek optimizasyonu ve alani disari dogru
+    # buyutuyor. Plan kontrolu once ham deger uzerinden yapilmali, yoksa
+    # sinira uyan bir istek bizim optimizasyonumuz yuzunden reddedilir.
+    return (min_lat, min_lon, max_lat, max_lon)
 
 
 def _validate_search_input(place_type: str, radius: int | None) -> None:
@@ -116,10 +118,13 @@ async def search_places(
     """
     Unified search with Plans, Confidence, and Grid Caching.
 
-    `bbox` verildiginde tam olarak o dikdortgen taranir. Cagiran gercek
-    bir goruntu alani biliyorsa bu daha ucuz: daireye cevirip tekrar
-    dikdortgene donmek, dikdortgeni tamamen kapsayan cember yuzunden
-    16:9 bir viewport'ta yaklasik %60 fazla alan taratiyor.
+    `bbox` verildiginde tam olarak o dikdortgen taranir.
+
+    Cagiran gercek bir goruntu alani biliyorsa bu belirgin sekilde daha
+    ucuz. Viewport'u once cevrel cembere, sonra (bbox modunda) o cemberi
+    tekrar dikdortgene cevirmek buyumeyi biriktiriyor; olculen degerler:
+      zoom 14 viewport -> taranan alan 2.00x
+      zoom 12 viewport -> taranan alan 2.59x
     """
     debug_mode = os.getenv("DEBUG_OVERPASS", "false").lower() == "true"
 
@@ -154,6 +159,11 @@ async def search_places(
             )
         raise HTTPException(status_code=403, detail=detail)
 
+    # Plan kontrolu bittikten SONRA izgaraya oturtuluyor: onbellek
+    # isabetini artiriyor (haritayi birkac piksel kaydiran kullanici ayni
+    # sorguyu tetiklemesin) ama plan siniri ham istege gore uygulandi.
+    query_bbox = snap_bbox_outward(parsed_bbox) if parsed_bbox else None
+
     # 2. Consult Search Policy
     if parsed_bbox is not None:
         # Acik bbox varken politika motorunun mod secmesine gerek yok:
@@ -179,7 +189,7 @@ async def search_places(
     # We cache based on effective params + current overrides version
     cache_key = build_cache_key(
         lat, lon, eff_radius, type, limit, ref_lat, ref_lon, eff_mode, ov_ver,
-        bbox=parsed_bbox,
+        bbox=query_bbox,
     )
     cached = cache.get(cache_key)
     if cached:
@@ -223,7 +233,7 @@ async def search_places(
                 ref_lat=ref_lat,
                 ref_lon=ref_lon,
                 db=db,
-                explicit_bbox=parsed_bbox
+                explicit_bbox=query_bbox
             )
             # If we found something, break
             if results:
@@ -293,4 +303,4 @@ async def report_incorrect_data(
     )
     db.add(new_report)
     await db.commit()
-    return {"success": True, "message": "Teşekkürler, raporunuz incelenecektir."}
+    return {"success": True, "message": "TeÅŸekkÃ¼rler, raporunuz incelenecektir."}
