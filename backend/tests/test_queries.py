@@ -41,12 +41,32 @@ async def db():
         delta_tags = {"name": "Delta Anaokulu", "amenity": "kindergarten"}
         bilinmeyen_tags = {"name": "Bilinmeyen", "building": "school"}
 
+        # Koordinatlar referans noktasindan (41.0, 29.0) iyi ayrilmis
+        # (>1 km farkli) mesafelerde, AMA kasitli olarak ID artan sirayla
+        # CAKISMAYACAK bir permutasyonda: en yakin node5, en uzak node1.
+        # Hepsi ayni noktada olsaydi (eski hal) ya da mesafeler ID sirasiyla
+        # ortusseydi, ref_distance testi "siralama hic calismiyor, sadece
+        # veritabaninin dogal donus sirasini goruyoruz" durumunu
+        # ayirt edemezdi -- olcerek dogruladim: bu sorgu icin ORDER BY'siz
+        # dogal donus sirasi ID artan (1,2,3,4,5) cikiyor, o yuzden dogru
+        # cevap onun TAM TERSI olacak sekilde kurdum (bkz. asagidaki test).
         rows = [
-            place_row_values(_element(1, alfa_tags), "factory", 70, None),
-            place_row_values(_element(2, beta_tags), "factory", 70, None),
-            place_row_values(_element(3, isimsiz_tags), "factory", 40, None),
-            place_row_values(_element(4, gama_tags), "office", 70, None),
-            place_row_values(_element(5, delta_tags), "kindergarten", 70, None),
+            place_row_values(
+                _element(1, alfa_tags, lat=41.20, lon=29.0), "factory", 70, None,
+            ),
+            place_row_values(
+                _element(2, beta_tags, lat=41.10, lon=29.0), "factory", 70, None,
+            ),
+            place_row_values(
+                _element(3, isimsiz_tags, lat=41.05, lon=29.0), "factory", 40, None,
+            ),
+            place_row_values(
+                _element(4, gama_tags, lat=41.01, lon=29.0), "office", 70, None,
+            ),
+            place_row_values(
+                _element(5, delta_tags, lat=41.00, lon=29.0),
+                "kindergarten", 70, None,
+            ),
             place_row_values(_element(6, bilinmeyen_tags), None, 40, None),
         ]
         await upsert_places(session, rows)
@@ -152,6 +172,17 @@ class TestSayfalama:
         assert total == 5
 
     async def test_python_siralamasinda_da_sayfalama_dogru(self, db):
+        # Review bulgusu: len==2 / kesisim-yok / total==5 tek basina
+        # "sayfalama global sirali kumeyi mi diliyor yoksa cek, sirasiz
+        # dilimle, sonra HER dilimi kendi icinde mi siraliyor" ayrimini
+        # yapamaz -- bozuk (dilim-sonra-sirala) yol da ayni uc kontrolu
+        # gecer. Once buyuk limit'le TUM sirali kumeyi tek seferde cekip
+        # sayfalarin o kumenin tam dilimlerine esit oldugunu kanitliyoruz.
+        full, _ = await fetch_places(
+            db, PlaceFilter(district_id=D, sort="lead_score", limit=100, offset=0)
+        )
+        full_ids = [r.id for r in full]
+
         page1, total = await fetch_places(
             db, PlaceFilter(district_id=D, sort="lead_score", limit=2, offset=0)
         )
@@ -159,6 +190,9 @@ class TestSayfalama:
             db, PlaceFilter(district_id=D, sort="lead_score", limit=2, offset=2)
         )
         assert len(page1) == 2
+        assert len(page2) == 2
+        assert [r.id for r in page1] == full_ids[0:2]
+        assert [r.id for r in page2] == full_ids[2:4]
         assert not (_ids(page1) & _ids(page2))
         assert total == 5
 
@@ -166,11 +200,21 @@ class TestSayfalama:
 @pytest.mark.asyncio
 class TestSiralama:
     async def test_contact_first_iletisimlileri_one_alir(self, db):
+        # Review bulgusu: yalnizca ilk/son elemani kontrol etmek, sort'un
+        # tamamen kaldirilmasi durumunda bile gecen bir test birakiyordu --
+        # bu sorgu icin ORDER BY'siz dogal donus sirasi [T,F,F,T,F], ilk
+        # eleman rastlantiyla True ve son eleman rastlantiyla False. Tum
+        # sirayi -- ve ID'leri, tesadufen dogru boolean dizisini ama yanlis
+        # kayitlari donen bir kirilmayi da yakalamak icin -- karsilastirmak,
+        # dogal siranin ne oldugundan bagimsiz olarak ayirt edici: bu kesin
+        # beklenen dizi disinda hicbir sonuc (dogal sira dahil) testi gecmez.
         rows, _ = await fetch_places(
             db, PlaceFilter(district_id=D, sort="contact_first")
         )
-        assert rows[0].has_contact is True
-        assert rows[-1].has_contact is False
+        assert [r.has_contact for r in rows] == [True, True, False, False, False]
+        assert [r.id for r in rows] == [
+            "osm:node:1", "osm:node:4", "osm:node:2", "osm:node:5", "osm:node:3",
+        ]
 
     async def test_name_alfabetik(self, db):
         rows, _ = await fetch_places(
@@ -185,10 +229,20 @@ class TestSiralama:
         assert skorlar == sorted(skorlar, reverse=True)
 
     async def test_ref_distance_yakindan_uzaga(self, db):
+        # Review bulgusu: fixture'daki butun kayitlar ayni noktadaydi, yani
+        # her mesafe 0 ve her siralama (dogru/ters/rastgele) esit derecede
+        # "gecerdi" -- _haversine_m hicbir yerde gercekten sinanmiyordu.
+        # Fixture artik referans noktasindan iyi ayrilmis (>1 km) mesafelerde,
+        # en yakin node5 en uzak node1 olacak sekilde (ID artan sirasinin
+        # TAM TERSI -- bu sorgunun ORDER BY'siz dogal donus sirasi ID artan
+        # oldugu icin, siralamanin hic calismadigi bir kirilma bu tam ters
+        # diziyle rastlantisal olarak ortusemez).
         rows, _ = await fetch_places(db, PlaceFilter(
             district_id=D, sort="ref_distance", ref_lat=41.0, ref_lon=29.0
         ))
-        assert len(rows) == 5  # hepsi ayni noktada; kirilmadan donmeli
+        assert [r.id for r in rows] == [
+            "osm:node:5", "osm:node:4", "osm:node:3", "osm:node:2", "osm:node:1",
+        ]
 
     async def test_gecersiz_siralama_reddedilir(self, db):
         with pytest.raises(ValueError):
@@ -243,6 +297,17 @@ class TestLeadScore:
         yuksek_guven = lead_score(self._row(confidence=90))
         dusuk_guven = lead_score(self._row(confidence=20))
         assert yuksek_guven > dusuk_guven
+
+    def test_agirliklar_kesin_deger(self):
+        # Review bulgusu: yukaridaki testler yalnizca "artiyor mu" diye
+        # bakiyor -- toplami <=100 kalan herhangi bir agirlik seti (orn.
+        # uniform telefon/e-posta/website/isim/guven = 20/20/20/20/20)
+        # dorduyle de gecerdi. Karara baglanmis tam degerleri (telefon 35,
+        # guven skoru x0.20) burada kilitliyoruz: isim/e-posta/website
+        # katkisi olmayan bir satirda skor tam olarak 35 + round(guven*0.20)
+        # olmali.
+        row = self._row(phone="111", name=None, email=None, website=None, confidence=70)
+        assert lead_score(row) == 35 + round(70 * 0.20)
 
 
 @pytest.mark.asyncio
