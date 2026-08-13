@@ -31,6 +31,22 @@ Aynı zoom seviyesinde kuzey-güney panlandığında haversine enlemle değişti
 `radius` birkaç metre kayıyor, anahtar değişiyor, 12–24 saatlik TTL işlevsiz
 kalıyor. Her pan = 1 kota birimi + 1–2 Overpass sorgusu.
 
+### Bu teşhisin bir kısmı sonradan giderildi
+
+Bu spec yazıldıktan sonra `190a158 perf(search): onbellek anahtarini izgaraya
+oturt` indi: Next tarafı önbellek anahtarı artık backend'le aynı 0.01°
+ızgaraya oturtulmuş kutudan üretiliyor, aynı hücreye düşen panlar önbelleği
+paylaşıyor. Commit'in doğrulaması: *pan 1 MISS, pan 2 HIT, pan 3 HIT*.
+
+Yani "önbellek hiç isabet etmiyor" artık doğru değil ve bu tasarımın
+gerekçesi daralıyor — ama **ortadan kalkmıyor**, iki sebeple:
+
+1. Izgara isabet oranını iyileştiriyor; ilçe mimarisi sorguyu **sıfırlıyor**.
+   Izgarada yeni bir hücreye her geçiş hâlâ bir Overpass turu; ilçede
+   ingest'ten sonra hiç tur yok.
+2. Izgara "bir ilçedeki bütün fabrika, okul, anaokulu vs." isteğini hiç
+   karşılamıyor — o istek tür başına değil ilçe başına veri gerektiriyor.
+
 ## Çözümün ekseni
 
 Anahtar uzayını *sürekli* (sınırsız bbox × yarıçap) olmaktan çıkarıp *ayrık* ve
@@ -434,7 +450,7 @@ kendi başına doğrulanabiliyor:
 
 | # | Aşama | Bitince neyi doğrulayabiliriz |
 |---|---|---|
-| 1 | Taksonomi düzeltmesi (10 tür, `classify.py` ulaşılamayan dal) | `test_classify_university.py` yeşil; ingest doğru tür atayabilir |
+| 1 | ✅ **TAMAMLANDI** (`290d098`) — taksonomi düzeltmesi (10 tür) | `test_university_taxonomy.py` yeşil; ingest doğru tür atayabilir |
 | 2 | `fetch_districts.py` + `districts.geojson` + `app/districts.py` | 80 ilçe geldi mi, nokta→ilçe testi doğru mu |
 | 3 | Tablolar + `app/store.py` + `app/ingest.py` | Tek ilçe CLI ile çekilebiliyor, idempotent |
 | 4 | `app/queries.py` + `app/routers/districts.py` | Filtreler curl ile doğrulanabiliyor, Overpass'e gidilmiyor |
