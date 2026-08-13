@@ -8,7 +8,9 @@ from slowapi.util import get_remote_address
 from app import __version__
 from app.database import init_db
 from app.middleware import MetricsMiddleware
-from app.routers import account, admin, export, health, metrics, presets, search
+from app.routers import (
+    account, admin, districts, export, health, metrics, presets, search
+)
 
 
 # Rate limiter setup (IP-based)
@@ -60,6 +62,8 @@ app.include_router(search.router, prefix="/api", tags=["search"])
 app.include_router(export.router)
 # account.router kendi /api prefix'ini tasiyor (export gibi)
 app.include_router(account.router)
+# districts.router kendi /api/districts prefix'ini tasiyor
+app.include_router(districts.router)
 app.include_router(presets.router, prefix="/api", tags=["presets"])
 app.include_router(admin.router)
 app.include_router(metrics.router)

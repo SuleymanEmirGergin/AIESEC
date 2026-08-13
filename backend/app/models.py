@@ -397,3 +397,74 @@ class PresetResponse(BaseModel):
     notes: str
     type_labels_tr: Dict[str, str]
     type_groups_tr: List[Dict[str, Any]]
+
+
+# --- Ilce secimli yerel arama -----------------------------------------
+
+
+class DistrictMeta(BaseModel):
+    """Bir ilcenin geometrisiz metadata'si (secici listesi icin)."""
+
+    id: str
+    name: str
+    province: str
+    province_plate: str
+    bbox: List[float] = Field(..., description="(south, west, north, east)")
+    center: List[float] = Field(..., description="(lat, lon)")
+    # Ingest durumu: hic cekilmemis ilce icin None. Arayuz talep uzerine
+    # ingest'i ve tazelik uyarisini buna bakarak gosteriyor.
+    fetched_at: Optional[datetime] = None
+    place_count: Optional[int] = None
+    status: Optional[str] = None
+
+
+class DistrictPlace(BaseModel):
+    """Yerel veritabanindan donen POI."""
+
+    id: str
+    name: Optional[str] = None
+    place_type: Optional[str] = None
+    subtype: Optional[str] = None
+    lat: float
+    lon: float
+    address: Optional[str] = None
+    confidence: int = 0
+    has_contact: bool = False
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    website: Optional[str] = None
+    # Sadece sort=lead_score istendiginde doluyor; diger siralamalarda
+    # hesaplanmasi bosuna is olurdu.
+    lead_score: Optional[int] = None
+
+    model_config = {"from_attributes": True}
+
+
+class DistrictPlacesResponse(BaseModel):
+    """
+    Sayfalanmis sonuc.
+
+    total sayfa boyutundan bagimsiz: arayuz "412 sonuctan 1-50"
+    gosterebilsin.
+    """
+
+    district_id: str
+    data: List[DistrictPlace]
+    total: int
+    limit: int
+    offset: int
+
+
+class DistrictSummaryResponse(BaseModel):
+    """
+    "Bu ilcede ne var?" sorusunun tek istekli cevabi; tur chip'lerindeki
+    sayilari besliyor.
+    """
+
+    district_id: str
+    name: str
+    counts: Dict[str, int]
+    total: int
+    fetched_at: Optional[datetime] = None
+    place_count: Optional[int] = None
+    status: Optional[str] = None
