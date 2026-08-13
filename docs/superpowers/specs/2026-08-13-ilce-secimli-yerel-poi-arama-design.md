@@ -83,6 +83,12 @@ Bu illerin dışında hiçbir koşulda Overpass sorgusu atılmaz.
 `tr-44-battalgazi`. Sayılar `fetch_districts.py` tarafından OSM'den doğrulanır;
 uyuşmazlık olursa script hata verir (sessizce eksik veri üretmez).
 
+Merkez ilçeler OSM'de bileşik adla geçiyor ("Edirne Merkez"), o yüzden
+kimlikleri `tr-22-edirne-merkez` ve `tr-39-kirklareli-merkez`. Bu tasarım
+başta "ad `Merkez` ise il slug'ı kullan" diyordu; gerçek veri o kuralı hiç
+tetiklemedi ve üretilen kimlikler daha bilgilendirici çıktı (merkez ilçeyi
+ilin kendisinden ayırt ediyor). Gerçek veri esas alındı.
+
 ## Ön koşul: taksonomi 10 türe çıkıyor
 
 Mevcut kodda üniversiteler iki bağımsız hatadan dolayı hiç görünmüyor. Yeni panel

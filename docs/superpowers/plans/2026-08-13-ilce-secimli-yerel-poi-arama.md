@@ -15,7 +15,7 @@
 - **Kapsam:** yalnızca İstanbul (plaka 34), Edirne (22), Tekirdağ (59), Kırklareli (39), Malatya (44) — 80 ilçe. Bu illerin dışında hiçbir koşulda Overpass sorgusu atılmaz.
 - **Tampon:** `DISTRICT_BUFFER_M=2000` (env, varsayılan 2000).
 - **10 tür:** `factory`, `office`, `workshop`, `kindergarten`, `primary_school`, `middle_school`, `high_school`, `private_school`, `college_keyword`, `college_university`.
-- **İlçe kimliği:** `tr-{plaka}-{slug}`. Ad `Merkez` ise il slug'ı kullanılır (`tr-39-kirklareli`).
+- **İlçe kimliği:** `tr-{plaka}-{slug}` — `tr-34-kadikoy`, `tr-22-kesan`. Merkez ilçeler OSM'de bileşik adla etiketli ("Edirne Merkez", "Kırklareli Merkez"), dolayısıyla kimlikleri `tr-22-edirne-merkez` ve `tr-39-kirklareli-merkez`. **Bu gerçek veri esastır.** `district_id`'deki çıplak `"merkez"` dalı bu veri setinde hiç tetiklenmiyor (ölü kod); OSM etiketlemesi değişirse devreye girer diye duruyor. Kimlikler `districts.geojson`'dan okunur, asla elle türetilmez.
 - **Kod yorumları ASCII Türkçe** (mevcut desen: `classify.py`, `models.py`). Kullanıcıya görünen metinler tam Türkçe diakritikle (`Atölye`, `İlkokul`).
 - **Commit formatı:** `<type>: <description>` — `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`. Mesaj gövdesi ASCII.
 - **Dosya boyutu:** 200-400 satır tipik, 800 maksimum. Fonksiyonlar <50 satır.
