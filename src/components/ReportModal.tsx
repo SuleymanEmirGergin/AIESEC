@@ -32,6 +32,8 @@ export default function ReportModal({ place, isOpen, onClose, onSuccess }: Repor
       currentType: place.type,
       correctedType,
       notes: notes.trim() || undefined,
+      lat: place.coordinates.lat,
+      lon: place.coordinates.lng,
     };
 
     try {

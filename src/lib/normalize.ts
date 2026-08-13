@@ -28,5 +28,7 @@ export function normalizeOverpassElement(element: any, type: PlaceType): Place {
       lng: Number(lng),
     },
     address: addressParts.join(", ") || "Adres bilgisi yok",
+    // CSV export'u telefon/website/adres kolonlarini bu etiketlerden uretiyor.
+    tags,
   };
 }

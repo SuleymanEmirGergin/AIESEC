@@ -62,13 +62,35 @@ export async function fetchPresets(options?: { signal?: AbortSignal }): Promise<
   return response.json();
 }
 
-export async function exportLeads(ids: string[]): Promise<Blob> {
+export interface ExportContext {
+  /** Aramanin kategorisi; CSV dosya adinda ve export kaydinda kullaniliyor. */
+  type: string;
+  radius?: number;
+  center?: { lat: number; lon?: number; lng?: number };
+}
+
+/**
+ * Secili kayitlari CSV olarak disa aktarir.
+ *
+ * Backend CSV'yi kayitlarin kendisinden urettigi icin ID degil tam Place
+ * nesneleri gonderiliyor. Boylece export, arama cache'inin hala duruyor
+ * olmasina bagimli olmuyor.
+ */
+export async function exportLeads(
+  places: Place[],
+  context: ExportContext
+): Promise<Blob> {
   const response = await fetchWithAuth("/api/export", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ ids }),
+    body: JSON.stringify({
+      items: places,
+      type: context.type,
+      radius: context.radius ?? 0,
+      center: context.center ?? null,
+    }),
   });
 
   return response.blob();

@@ -20,6 +20,11 @@ export interface Place {
   address: string;
   distance_m?: number; // meters
   confidence_score?: number; // 0.0 to 1.0
+  /**
+   * Ham OSM etiketleri. CSV export'unda telefon/website/adres
+   * sutunlari buradan uretiliyor; atilirsa export bos kolonlar dondurur.
+   */
+  tags?: Record<string, string>;
 }
 
 export interface SearchParams {
@@ -45,6 +50,9 @@ export interface ReportData {
   currentType: PlaceType;
   correctedType: PlaceType;
   notes?: string;
+  /** Backend raporu konumla birlikte kaydediyor; ikisi de zorunlu. */
+  lat: number;
+  lon: number;
 }
 
 export type ReportStatus = "open" | "resolved" | "ignored";
