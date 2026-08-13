@@ -10,6 +10,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@react-leaflet/core": "^2.1.0",
     "@types/ioredis": "^5.0.0",
     "ioredis": "^5.9.2",
     "leaflet": "^1.9.4",
