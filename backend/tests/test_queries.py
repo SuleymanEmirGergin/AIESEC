@@ -10,8 +10,8 @@ from sqlalchemy import select
 
 from app.database import AsyncSessionLocal, PlaceDistrict, PlaceRow, init_db
 from app.queries import (
-    PlaceFilter,
     VALID_SORTS,
+    PlaceFilter,
     count_by_type,
     fetch_places,
     lead_score,
@@ -32,13 +32,22 @@ async def db():
     """Bilinen bir veri kumesi kur: 6 kayit, 2 ilce."""
     await init_db()
     async with AsyncSessionLocal() as session:
+        alfa_tags = {"name": "Alfa Fabrika", "man_made": "works", "phone": "111"}
+        beta_tags = {"name": "Beta Fabrika", "man_made": "works"}
+        isimsiz_tags = {"man_made": "works"}
+        gama_tags = {
+            "name": "Gama Ofis", "office": "company", "website": "https://g.com",
+        }
+        delta_tags = {"name": "Delta Anaokulu", "amenity": "kindergarten"}
+        bilinmeyen_tags = {"name": "Bilinmeyen", "building": "school"}
+
         rows = [
-            place_row_values(_element(1, {"name": "Alfa Fabrika", "man_made": "works", "phone": "111"}), "factory", 70, None),
-            place_row_values(_element(2, {"name": "Beta Fabrika", "man_made": "works"}), "factory", 70, None),
-            place_row_values(_element(3, {"man_made": "works"}), "factory", 40, None),
-            place_row_values(_element(4, {"name": "Gama Ofis", "office": "company", "website": "https://g.com"}), "office", 70, None),
-            place_row_values(_element(5, {"name": "Delta Anaokulu", "amenity": "kindergarten"}), "kindergarten", 70, None),
-            place_row_values(_element(6, {"name": "Bilinmeyen", "building": "school"}), None, 40, None),
+            place_row_values(_element(1, alfa_tags), "factory", 70, None),
+            place_row_values(_element(2, beta_tags), "factory", 70, None),
+            place_row_values(_element(3, isimsiz_tags), "factory", 40, None),
+            place_row_values(_element(4, gama_tags), "office", 70, None),
+            place_row_values(_element(5, delta_tags), "kindergarten", 70, None),
+            place_row_values(_element(6, bilinmeyen_tags), None, 40, None),
         ]
         await upsert_places(session, rows)
         await replace_memberships(session, D, [
@@ -196,6 +205,19 @@ def test_gecerli_siralamalar():
     }
 
 
+def test_ref_distance_referans_noktasi_yoksa_liste_degismez():
+    # Karar (spec): ref_lat/ref_lon verilmediginde yanlis ama kesin bir
+    # sira uretmek yerine kayitlar oldugu gibi doner. fetch_places'in
+    # ref_distance testi her zaman referans noktasi veriyor, bu dali hic
+    # calistirmiyor -- sort_in_python'u dogrudan sinamak gerekiyor.
+    rows = [
+        PlaceRow(id="osm:node:8", lat=40.9, lon=28.9),
+        PlaceRow(id="osm:node:9", lat=41.1, lon=29.1),
+    ]
+    f = PlaceFilter(district_id=D, sort="ref_distance")
+    assert sort_in_python(rows, f) is rows
+
+
 class TestLeadScore:
     def _row(self, **kwargs) -> PlaceRow:
         defaults = dict(
@@ -208,7 +230,8 @@ class TestLeadScore:
 
     def test_skor_araligi(self):
         assert 0 <= lead_score(self._row()) <= 100
-        assert 0 <= lead_score(self._row(phone="111", email="a@b.com", website="https://x")) <= 100
+        dolu = self._row(phone="111", email="a@b.com", website="https://x")
+        assert 0 <= lead_score(dolu) <= 100
 
     def test_telefon_skoru_yukseltir(self):
         assert lead_score(self._row(phone="111")) > lead_score(self._row())
@@ -217,7 +240,9 @@ class TestLeadScore:
         assert lead_score(self._row(name="Alfa")) > lead_score(self._row(name=None))
 
     def test_guven_skoru_etkiler(self):
-        assert lead_score(self._row(confidence=90)) > lead_score(self._row(confidence=20))
+        yuksek_guven = lead_score(self._row(confidence=90))
+        dusuk_guven = lead_score(self._row(confidence=20))
+        assert yuksek_guven > dusuk_guven
 
 
 @pytest.mark.asyncio
