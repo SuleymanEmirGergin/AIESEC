@@ -62,10 +62,13 @@ export default function ExportToolbar({
         </button>
       </div>
 
-      {selectedCount > 500 && (
+      {selectedCount > 1000 && (
         <div className="mt-4 p-4 bg-rose-50 dark:bg-rose-900/20 border-2 border-rose-100 dark:border-rose-900/40 rounded-2xl flex items-center gap-3 text-rose-600 dark:text-rose-400">
           <div className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-          <p className="text-xs font-bold uppercase tracking-tight">Dikkat: 500 öğe sınırını aştınız. Sadece ilk 500 öğe dışa aktarılacaktır.</p>
+          {/* Sunucu 1000 ustunu reddediyor (sessizce kirpmiyor); uyari bunu yansitiyor. */}
+          <p className="text-xs font-bold uppercase tracking-tight">
+            Dikkat: 1000 kayıt sınırını aştınız. Dışa aktarım reddedilecek, lütfen seçimi azaltın.
+          </p>
         </div>
       )}
     </div>
