@@ -27,42 +27,75 @@ class OverpassPermanentError(OverpassError):
     pass
 
 
+# Bank suresi ust uste hatalarda katlanarak uzuyor: base, 2*base, 4*base...
+# Base kasten kisa. Tek bir zaman asimi calisan aynayi dakikalarca yoldan
+# cikarmamali; buna karsilik hic cevap vermeyen ayna birkac turda tavana
+# dayanip yoldan cekilmeli. Ceza suresi hatanin *tekrarina* bagli, tek bir
+# hataya degil.
+COOLDOWN_BASE_SEC = int(os.getenv("OVERPASS_COOLDOWN_BASE", "15"))
+COOLDOWN_MAX_SEC = int(os.getenv("OVERPASS_COOLDOWN_MAX", "300"))
+
+# Bir kez calismis ayna kac ust uste hataya kadar ayricalikli sayilir.
+# Sinir olmasaydi kalici olarak olen eski-iyi bir ayna, saglam yeni bir
+# aynayi sonsuza dek bloklardi.
+PROVEN_FAIL_LIMIT = int(os.getenv("OVERPASS_PROVEN_FAIL_LIMIT", "3"))
+
+
 class OverpassEndpoint:
     """State for a single Overpass mirror endpoint."""
 
     def __init__(self, url: str):
         self.url = url
-        self.fail_count = 0
+        # Ust uste basarisizlik sayaci. Yalnizca basari sifirliyor; bankin
+        # dolmasi sifirlamiyor. Aksi halde hic calismayan bir ayna her
+        # turda ayni kisa cezayi alir ve asla yoldan cekilmezdi.
+        self.fail_streak = 0
         self.cooldown_until: Optional[datetime] = None
+        # Bu aynanin daha once gercekten calistigina dair kanit; secimde
+        # hic denenmemis aynalara karsi onceligi bundan geliyor.
+        self.last_success: Optional[datetime] = None
 
-    def is_healthy(self) -> bool:
-        """Check if endpoint is healthy or cooldown expired."""
+    def is_healthy(self, now: Optional[datetime] = None) -> bool:
+        """
+        Bank suresi dolmus mu?
+
+        Kasten yan etkisiz: durumu burada sifirlamak, "hic cevap vermeyen
+        ayna" ile "bir kez takilan ayna" arasindaki farki siliyordu.
+        """
         if not self.cooldown_until:
             return True
-        if datetime.now() > self.cooldown_until:
-            self.fail_count = 0
-            self.cooldown_until = None
-            return True
-        return False
+        return (now or datetime.now()) > self.cooldown_until
 
-    def mark_failure(self, max_fails: int = 1, cooldown_sec: int = 60):
+    def cooldown_ends(self, now: Optional[datetime] = None) -> datetime:
+        """Bankin dolacagi an; bankta degilse su an."""
+        return self.cooldown_until or (now or datetime.now())
+
+    def is_proven(self) -> bool:
         """
-        Register a failure and trigger cooldown if threshold met.
+        Bu ayna gercekten calisti mi ve hala guvenilir mi?
 
-        max_fails=1 (eskiden 2): basarisiz olan aynayi hemen devre disi
-        birak. Onceki davranista ayni yavas ayna bir kez daha deneniyordu;
-        olcumde bu tek basina 60 sn israf ediyordu (deneme 1 ve 2 ayni
-        endpoint'e gidiyordu). Elimizde birden fazla ayna varken dogru
-        hamle beklemek degil digerine gecmek.
+        Secimde saglikten once bakilan olcut bu: hic cevap vermemis bir
+        aynanin banki dolmus olmasi, onu calistigi bilinen bir aynadan
+        daha iyi bir aday yapmaz.
         """
-        self.fail_count += 1
-        if self.fail_count >= max_fails:
-            self.cooldown_until = datetime.now() + timedelta(seconds=cooldown_sec)
+        return self.last_success is not None and self.fail_streak < PROVEN_FAIL_LIMIT
 
-    def mark_success(self):
-        """Reset failure counter and clear cooldown."""
-        self.fail_count = 0
+    def mark_failure(self, now: Optional[datetime] = None):
+        """Basarisizligi kaydet ve katlanan bir bank suresi uygula."""
+        now = now or datetime.now()
+        self.fail_streak += 1
+        # Us tavanla sinirli: seri gunlerce suren bir ayna icin 2**streak
+        # gereksiz buyuk bir sayi uretirdi. Tavana ulasmak icin 16 kat
+        # fazlasiyla yeter.
+        shift = min(self.fail_streak - 1, 16)
+        seconds = min(COOLDOWN_BASE_SEC * (2**shift), COOLDOWN_MAX_SEC)
+        self.cooldown_until = now + timedelta(seconds=seconds)
+
+    def mark_success(self, now: Optional[datetime] = None):
+        """Seriyi sifirla, banki kaldir, basari zamanini isaretle."""
+        self.fail_streak = 0
         self.cooldown_until = None
+        self.last_success = now or datetime.now()
 
 
 class OverpassClient:
@@ -85,13 +118,47 @@ class OverpassClient:
             "OVERPASS_USER_AGENT", "nearby-place-finder/1.0 (backend)"
         )
 
-    def _get_best_endpoint(self) -> OverpassEndpoint:
-        """Return first healthy endpoint, or first endpoint as fallback."""
+    def _select_endpoint(
+        self, tried: set, now: Optional[datetime] = None
+    ) -> OverpassEndpoint:
+        """
+        Bu deneme icin en umut verici aynayi sec.
+
+        Sira:
+        1. Bu sorguda henuz denenmemis olanlar. Bir sorgunun denemeleri
+           farkli aynalara dagilmali; ayni kapiyi tekrar calmak, ayakta
+           bir alternatif varsa onu hic gormemek demek.
+        2. Aralarinda KANITLI olanlar (bir kez calismis ve ust uste az
+           hata almis) once gelir -- SAGLIK degil kanit.
+
+        (2) neden onemli: eski kod "banki dolmus ilk ayna"yi seciyordu.
+        Hic cevap vermemis aynalarin da banki doluyor, dolayisiyla
+        calisan ayna 15 sn'ligine banklandigi anda onlar one geciyordu.
+        Uretimde tam olarak bu oldu: ust uste ingest'lerde istekler olu
+        aynalara dagilip ConnectError ile 500 donuyordu. Artik kanitli
+        ayna, bankta olsa bile her sorgunun ILK denemesini aliyor.
+
+        (1) neden (2)'nin onunde: kanitli aynaya tum denemeler boyunca
+        yapismak olculdu ve pahaliydi -- ayna 504 donerken tek bir
+        ingest sorgusu 325 sn surdu ve hicbir alternatif denenmedi.
+        Ilk deneme en iyi adaya, kalanlar kesfe gidiyor.
+
+        Kanit sonsuza kadar surmuyor: ust uste PROVEN_FAIL_LIMIT hata
+        alan ayna ayricaligini kaybediyor, boylece kalici olarak olen
+        eski-iyi bir ayna yeni bir aynayi bloklamiyor.
+        """
+        now = now or datetime.now()
         with self._lock:
-            for ep in self.endpoints:
-                if ep.is_healthy():
-                    return ep
-            return self.endpoints[0]
+            return min(
+                enumerate(self.endpoints),
+                key=lambda t: (
+                    t[1].url in tried,
+                    not t[1].is_proven(),
+                    t[1].fail_streak,
+                    t[1].cooldown_ends(now),
+                    t[0],
+                ),
+            )[1]
 
     async def query(self, query_text: str, debug: bool = False) -> Dict[str, Any]:
         """
@@ -107,6 +174,8 @@ class OverpassClient:
         #
         # Olculen en kotu durum: 5 x 60 sn + 24 sn backoff = ~324 sn
         # Yeni en kotu durum:    3 x 60 sn +  3 sn backoff = ~183 sn
+        tried: set = set()
+
         @retry(
             stop=stop_after_attempt(3),
             wait=wait_exponential(multiplier=1, min=1, max=4),
@@ -114,7 +183,14 @@ class OverpassClient:
             reraise=True
         )
         async def _do_query():
-            endpoint = self._get_best_endpoint()
+            endpoint = self._select_endpoint(tried)
+            tried.add(endpoint.url)
+
+            # Bank suresi burada BEKLENMIYOR: denemeler arasi tempoyu
+            # zaten tenacity'nin ustel beklemesi veriyor. Cooldown artik
+            # bir kapi degil bir siralama sinyali - "bu aynayi en son
+            # tercih et" demenin yolu. Burada ayrica uyumak hem sorguya
+            # hem test takimina olculebilir sure ekliyordu.
             try:
                 async with httpx.AsyncClient(timeout=self.timeout) as client:
                     response = await client.post(
@@ -132,24 +208,48 @@ class OverpassClient:
                 if response.status_code in [500, 502, 503, 504]:
                     raise OverpassTransientError(f"HTTP {response.status_code}")
                
+                # 4xx (429 disinda) sorgunun ya da basliklarimizin sorunu:
+                # ornegin User-Agent eksikse Overpass 406 donuyor. Bunu
+                # aynanin hatasi saymak, kendi hatamiz yuzunden tum
+                # aynalari sirayla banka gondermek demekti.
+                if 400 <= response.status_code < 500:
+                    raise OverpassPermanentError(f"HTTP {response.status_code}")
+
                 response.raise_for_status()
                 data = response.json()
-               
+
                 if "remark" in data or "message" in data:
                     msg = data.get("remark") or data.get("message")
                     if any(kw in msg.lower() for kw in ["too many", "load", "runtime error"]):
                         raise OverpassTransientError(f"Overpass Remark Limit")
                     raise OverpassPermanentError(msg)
-               
+
                 endpoint.mark_success()
                 OVERPASS_REQUESTS_TOTAL.labels(status="success").inc()
                 if debug:
                     data["_debug"] = {"endpoint": endpoint.url}
                 return data
 
+            except OverpassPermanentError:
+                # Suc aynada degil bizde: banklamak yanlis hedefi cezalandirir
+                # ve bir sonraki istekte saglam aynayi elimizden alir.
+                OVERPASS_REQUESTS_TOTAL.labels(status="error").inc()
+                raise
+
             except Exception as e:
                 OVERPASS_REQUESTS_TOTAL.labels(status="error").inc()
                 endpoint.mark_failure()
+                # Hangi aynanin neden banklandigi gorunur olmali: bu bilgi
+                # olmadan "ingest 500 donuyor" ile "su ayna erisilemez"
+                # arasindaki mesafeyi kapatmak zor.
+                logger.warning(
+                    "Overpass ayna basarisiz: %s (%s: %s) - %s. hata, bank %s'e kadar",
+                    endpoint.url,
+                    type(e).__name__,
+                    e,
+                    endpoint.fail_streak,
+                    endpoint.cooldown_until,
+                )
                 raise e
 
         return await _do_query()
