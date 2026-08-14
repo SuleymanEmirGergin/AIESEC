@@ -55,3 +55,8 @@ venv/
 build_log.txt
 backend_response.json
 factory_search.json
+
+# Claude Code'un actigi gecici worktree'ler; her biri ayri bir calisma
+# kopyasi, repoya girmemeli. .claude altindaki digerleri (launch.json gibi)
+# bilerek takip disinda birakilmadi.
+.claude/worktrees/
