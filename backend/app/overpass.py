@@ -167,17 +167,21 @@ class OverpassClient:
         Returns:
             Dict containing OSM results and debug metadata
         """
-        # Deneme sayisi 5'ten 3'e indirildi ve bekleme suresi kisaltildi.
-        # Failover artik ilk basarisizlikta devreye girdigi icin 3 deneme
-        # 3 farkli aynaya karsilik geliyor; ayni aynayi tekrar denemek
-        # yerine siradakine geciliyor.
+        # Deneme butcesi ayna sayisindan BUYUK olmali: tum aynalari bir kez
+        # gezdikten sonra en iyi adaya geri donebilmek icin bir deneme daha
+        # gerekiyor. Sabit 3 denemeyle 4 aynali kurulumda kanitli ayna
+        # sorgu basina yalnizca tek sans aliyordu.
         #
-        # Olculen en kotu durum: 5 x 60 sn + 24 sn backoff = ~324 sn
-        # Yeni en kotu durum:    3 x 60 sn +  3 sn backoff = ~183 sn
+        # Olculdu: kumi yuk altinda 504 donuyor ama TEKRAR denendiginde
+        # geciyor. Yalnizca kumi yapilandirildiginda ayni ilce 4 sorgunun
+        # dordunde de once 504 alip retry'da basardi (59 kayit). Dort
+        # aynayla ayni ingest 500 donuyordu, cunku 2. ve 3. denemeler
+        # erisilemeyen aynalarda harcanip kumi'ye donulemiyordu.
+        attempts = max(3, len(self.endpoints) + 1)
         tried: set = set()
 
         @retry(
-            stop=stop_after_attempt(3),
+            stop=stop_after_attempt(attempts),
             wait=wait_exponential(multiplier=1, min=1, max=4),
             retry=retry_if_exception_type((OverpassTransientError, httpx.RequestError)),
             reraise=True

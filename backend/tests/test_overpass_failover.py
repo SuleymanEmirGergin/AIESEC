@@ -285,11 +285,57 @@ class TestQueryFailover:
         assert seen[0] == GOOD, f"ilk deneme olu aynaya gitti: {seen}"
 
     @pytest.mark.asyncio
+    async def test_olu_aynalari_gezdikten_sonra_kanitli_aynaya_donulur(
+        self, monkeypatch
+    ):
+        """
+        Uretimde olculen senaryo.
+
+        kumi yuk altinda 504 donuyor ama TEKRAR denendiginde geciyor.
+        Yalnizca kumi yapilandirildiginda ilce ingest'i basardi (her
+        sorgu once 504 alip retry'da gecti); dort aynayla ayni ingest
+        500 dondu, cunku 2. ve 3. denemeler erisilemeyen aynalarda
+        harcanip kanitli aynaya donulemedi.
+
+        Deneme butcesi ayna sayisindan buyuk olmali ki tur tamamlaninca
+        en iyi adaya geri donebilelim.
+        """
+        client = make_client([GOOD, DEAD1, DEAD2, DEAD3], monkeypatch)
+        good = client.endpoints[0]
+        good.mark_success(now=datetime.now())
+
+        seen = []
+
+        async def fake_post(self, url, **kwargs):
+            seen.append(url)
+            if url != GOOD:
+                raise httpx.ConnectError("baglanti reddedildi")
+            # Ilk temas 504, ikincisi geciyor.
+            if seen.count(GOOD) == 1:
+                return httpx.Response(
+                    504, text="gateway timeout", request=httpx.Request("POST", url)
+                )
+            return httpx.Response(
+                200, json={"elements": []}, request=httpx.Request("POST", url)
+            )
+
+        with patch.object(httpx.AsyncClient, "post", new=fake_post):
+            result = await client.query("[out:json];out count;")
+
+        assert result == {"elements": []}
+        assert seen[0] == GOOD
+        assert seen[-1] == GOOD, f"olu aynalardan sonra kanitli aynaya donulmedi: {seen}"
+
+    @pytest.mark.asyncio
     async def test_denemeler_farkli_aynalara_dagilir(self, monkeypatch):
         """
-        Hepsi basarisiz olsa bile denemeler ayni aynayi tekrarlamamali;
-        elimizde birden fazla ayna varken dogru hamle beklemek degil
-        digerine gecmek.
+        Hicbir ayna, digerlerinin tamami denenmeden ikinci kez
+        denenmemeli: elimizde baska ayna varken ayni kapiyi tekrar
+        calmak, ayakta bir alternatifi hic gormemek demek.
+
+        Tur tamamlandiktan SONRA tekrar var ve bu kasitli -- en iyi
+        adaya geri donusu test_olu_aynalari_gezdikten_sonra... sinamasi
+        kilitliyor.
         """
         client = make_client([DEAD1, DEAD2, DEAD3], monkeypatch)
         seen = []
@@ -302,4 +348,6 @@ class TestQueryFailover:
             with pytest.raises(httpx.ConnectError):
                 await client.query("[out:json];out count;")
 
-        assert len(seen) == len(set(seen)), f"ayni ayna tekrar denendi: {seen}"
+        tur = seen[: len(client.endpoints)]
+        assert len(tur) == len(set(tur)), f"tur tamamlanmadan tekrar denendi: {seen}"
+        assert set(tur) == {DEAD1, DEAD2, DEAD3}, f"bir ayna hic denenmedi: {seen}"
