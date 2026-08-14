@@ -1,4 +1,4 @@
-import type { PlaceType } from "./types";
+import type { Place, PlaceType } from "./types";
 
 /**
  * Ilce metadata'si ve poligonlarina erisim.
@@ -203,6 +203,33 @@ export function fetchDistrictSummary(
  * Backend'deki tr_fold ile ayni sinifta bir sorun; orada "İ".casefold()
  * birlesik nokta uretiyordu.
  */
+/**
+ * Ilce sorgusundan donen kaydi arama sonucu seklindeki `Place`e cevirir.
+ *
+ * Iki arama yolu var (haritadan bbox taramasi ve ilce bazli yerel sorgu)
+ * ama harita, sonuc listesi, kaydetme ve CSV disa aktarimi tek bir sekil
+ * biliyor. Cevrim burada, tipin sahibinin yaninda duruyor; her cagiranin
+ * kendi seklini uydurmasi ikisinin sessizce ayrismasi demekti.
+ *
+ * Iletisim alanlari `tags` icine yaziliyor cunku ContactLinks ve CSV
+ * uretici ham OSM etiket semasini okuyor.
+ */
+export function districtPlaceToPlace(place: DistrictPlace): Place {
+  const tags: Record<string, string> = {};
+  if (place.phone) tags.phone = place.phone;
+  if (place.email) tags.email = place.email;
+  if (place.website) tags.website = place.website;
+
+  return {
+    id: place.id,
+    name: place.name || "İsimsiz Yer",
+    type: (place.place_type ?? "factory") as PlaceType,
+    coordinates: { lat: place.lat, lng: place.lon },
+    address: place.address || "Adres bilgisi yok",
+    tags,
+  };
+}
+
 export function foldTr(text: string): string {
   return text
     .replace(/İ/g, "i")

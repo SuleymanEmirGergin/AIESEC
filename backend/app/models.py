@@ -388,6 +388,84 @@ class APIKeyAdminUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
+# --- Kayitli yerler ve listeler -------------------------------------------
+
+
+class PlaceListCreate(BaseModel):
+    """Yeni liste."""
+    name: str = Field(..., min_length=1, max_length=120)
+    note: Optional[str] = Field(None, max_length=500)
+
+
+class PlaceListUpdate(BaseModel):
+    """Liste adi/notu guncelleme. Gonderilmeyen alan degismez."""
+    name: Optional[str] = Field(None, min_length=1, max_length=120)
+    note: Optional[str] = Field(None, max_length=500)
+
+
+class PlaceListResponse(BaseModel):
+    id: str
+    name: str
+    note: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    created_by: Optional[str]
+    # Arayuz liste basina sayiyi ayri bir istekle almasin diye burada.
+    place_count: int = 0
+
+
+class SavedPlaceCreate(BaseModel):
+    """
+    Kaydedilecek yer.
+
+    Yerin tamami gonderiliyor, yalnizca id degil: kayit arama
+    onbelleginin hala duruyor olmasina bagimli olmamali.
+    """
+    place_id: str = Field(..., min_length=1, max_length=200)
+    name: Optional[str] = Field(None, max_length=300)
+    place_type: Optional[str] = Field(None, max_length=60)
+    lat: float = Field(..., ge=-90, le=90)
+    lon: float = Field(..., ge=-180, le=180)
+    address: Optional[str] = Field(None, max_length=500)
+    tags: Dict[str, Any] = Field(default_factory=dict)
+    note: Optional[str] = Field(None, max_length=1000)
+    list_id: Optional[str] = None
+
+
+class SavedPlaceUpdate(BaseModel):
+    """Not ekleme ya da baska bir listeye tasima."""
+    note: Optional[str] = Field(None, max_length=1000)
+    list_id: Optional[str] = None
+    # list_id=None "dosyalanmamisa tasi" demek olabilir; hangi alanin
+    # gercekten gonderildigini ayirmak icin exclude_unset kullaniliyor.
+
+
+class SavedPlaceResponse(BaseModel):
+    id: str
+    list_id: Optional[str]
+    place_id: str
+    name: Optional[str]
+    place_type: Optional[str]
+    lat: float
+    lon: float
+    address: Optional[str]
+    tags: Dict[str, Any]
+    note: Optional[str]
+    saved_by: Optional[str]
+    created_at: datetime
+
+
+class ExportHistoryItem(BaseModel):
+    """Gecmiste alinan bir CSV."""
+    id: int
+    created_at: datetime
+    type: str
+    item_count: int
+    center_lat: float
+    center_lon: float
+    radius: int
+
+
 class PresetResponse(BaseModel):
     """Radius presets and UI labels for client UI."""
     max_radius: int

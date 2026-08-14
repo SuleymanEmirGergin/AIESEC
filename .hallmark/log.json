@@ -1,5 +1,18 @@
 [
   {
+    "date": "2026-08-14",
+    "scope": "app",
+    "macrostructure": "Workbench (app-data) — yeni /kayitli yuzeyi",
+    "theme": "Cobalt",
+    "theme_axes": "cool-light / grotesk-sans / cool-electric-blue",
+    "genre": "modern-minimal",
+    "enrichment": "none",
+    "design_system": "design.md",
+    "nav": "AppHeader — paylasilan flush bordered bar + Harita/Kayitli gezinme",
+    "footer": "inline hairline status strip",
+    "brief": "Kalicilik bosluru kapatildi: bulunan yer hicbir yere kaydedilmiyordu. SavedPlace + PlaceList tablolari, /kayitli sayfasi, disa aktarim gecmisi, ilce secicinin baglanmasi."
+  },
+  {
     "date": "2026-08-13",
     "scope": "app",
     "macrostructure": "Map / Diagram (app-map) + Workbench (app-data)",

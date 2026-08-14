@@ -29,8 +29,21 @@ from app.main import app  # noqa: E402
 
 @pytest.fixture
 def api_key():
-    """Kota ve plan kisitina takilmayan bir test anahtari."""
+    """
+    Kota ve plan kisitina takilmayan bir test anahtari.
+
+    `id` bilerek veriliyor. Uretimde kimligi dogrulanmis her anahtar
+    veritabanindan gelir ve bir id'si vardir; kayitli yerler sahipligi
+    (`saved_places.api_key_id`) bu id uzerinden kuruluyor. Id'siz bir
+    cift, gercekte olmayan bir durumu taklit edip NOT NULL ihlaline
+    dusuyordu.
+
+    Satirin kendisi api_keys tablosuna yazilmiyor: SQLite yabanci anahtar
+    kontrolunu varsayilan olarak uygulamiyor, dolayisiyla ilgili
+    ForeignKey burada belgeleme gorevi goruyor.
+    """
     return APIKey(
+        id=1,
         name="test",
         key_hash="test-hash",
         daily_limit=10_000,

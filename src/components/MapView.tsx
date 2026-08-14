@@ -1,6 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+// DIKKAT: Bu listeye `MapContainer` EKLEMEYIN. 4.2.1'in MapContainer'i kurulum
+// muhafizini bayat bir closure degiskeninden okuyor; React 18 StrictMode ref'i
+// ikinci kez baglayinca ayni DOM dugumune ikinci bir harita kurmaya calisip
+// "Map container is already initialized" firlatiyor. Hata React'in hata
+// sinirina kadar cikip sayfa agacini yeniden kurduruyor ve secili kategori
+// sifirlaniyor. Yerine asagidaki StrictModeMapContainer kullanilir -
+// gerekcesi ve upstream (react-leaflet 5.0.0) duzeltmesi o dosyada.
 import { TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import MarkerClusterGroup from "react-leaflet-cluster";

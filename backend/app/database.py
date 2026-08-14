@@ -5,7 +5,7 @@ import datetime
 from typing import Optional, List
 from sqlalchemy import (
     Column, Integer, String, Float, DateTime, Boolean, JSON,
-    ForeignKey, Index, func, select, update
+    ForeignKey, Index, UniqueConstraint, func, select, update
 )
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -86,6 +86,69 @@ class ExportLog(Base):
     center_lat = Column(Float)
     center_lon = Column(Float)
     item_count = Column(Integer)
+
+class PlaceList(Base):
+    """
+    Gonullulerin olusturdugu adlandirilmis liste ("Kadikoy liseleri").
+
+    Sahiplik API anahtari uzerinden: ayni anahtari kullanan herkes ayni
+    listeleri goruyor. Uygulama anahtar girilmediginde sunucunun
+    anahtarina dusuyor, dolayisiyla varsayilan davranis "tum ekip ayni
+    listeleri paylasir" oluyor - urunun istedigi de bu.
+    """
+    __tablename__ = "place_lists"
+
+    id = Column(String, primary_key=True)  # uuid
+    api_key_id = Column(Integer, ForeignKey("api_keys.id"), index=True, nullable=False)
+    name = Column(String, nullable=False)
+    note = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(
+        DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow
+    )
+    # Kimin olusturdugu listede yaziyor: ekip donusken, devir teslim
+    # arayuzun isi (bkz. PRODUCT.md ilke 5).
+    created_by = Column(String, nullable=True)
+
+
+class SavedPlace(Base):
+    """
+    Kaydedilmis bir yer.
+
+    Yerin kendisi (ad, konum, etiketler) burada kopyalaniyor, yalnizca
+    OSM id'si degil. Sebep: kayit, arama onbelleginin ya da ingest
+    tablosunun hala o kaydi tutuyor olmasina bagimli olmamali. Gonullu
+    "kaydettim" dediginde kaydettigi sey durmali.
+
+    `UniqueConstraint(api_key_id, place_id)`: bir yer takim basina bir kez
+    kaydedilir, listeler arasinda tasinir. Ayni okulun iki listede iki
+    farkli notla durmasi devir teslimi bozar - hangi not gecerli belli olmaz.
+    """
+    __tablename__ = "saved_places"
+
+    id = Column(String, primary_key=True)  # uuid
+    api_key_id = Column(Integer, ForeignKey("api_keys.id"), index=True, nullable=False)
+    # NULL = henuz bir listeye konmamis ("Dosyalanmamis").
+    list_id = Column(
+        String, ForeignKey("place_lists.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+
+    place_id = Column(String, nullable=False, index=True)  # osm:node:123
+    name = Column(String, nullable=True)
+    place_type = Column(String, nullable=True)
+    lat = Column(Float, nullable=False)
+    lon = Column(Float, nullable=False)
+    address = Column(String, nullable=True)
+    tags = Column(JSON, default=dict)
+
+    note = Column(String, nullable=True)
+    saved_by = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+
+    __table_args__ = (
+        UniqueConstraint("api_key_id", "place_id", name="uq_saved_place_per_key"),
+    )
+
 
 class GlobalState(Base):
     """Global system status like overrides last updated timestamp."""

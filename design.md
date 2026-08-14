@@ -28,12 +28,16 @@ sayfası değil.
 
 ## Macrostructure aileleri
 
-Bu projede pazarlama ya da içerik sayfası yok; üç route da uygulama sayfası.
+Bu projede pazarlama ya da içerik sayfası yok; dört route da uygulama sayfası.
 
 | Aile | Macrostructure | Sayfalar | Varyasyon düğmeleri |
 |---|---|---|---|
 | Harita yüzeyi | **19 · Map / Diagram** | `src/app/page.tsx` | kenar çubuğu yoğunluğu, sonuç satırı yoğunluğu |
-| Veri yüzeyi | **05 · Workbench** | `src/app/admin/page.tsx`, `src/app/admin/overrides/page.tsx` | tablo yoğunluğu, istatistik kartı sayısı |
+| Veri yüzeyi | **05 · Workbench** | `src/app/kayitli/page.tsx`, `src/app/admin/page.tsx`, `src/app/admin/overrides/page.tsx` | tablo yoğunluğu, sol ray varlığı |
+
+**Paylaşılan kabuk:** `src/components/AppHeader.tsx`. Logotype, gezinme ve
+erişim durumu tek yerde; yeni bir sayfa bunu import eder, kendi şeridini
+yazmaz.
 
 **Harita yüzeyi mantığı:** harita sayfayı örgütler; kenar çubuğu onun
 *lejantı*, export şeridi onun *tek CTA'sı*. Sayfanın kendi başlık hiyerarşisi
@@ -105,8 +109,19 @@ numaraları ve koordinatlar alt alta hizalanmalı — bu okunabilirlik, süs de�
 
 - Uygulama sayfaları **enrichment kullanmaz** — işlevi sayfa taşır.
   Hero illüstrasyonu, demo videosu, soyut arka plan yok.
-- Sayfa başına **tek koyu bant** (grafit). Ana sayfada bu export şeridi.
+- Sayfa başına **tek koyu bant** (grafit). Ana sayfada bu export şeridi,
+  `/kayitli`'da dışa aktarım geçmişi şeridi.
 - Arka plan dokusu / deseni / mesh blob yok.
+
+## Boş durumlar
+
+`PRODUCT.md` ilke 2 gereği her boş durum **öğretir**. Üç parçası var:
+sessiz bir ikon, ne olduğunu söyleyen bir başlık, ne yapılacağını söyleyen
+bir cümle — ve mümkünse oraya götüren bir bağlantı. "Kayıt yok" tek başına
+yetersizdir; dönüşken ekipte ilk karşılaşma en sık karşılaşmadır.
+
+Boş durum **yanıltmamalı**: sonuç gelmemesinin sebebi arama değil eksik
+veriyse bunu söyler (bkz. ilçe seçildiğinde "veri henüz çekilmemiş").
 
 ## Sayfaların paylaşması ZORUNLU olanlar
 
