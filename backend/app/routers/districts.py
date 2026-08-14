@@ -1,36 +1,38 @@
 """
-Ilce secimli yerel POI arama.
+Ilce endpoint'leri.
 
-Bu router'daki hicbir yol Overpass'e gitmiyor: veri `ingest.py` ile bir
-kez cekiliyor, buradaki sorgular yerel SQLite uzerinde calisiyor. Ag
-olmadan da cevap veriyor.
+Sorgu uclari (GET) tamamen yerel: districts.geojson + SQLite. Overpass'e
+yalnizca talep uzerine ingest (POST) gidiyor -- bu modulde Overpass'e
+giden TEK yol trigger_ingest.
 
 Kimlik: sinir verisi (metadata + geojson) acik, cunku harita cizimi icin
 gerekli statik bir varlik ve kisisel veri icermiyor. POI donen iki uc
-`validate_api_key` kullaniyor - anahtari dogruluyor ama kota
-harcamiyor: bu sorgularin dis maliyeti sifir, kota saymak yanlis olurdu.
+(summary, places) `validate_api_key` kullaniyor -- anahtari dogruluyor
+ama kota harcamiyor: bu sorgularin dis maliyeti sifir, kota saymak
+yanlis olurdu. Ingest ucu tek istisna: gercekten Overpass'e gidiyor, bu
+yuzden kota harcayan `verify_api_key` kullaniyor.
 """
+
+import json
+import logging
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import validate_api_key
+from app.auth import validate_api_key, verify_api_key
 from app.database import APIKey, get_db
-from app.districts import all_districts, get_district, raw_geojson
-from app.models import (
-    DistrictMeta,
-    DistrictPlace,
-    DistrictPlacesResponse,
-    DistrictSummaryResponse,
+from app.districts import (
+    DEFAULT_BUFFER_M,
+    all_districts,
+    get_district,
+    raw_geojson,
 )
-from app.queries import (
-    VALID_SORTS,
-    PlaceFilter,
-    count_by_type,
-    fetch_places,
-    lead_score,
-)
+from app.ingest import FRESH_AFTER_DAYS, ingest_district
+from app.queries import ALL_TYPES, PlaceFilter, VALID_SORTS, count_by_type, fetch_places
 from app.store import get_ingest_state, ingest_states
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/districts", tags=["districts"])
 
@@ -41,51 +43,120 @@ METADATA_CACHE = "public, max-age=86400"
 GEOJSON_CACHE = "public, max-age=604800, immutable"
 
 
+def _require_district(district_id: str):
+    """
+    Ilceyi getir; kapsam disiysa 422.
+
+    Kapsam disi ilce icin Overpass'e hic gidilmiyor -- maliyet
+    tavaninin kilidi bu kontrol. Eskiden places ve summary'de ayri ayri
+    yazilmisti (ve ikisi de yanlislikla 404 donuyordu); tek kontrol
+    noktasina indirgenince bu tur bir sapma bir daha tek yerde onlenir.
+    """
+    district = get_district(district_id)
+    if district is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Kapsam disi veya bilinmeyen ilce: {district_id}. "
+                f"Kapsam: Istanbul, Edirne, Tekirdag, Kirklareli, Malatya."
+            ),
+        )
+    return district
+
+
+def _ingest_info(state) -> dict | None:
+    """Ingest durumunu arayuzun bekledigi ic ice sekle cevirir."""
+    if state is None:
+        return None
+
+    age = datetime.now(timezone.utc).replace(tzinfo=None) - state.fetched_at
+    return {
+        "fetched_at": state.fetched_at.isoformat(),
+        "place_count": state.place_count,
+        "status": state.status,
+        "age_days": age.days,
+        # Otomatik tazeleme yok; arayuz bu bayrakla hatirlatma gosteriyor.
+        # FRESH_AFTER_DAYS tek tanim: frontend kendi kopyasini tutmuyor.
+        "stale": age > timedelta(days=FRESH_AFTER_DAYS),
+    }
+
+
 def _parse_types(raw: str | None) -> tuple[str, ...]:
-    """`types=factory,office` -> ("factory", "office")"""
+    """
+    'factory,office' -> ('factory', 'office'). Bilinmeyen tur 422.
+
+    Sessizce yok saymak yerine reddediliyor: yazim hatasi yapan
+    kullanici bos sonuc gorup "bu ilcede yok" sanardi.
+    """
     if not raw:
         return ()
-    return tuple(t.strip() for t in raw.split(",") if t.strip())
+
+    requested = tuple(t.strip() for t in raw.split(",") if t.strip())
+    unknown = [t for t in requested if t not in ALL_TYPES]
+    if unknown:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Bilinmeyen tur: {', '.join(unknown)}. Gecerli: {', '.join(ALL_TYPES)}",
+        )
+    return requested
 
 
-@router.get("", response_model=list[DistrictMeta])
+def _to_client_place(row) -> dict:
+    """
+    PlaceRow'u arayuzun bekledigi sekle cevirir.
+
+    is_inside, fetch_places'in join'den tasidigi PlaceDistrict.is_inside
+    degeri (bkz. queries.py): include_buffer=true iken donen bir kaydin
+    kesin sinir mi tampon mu oldugunu bu deger olmadan ayirt edemeyiz.
+    """
+    return {
+        "id": row.id,
+        "name": row.name,
+        "type": row.place_type,
+        "lat": row.lat,
+        "lon": row.lon,
+        "address": row.address,
+        "phone": row.phone,
+        "email": row.email,
+        "website": row.website,
+        "confidence": row.confidence,
+        "has_contact": bool(row.has_contact),
+        "is_inside": bool(row.is_inside),
+        "tags": json.loads(row.tags_json or "{}"),
+    }
+
+
+@router.get("")
 async def list_districts(
-    response: Response,
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Ilce listesi (poligonsuz, ~8 KB).
-
-    Ingest durumu da doner: arayuz hangi ilcenin cekilmedigini ve
-    hangisinin verisinin eskidigini buradan biliyor.
-    """
+    response: Response, db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Kapsamdaki 80 ilcenin metadata'si (poligonsuz, ~8 KB)."""
     response.headers["Cache-Control"] = METADATA_CACHE
 
     states = await ingest_states(db)
-
-    return [
-        DistrictMeta(
-            id=d.id,
-            name=d.name,
-            province=d.province,
-            province_plate=d.province_plate,
-            bbox=list(d.bbox),
-            center=list(d.center),
-            fetched_at=(s.fetched_at if (s := states.get(d.id)) else None),
-            place_count=(s.place_count if s else None),
-            status=(s.status if s else None),
-        )
-        for d in all_districts()
-    ]
+    return {
+        "districts": [
+            {
+                "id": d.id,
+                "name": d.name,
+                "province": d.province,
+                "province_plate": d.province_plate,
+                "center": list(d.center),
+                "bbox": list(d.bbox),
+                "ingest": _ingest_info(states.get(d.id)),
+            }
+            for d in all_districts()
+        ]
+    }
 
 
 @router.get("/geojson")
-async def districts_geojson(response: Response):
+async def district_geojson(response: Response) -> dict:
     """
     Ilce poligonlari (~500 KB - 1 MB).
 
-    Dosya oldugu gibi servis ediliyor; frontend'e kopyalanmiyor ki tek
-    kaynak kalsin.
+    Sinir verisi degismiyor; uzun cache omru veriliyor ki tarayici
+    her acilista yeniden indirmesin.
     """
     response.headers["Cache-Control"] = GEOJSON_CACHE
     try:
@@ -96,7 +167,30 @@ async def districts_geojson(response: Response):
         raise HTTPException(status_code=503, detail=str(exc))
 
 
-@router.get("/{district_id}/places", response_model=DistrictPlacesResponse)
+@router.get("/{district_id}/summary")
+async def district_summary(
+    district_id: str,
+    include_buffer: bool = Query(True),
+    db: AsyncSession = Depends(get_db),
+    _: APIKey = Depends(validate_api_key),
+) -> dict:
+    """
+    Tur basina kayit sayisi. Arayuzdeki chip sayilarini besliyor.
+    10 turun hepsi anahtar olarak donuyor, sifir olanlar dahil.
+    """
+    district = _require_district(district_id)
+    counts = await count_by_type(db, district_id, include_buffer)
+
+    return {
+        "district_id": district_id,
+        "name": district.name,
+        "counts": counts,
+        "total": sum(counts.values()),
+        "ingest": _ingest_info(await get_ingest_state(db, district_id)),
+    }
+
+
+@router.get("/{district_id}/places")
 async def district_places(
     district_id: str,
     types: str = Query(None, description="Virgulle ayrilmis tur listesi; bos = hepsi"),
@@ -113,10 +207,12 @@ async def district_places(
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     _: APIKey = Depends(validate_api_key),
-):
-    """Filtrelenmis, siralanmis ve sayfalanmis POI listesi."""
-    if get_district(district_id) is None:
-        raise HTTPException(status_code=404, detail=f"Bilinmeyen ilce: {district_id}")
+) -> dict:
+    """
+    Filtrelenmis ve siralanmis POI listesi. Tamamen yerel SQL;
+    Overpass'e gidilmiyor.
+    """
+    _require_district(district_id)
 
     if sort not in VALID_SORTS:
         raise HTTPException(
@@ -142,50 +238,43 @@ async def district_places(
 
     rows, total = await fetch_places(db, place_filter)
 
-    places = []
-    for row in rows:
-        place = DistrictPlace.model_validate(row)
-        # Skor yalnizca o siralama istendiginde hesaplaniyor; diger
-        # yollarda her satir icin bosuna is olurdu.
-        if sort == "lead_score":
-            place.lead_score = lead_score(row)
-        places.append(place)
-
-    return DistrictPlacesResponse(
-        district_id=district_id,
-        data=places,
-        total=total,
-        limit=limit,
-        offset=offset,
-    )
+    return {
+        "results": [_to_client_place(r) for r in rows],
+        "count": len(rows),
+        "total": total,
+        "query": {
+            "district_id": district_id,
+            "types": list(place_filter.types),
+            "sort": sort,
+            "limit": limit,
+            "offset": offset,
+        },
+    }
 
 
-@router.get("/{district_id}/summary", response_model=DistrictSummaryResponse)
-async def district_summary(
+@router.post("/{district_id}/ingest")
+async def trigger_ingest(
     district_id: str,
-    include_buffer: bool = Query(True),
+    force: bool = Query(False),
     db: AsyncSession = Depends(get_db),
-    _: APIKey = Depends(validate_api_key),
-):
+    api_key: APIKey = Depends(verify_api_key),
+) -> dict:
     """
-    Tur basina sayim + ingest durumu.
+    Talep uzerine ingest.
 
-    Tur chip'lerindeki sayilari besliyor; 10 turun hepsi anahtar olarak
-    doner (sifir olanlar dahil) ki "sayi yok" ile "sifir" karismasin.
+    Bu, modulun Overpass'e giden TEK ucu. Haritada henuz cekilmemis bir
+    ilceye tiklandiginda veya kullanici "Yenile" dediginde cagriliyor.
+    Ilce basina 4 sorgu. Diger uclarin aksine kota harcayan
+    verify_api_key kullaniyor: bu, gercek dis maliyeti olan tek uc.
     """
-    district = get_district(district_id)
-    if district is None:
-        raise HTTPException(status_code=404, detail=f"Bilinmeyen ilce: {district_id}")
+    _require_district(district_id)
 
-    counts = await count_by_type(db, district_id, include_buffer=include_buffer)
-    state = await get_ingest_state(db, district_id)
+    result = await ingest_district(db, district_id, DEFAULT_BUFFER_M, force)
 
-    return DistrictSummaryResponse(
-        district_id=district_id,
-        name=district.name,
-        counts=counts,
-        total=sum(counts.values()),
-        fetched_at=state.fetched_at if state else None,
-        place_count=state.place_count if state else None,
-        status=state.status if state else None,
-    )
+    return {
+        "district_id": result.district_id,
+        "place_count": result.place_count,
+        "query_count": result.query_count,
+        "status": result.status,
+        "skipped": result.skipped,
+    }

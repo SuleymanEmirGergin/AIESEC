@@ -65,9 +65,15 @@ def build_places_query(f: PlaceFilter) -> Select:
 
     Tum degerler baglanmis parametre olarak gidiyor; sorgu metnine
     string birlestirme yapilmiyor.
+
+    PlaceDistrict.is_inside PlaceRow'un yaninda ayri bir kolon olarak
+    seciliyor: include_buffer=true iken donen bir kaydin kesin sinir mi
+    tampon mu oldugunu router bu deger olmadan cagirana aktaramaz.
+    district_id sabitlendigi icin (WHERE asagida) place basina en fazla
+    bir PlaceDistrict satiri eslesir -- join satir cogaltmiyor.
     """
     statement = (
-        select(PlaceRow)
+        select(PlaceRow, PlaceDistrict.is_inside)
         .join(PlaceDistrict, PlaceDistrict.place_id == PlaceRow.id)
         .where(PlaceDistrict.district_id == f.district_id)
     )
@@ -174,6 +180,21 @@ def sort_in_python(rows: list[PlaceRow], f: PlaceFilter) -> list[PlaceRow]:
     )
 
 
+def _with_is_inside(row: PlaceRow, is_inside: bool) -> PlaceRow:
+    """
+    (PlaceRow, is_inside) ciftini PlaceRow uzerine gecici bir ozellik
+    olarak igner.
+
+    is_inside PlaceRow'da mapped bir kolon degil, bu yuzden bu atama
+    SQLAlchemy'nin degisiklik izlemesini tetiklemiyor ve flush'ta
+    hicbir seyi etkilemiyor -- salt okunur bir tasima. Var olan
+    cagiranlar (test_queries.py) bu ozelligi hic okumuyor, PlaceRow'un
+    geri kalanini degistirmiyor.
+    """
+    row.is_inside = is_inside
+    return row
+
+
 async def fetch_places(
     db: AsyncSession, f: PlaceFilter
 ) -> tuple[list[PlaceRow], int]:
@@ -196,11 +217,13 @@ async def fetch_places(
 
     if f.sort in SQL_SORTS:
         page = statement.limit(f.limit).offset(f.offset)
-        rows = list((await db.execute(_apply_sql_sort(page, f.sort))).scalars().all())
+        result = await db.execute(_apply_sql_sort(page, f.sort))
+        rows = [_with_is_inside(row, inside) for row, inside in result.all()]
         return rows, total
 
     # Python siralamasi: filtrelenmis kumeyi tamamen cek, sirala, dilimle.
-    all_rows = list((await db.execute(statement)).scalars().all())
+    result = await db.execute(statement)
+    all_rows = [_with_is_inside(row, inside) for row, inside in result.all()]
     ordered = sort_in_python(all_rows, f)
     return ordered[f.offset : f.offset + f.limit], total
 
