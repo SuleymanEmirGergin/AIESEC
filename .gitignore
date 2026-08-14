@@ -56,7 +56,8 @@ build_log.txt
 backend_response.json
 factory_search.json
 
-# Claude Code'un actigi gecici worktree'ler; her biri ayri bir calisma
-# kopyasi, repoya girmemeli. .claude altindaki digerleri (launch.json gibi)
-# bilerek takip disinda birakilmadi.
+# Claude Code yerel artiklari. worktrees/ her biri ayri bir calisma kopyasi
+# olan gecici dizinler; launch.json ise dev sunucusunu nasil baslatacagini
+# tarifleyen kisisel yapilandirma. Ikisi de repoya girmemeli.
 .claude/worktrees/
+.claude/launch.json
