@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import MarkerClusterGroup from "react-leaflet-cluster";
 import "leaflet/dist/leaflet.css";
 import ContactLinks from "./ContactLinks";
 import { StrictModeMapContainer } from "./StrictModeMapContainer";
+import { createSpringGroup, type SpringGroup } from "../lib/spring";
 import type { Place } from "../lib/types";
 import { PLACE_TYPE_LABELS } from "../lib/labels";
 
@@ -23,6 +24,9 @@ const DefaultIcon = L.icon({
 
 L.Marker.prototype.options.icon = DefaultIcon;
 
+// Bir yer secildiginde yaklasilan zoom.
+const TARGET_ZOOM = 16;
+
 interface MapViewProps {
   places: Place[];
   center: [number, number];
@@ -32,19 +36,27 @@ interface MapViewProps {
 }
 
 // Map events and flyTo handler
-function MapController({ 
-  onBoundsChange, 
-  places, 
-  selectedPlaceId 
-}: { 
+function MapController({
+  onBoundsChange,
+  places,
+  selectedPlaceId
+}: {
   onBoundsChange: (bbox: [number, number, number, number]) => void;
   places: Place[];
   selectedPlaceId?: string;
 }) {
   const map = useMap();
 
+  // Yay her karede setView cagiriyor; Leaflet bunun icin senkron olarak
+  // zoomstart/moveend firlatiyor. Bayrak yalnizca o cagrinin suresince acik,
+  // yani haritanin kendi hareketini kullanicininkinden ayirt edebiliyoruz.
+  // Oturma karesinde bilerek kapali birakiliyor: son moveend gecmeli ki
+  // sinirlar bir kez, hareket bittikten sonra yayinlansin.
+  const selfDriven = useRef(false);
+
   useEffect(() => {
     const handleMove = () => {
+      if (selfDriven.current) return;
       const bounds = map.getBounds();
       onBoundsChange([
         bounds.getWest(),
@@ -62,17 +74,70 @@ function MapController({
     };
   }, [map, onBoundsChange]);
 
-  // Fly to selected place
+  // Secili yere yaylanarak git.
+  //
+  // Leaflet'in flyTo'su yerine yay kullaniliyor: flyTo sabit sureli ve
+  // kesilemez. Kullanici ucus ortasinda listeden baska bir yer secerse
+  // Leaflet mevcut hareketi sert kesip yenisini sifirdan baslatiyor; hiz
+  // kopuyor ve gecis "duvara carpiyor". Yayda hedef degisimi hizi tasiyarak
+  // devam ettigi icin ikinci secim ilkinin uzerine akiyor.
+  const springRef = useRef<SpringGroup | null>(null);
+
   useEffect(() => {
-    if (selectedPlaceId) {
-      const place = places.find(p => p.id === selectedPlaceId);
-      if (place) {
-        map.flyTo([place.coordinates.lat, place.coordinates.lng], 16, {
-          duration: 1.5
-        });
-      }
+    if (!selectedPlaceId) return;
+
+    const place = places.find((p) => p.id === selectedPlaceId);
+    if (!place) return;
+
+    const target = [place.coordinates.lat, place.coordinates.lng, TARGET_ZOOM];
+
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      map.setView([target[0], target[1]], target[2], { animate: false });
+      return;
     }
+
+    const live = () => {
+      const c = map.getCenter();
+      return [c.lat, c.lng, map.getZoom()];
+    };
+
+    if (!springRef.current) {
+      springRef.current = createSpringGroup(
+        live(),
+        ([lat, lng, z], settled) => {
+          selfDriven.current = !settled;
+          map.setView([lat, lng], z, { animate: false });
+          selfDriven.current = false;
+        },
+        // Yeniden konumlandirma: kritik sonumlu. Kullanici bir sey firlatmadi,
+        // listeden secti - hedefi asmak burada yanlis hissettiriyor.
+        { damping: 1, response: 0.4, precision: [1e-5, 1e-5, 1e-3] },
+      );
+    } else if (!springRef.current.running) {
+      // Bosta gecen surede kullanici haritayi elle kaydirmis olabilir.
+      // Yeni hareket hedef degerden degil, EKRANDAKI degerden baslamali.
+      springRef.current.reset(live());
+    }
+
+    springRef.current.setTarget(target);
   }, [selectedPlaceId, places, map]);
+
+  // Kullanici haritaya dokundugu an kontrol ona gecer - ucus ortasinda bile.
+  useEffect(() => {
+    const yieldToUser = () => {
+      if (selfDriven.current) return;
+      springRef.current?.stop();
+    };
+
+    map.on("dragstart", yieldToUser);
+    map.on("zoomstart", yieldToUser);
+
+    return () => {
+      map.off("dragstart", yieldToUser);
+      map.off("zoomstart", yieldToUser);
+      springRef.current?.stop();
+    };
+  }, [map]);
 
   return null;
 }
@@ -98,6 +163,9 @@ export default function MapView({
         zoom={zoom}
         className="w-full h-full z-0"
         scrollWheelZoom={true}
+        // Yay kesirli zoom uretiyor; snap acik kalirsa her kare tam sayiya
+        // yuvarlanip zoom basamak basamak zipliyor.
+        zoomSnap={0}
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'

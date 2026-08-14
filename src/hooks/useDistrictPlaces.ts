@@ -76,7 +76,7 @@ export function useDistrictPlaces(
       if (!isCurrent()) return;
 
       setState({
-        places: result.data,
+        places: result.results,
         total: result.total,
         summary,
         loading: false,

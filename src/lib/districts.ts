@@ -40,12 +40,18 @@ export interface DistrictPlace {
   lead_score: number | null;
 }
 
+/**
+ * Backend /api/districts/{id}/places yaniti.
+ *
+ * Alan adlari backend'in dondurduguyle birebir: `results` (sayfadaki
+ * kayitlar), `count` (bu sayfadaki adet), `total` (filtreye uyan tum
+ * kayitlar), `query` (uygulanan sorgunun yansimasi).
+ */
 export interface DistrictPlacesResponse {
-  district_id: string;
-  data: DistrictPlace[];
+  results: DistrictPlace[];
+  count: number;
   total: number;
-  limit: number;
-  offset: number;
+  query: Record<string, unknown>;
 }
 
 export interface DistrictSummary {
@@ -99,11 +105,13 @@ let geojsonPromise: Promise<unknown> | null = null;
  */
 export function fetchDistricts(): Promise<DistrictMeta[]> {
   if (!districtsPromise) {
-    districtsPromise = getJson<DistrictMeta[]>("/api/districts").catch((error) => {
-      // Basarisiz istegi onbellekte birakmak kalici hataya donusurdu.
-      districtsPromise = null;
-      throw error;
-    });
+    districtsPromise = getJson<{ districts: DistrictMeta[] }>("/api/districts")
+      .then((payload) => payload.districts)
+      .catch((error) => {
+        // Basarisiz istegi onbellekte birakmak kalici hataya donusurdu.
+        districtsPromise = null;
+        throw error;
+      });
   }
   return districtsPromise;
 }
