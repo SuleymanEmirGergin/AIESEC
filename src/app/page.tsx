@@ -14,15 +14,26 @@ import SettingsModal from "../components/SettingsModal";
 import UpgradeModal from "../components/UpgradeModal";
 import { searchPlaces, exportLeads, fetchAccount } from "../lib/api";
 import type { AccountInfo } from "../lib/api";
+import CategoryFilter from "../components/CategoryFilter";
 import {
   districtPlaceToPlace,
   fetchDistrictPlaces,
+  fetchDistrictSummary,
   type DistrictMeta,
   type PlaceQuery,
 } from "../lib/districts";
 import { fetchSavedPlaces, savePlace, removeSavedPlace } from "../lib/savedApi";
 import type { Place, PlaceType } from "../lib/types";
 import { X, Database } from "lucide-react";
+
+/**
+ * Bir sayfada cekilen kayit sayisi.
+ *
+ * Ilce sorgusu yerel SQLite'a gittigi icin ucuz; sinir aginin degil
+ * tarayicinin sinirlarindan geliyor. Yogun ilcelerde (Eyupsultan 7139)
+ * tum satirlari birden DOM'a basmak sayfayi kilitliyordu.
+ */
+const PAGE_SIZE = 250;
 
 // Client-side only map import
 const MapView = dynamic(() => import("../components/MapView"), {
@@ -44,8 +55,25 @@ export default function Home() {
    * Iki yol da ayni `places` dizisini dolduruyor.
    */
   const [district, setDistrict] = useState<DistrictMeta | null>(null);
-  const [query, setQuery] = useState<PlaceQuery>({ sort: "contact_first", limit: 250 });
+  const [query, setQuery] = useState<PlaceQuery>({ sort: "contact_first", limit: PAGE_SIZE });
   const [districtEmpty, setDistrictEmpty] = useState(false);
+
+  /**
+   * Filtreye uyan TOPLAM kayit sayisi (sayfadaki degil).
+   *
+   * Ekranda "250 / 7139 gosteriliyor" diyebilmek icin gerekli: eskiden
+   * yalnizca yuklenen sayi gosteriliyordu ve kullanici 250'yi ilcenin
+   * tamami saniyordu.
+   */
+  const [total, setTotal] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  /**
+   * Ilcenin tur bazli envanteri (`/summary`). Kategori ciplerindeki
+   * sayilar buradan; secimden bagimsiz, cunku bunlar "ilcede ne var"
+   * sorusunun cevabi.
+   */
+  const [typeCounts, setTypeCounts] = useState<Record<PlaceType, number>>();
 
   /**
    * Kaydedilmis yerlerin place_id kumesi.
@@ -195,24 +223,81 @@ export default function Home() {
     }
   }, [places, savedIds, category, bbox, exporting, handleApiError, reloadAccount]);
 
-  /** Ilce secildiginde yerel veritabanindan sorgula. */
+  /**
+   * Ilce envanterini cek (tur basina kayit sayisi).
+   *
+   * Sorgudan AYRI tutuluyor: bu sayilar filtreye gore degismemeli,
+   * yoksa bir turu kapatinca digerlerinin sayisi da degisir ve
+   * "ilcede kac tane var" sorusu cevapsiz kalirdi. Yalnizca ilce
+   * degisince yenileniyor.
+   */
+  useEffect(() => {
+    if (!district) {
+      setTypeCounts(undefined);
+      return;
+    }
+    let alive = true;
+    fetchDistrictSummary(district.id, query.includeBuffer !== false)
+      .then((s) => alive && setTypeCounts(s.counts))
+      // Sayilar bir kolaylik; gelmezse cipler sayisiz calisir.
+      .catch(() => alive && setTypeCounts(undefined));
+    return () => {
+      alive = false;
+    };
+  }, [district, query.includeBuffer]);
+
+  /** Ilce secildiginde yerel veritabanindan ILK sayfayi sorgula. */
   const runDistrictSearch = useCallback(async () => {
     if (!district) return;
     setLoading(true);
     setDistrictEmpty(false);
     try {
-      const response = await fetchDistrictPlaces(district.id, query);
+      const response = await fetchDistrictPlaces(district.id, { ...query, offset: 0 });
       const mapped = response.results.map(districtPlaceToPlace);
       setPlaces(mapped);
+      setTotal(response.total);
       setDistrictEmpty(mapped.length === 0);
       setNotice(null);
     } catch (err: any) {
       setPlaces([]);
+      setTotal(0);
       setNotice(err?.message || "İlçe sorgusu başarısız oldu.");
     } finally {
       setLoading(false);
     }
   }, [district, query]);
+
+  /**
+   * Sonraki sayfayi ekle.
+   *
+   * Hepsini tek seferde cekip DOM'a basmak yogun ilcelerde (Eyupsultan
+   * 7139 kayit) tarayiciyi kilitliyordu. Sayfa sayfa ekliyoruz; toplam
+   * sayi hep gorunur oldugu icin kullanici neyin eksik oldugunu biliyor.
+   *
+   * `offset` olarak ekrandaki kayit sayisi kullaniliyor: sunucu ayni
+   * siralamayi uyguladigi icin bu, "kaldigim yerden devam" demek.
+   */
+  const loadMore = useCallback(async () => {
+    if (!district || loadingMore || places.length >= total) return;
+    setLoadingMore(true);
+    try {
+      const response = await fetchDistrictPlaces(district.id, {
+        ...query,
+        offset: places.length,
+      });
+      const mapped = response.results.map(districtPlaceToPlace);
+      // Eszamanli iki cagri ayni sayfayi getirirse tekrar olmasin.
+      setPlaces((prev) => {
+        const seen = new Set(prev.map((p) => p.id));
+        return [...prev, ...mapped.filter((p) => !seen.has(p.id))];
+      });
+      setTotal(response.total);
+    } catch (err: any) {
+      setNotice(err?.message || "Sonraki sayfa yüklenemedi.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [district, query, places.length, total, loadingMore]);
 
   /** Ilce secili degilken haritanin gordugu alani tara. */
   const runMapSearch = useCallback(async () => {
@@ -340,7 +425,18 @@ export default function Home() {
               hangisinin ise yaradigini belirsizlestirirdi.
             */}
             {district ? (
-              <FilterPanel value={query} onChange={setQuery} />
+              <>
+                <CategoryFilter
+                  value={query.types ?? []}
+                  onChange={(types) =>
+                    // Bos dizi filtreyi tamamen kaldirmali; `types: []`
+                    // gondermek sunucuda "hicbir tur" anlamina gelebilir.
+                    setQuery({ ...query, types: types.length ? types : undefined })
+                  }
+                  counts={typeCounts}
+                />
+                <FilterPanel value={query} onChange={setQuery} />
+              </>
             ) : (
               <Filters selectedCategory={category} onCategoryChange={setCategory} />
             )}
@@ -374,20 +470,46 @@ export default function Home() {
                 </button>
               </div>
             ) : (
-              <PlaceList
-                places={places}
-                loading={loading}
-                selectedPlaceId={selectedPlaceId}
-                onPlaceClick={setSelectedPlaceId}
-                checkedIds={new Set(savedIds.keys())}
-                onToggleCheck={toggleSaved}
-                onReport={setReportTarget}
-              />
+              <>
+                <PlaceList
+                  places={places}
+                  loading={loading}
+                  selectedPlaceId={selectedPlaceId}
+                  onPlaceClick={setSelectedPlaceId}
+                  checkedIds={new Set(savedIds.keys())}
+                  onToggleCheck={toggleSaved}
+                  onReport={setReportTarget}
+                />
+
+                {district && places.length < total && (
+                  <div className="px-3 py-3">
+                    <button
+                      type="button"
+                      onClick={loadMore}
+                      disabled={loadingMore}
+                      className="btn btn--ghost w-full py-2 text-xs disabled:opacity-50"
+                    >
+                      {loadingMore
+                        ? "Yükleniyor..."
+                        : `Daha fazla yükle (${total - places.length} kayıt daha)`}
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
           <div className="flex shrink-0 items-center justify-between rule-t bg-paper-2 px-4 py-2.5">
-            <span className="mono-label tabular">{places.length} sonuç</span>
+            {/*
+              Ilce akisinda toplami da gosteriyoruz: eskiden yalnizca
+              yuklenen sayi vardi ve kullanici 250'yi ilcenin tamami
+              saniyordu.
+            */}
+            <span className="mono-label tabular">
+              {district && total > places.length
+                ? `${places.length} / ${total} sonuç`
+                : `${places.length} sonuç`}
+            </span>
             {savedInView > 0 && (
               <Link
                 href="/kayitli"

@@ -213,13 +213,23 @@ async def _fetch_family_stage(
 
 
 def _address_from_tags(tags: dict) -> str | None:
-    """OSM adres etiketlerinden okunabilir adres uretir."""
+    """
+    OSM adres etiketlerinden okunabilir adres uretir.
+
+    `addr:quarter` ve `addr:postcode` de okunuyor: olculdugunde 323
+    kaydin addr:* etiketi vardi ama adresi bos cikiyordu, cunku bunlarin
+    bir kisminda yalnizca mahalle veya posta kodu bulunuyor. Turkiye
+    verisinde mahalle sik sik `quarter` olarak giriliyor.
+    """
     parts = [
         tags.get("addr:street"),
         tags.get("addr:housenumber"),
-        tags.get("addr:neighbourhood") or tags.get("addr:suburb"),
+        tags.get("addr:neighbourhood")
+        or tags.get("addr:suburb")
+        or tags.get("addr:quarter"),
         tags.get("addr:district"),
-        tags.get("addr:city"),
+        tags.get("addr:city") or tags.get("addr:province"),
+        tags.get("addr:postcode"),
     ]
     joined = " ".join(p for p in parts if p)
     return joined or None

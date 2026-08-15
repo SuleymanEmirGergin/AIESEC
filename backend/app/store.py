@@ -50,7 +50,16 @@ def extract_contact(tags: dict) -> tuple[str | None, str | None, str | None]:
         or None
     )
     email = tags.get("email") or tags.get("contact:email") or None
-    website = tags.get("website") or tags.get("contact:website") or None
+    # `url` de OSM'de gecerli bir web adresi etiketi; olculdugunde
+    # yalnizca bu etikete sahip kayitlar vardi (ornegin ipkb.gov.tr) ve
+    # website kolonlari bos kaliyordu.
+    website = (
+        tags.get("website")
+        or tags.get("contact:website")
+        or tags.get("url")
+        or tags.get("contact:url")
+        or None
+    )
     return phone, email, website
 
 
