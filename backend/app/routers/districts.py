@@ -29,6 +29,7 @@ from app.districts import (
     raw_geojson,
 )
 from app.ingest import FRESH_AFTER_DAYS, ingest_district
+from app.overture_ingest import ingest_overture_district
 from app.queries import ALL_TYPES, PlaceFilter, VALID_SORTS, count_by_type, fetch_places
 from app.store import get_ingest_state, ingest_states
 
@@ -277,4 +278,35 @@ async def trigger_ingest(
         "query_count": result.query_count,
         "status": result.status,
         "skipped": result.skipped,
+    }
+
+
+@router.post("/{district_id}/enrich")
+async def trigger_enrich(
+    district_id: str,
+    db: AsyncSession = Depends(get_db),
+    api_key: APIKey = Depends(verify_api_key),
+) -> dict:
+    """
+    Ilceyi Overture Maps ile zenginlestir.
+
+    Ingest'ten AYRI bir uc: farkli kaynak, farkli maliyet ve farkli
+    yenileme dongusu. Overpass ingest'i Overture'i beklemek zorunda
+    kalmasin, Overture yenilemesi de Overpass kotasini harcamasin diye
+    birlestirilmedi.
+
+    Overture S3'te ucretsiz ve lisansi (CDLA Permissive 2.0) kalici
+    saklamaya izin veriyor; yine de dis kaynak oldugu icin kota
+    harcayan verify_api_key kullaniliyor.
+    """
+    _require_district(district_id)
+
+    result = await ingest_overture_district(db, district_id, DEFAULT_BUFFER_M)
+
+    return {
+        "district_id": result.district_id,
+        "fetched": result.fetched,
+        "enriched": result.enriched,
+        "inserted": result.inserted,
+        "skipped_unmapped": result.skipped_unmapped,
     }

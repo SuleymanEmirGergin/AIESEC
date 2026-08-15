@@ -185,6 +185,13 @@ class PlaceRow(Base):
     address = Column(String, nullable=True)
     tags_json = Column(String, nullable=False, default="{}")
     fetched_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
+    # Kaydin nereden geldigi: "osm" veya "overture".
+    #
+    # Iki kaynagin lisansi ve guncelleme dongusu farkli; hangi satirin
+    # nereden geldigini bilmeden ne geri alinabilir ne de bir kaynak
+    # tek basina yenilenebilir. OSM kayitlari icin varsayilan "osm",
+    # boylece mevcut satirlar migration'siz dogru degeri aliyor.
+    source = Column(String, nullable=False, default="osm", index=True)
 
 class PlaceDistrict(Base):
     """
@@ -227,7 +234,18 @@ async def init_db():
     """Initialize database tables."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
+
+        # create_all yalnizca EKSIK TABLOYU yaratir, mevcut tabloya kolon
+        # EKLEMEZ. Projede alembic yok; yeni kolonlar bu idempotent
+        # kontrolle ekleniyor. Aksi halde calisan bir kurulumda
+        # "no such column: places.source" ile karsilasilir.
+        cols = await conn.exec_driver_sql("PRAGMA table_info(places)")
+        if "source" not in {row[1] for row in cols.fetchall()}:
+            await conn.exec_driver_sql(
+                "ALTER TABLE places ADD COLUMN source TEXT NOT NULL DEFAULT 'osm'"
+            )
+
+
     # Initialize overrides_version
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(GlobalState).where(GlobalState.key == "overrides_updated_at"))

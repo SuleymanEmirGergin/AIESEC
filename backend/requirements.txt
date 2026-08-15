@@ -42,3 +42,6 @@ pytest-cov==6.0.0
 
 # Code Quality
 ruff==0.9.1
+
+# Overture Maps places temasini S3 uzerinden sorgulamak icin (indirme yok).
+duckdb==1.5.5

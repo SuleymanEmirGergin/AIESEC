@@ -175,6 +175,34 @@ async def replace_memberships(
     return len(memberships)
 
 
+async def add_memberships(
+    db: AsyncSession, district_id: str, memberships: list[tuple[str, bool]]
+) -> int:
+    """
+    Uyelik satirlari EKLE; mevcutlari silme.
+
+    replace_memberships'ten farki tam olarak bu. Overture ingest'i OSM
+    kayitlarinin yanina ekleme yapiyor; replace_memberships cagrilsaydi
+    ilcenin TUM OSM uyelikleri silinir ve o kayitlar ilce sorgusundan
+    tamamen dusordu. Iki fonksiyon ayri duruyor cunku iki farkli niyet
+    var: "bu kaynagin uyeliklerini bastan yaz" ve "bunlari da ekle".
+    """
+    if not memberships:
+        return 0
+
+    statement = sqlite_insert(PlaceDistrict).values([
+        {"place_id": place_id, "district_id": district_id, "is_inside": is_inside}
+        for place_id, is_inside in memberships
+    ])
+    await db.execute(
+        statement.on_conflict_do_update(
+            index_elements=["place_id", "district_id"],
+            set_={"is_inside": statement.excluded.is_inside},
+        )
+    )
+    return len(memberships)
+
+
 async def mark_ingest(
     db: AsyncSession,
     district_id: str,
