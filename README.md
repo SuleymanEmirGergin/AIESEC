@@ -12,8 +12,12 @@ içinde. Tasarımla ilgili bir karar vermeden önce ikisini okuyun.
 ## Nasıl çalışıyor
 
 ```
-tarayıcı → Next.js (proxy + önbellek) → FastAPI → ┬ Overpass API  (harita taraması)
-                                                  └ yerel SQLite (ilçe sorgusu)
+tarayıcı → Next.js (proxy + önbellek) → FastAPI → ┬ Overpass API   (harita taraması)
+                                                  └ yerel SQLite   (ilçe sorgusu)
+                                                        ↑
+                                    veriyi dolduran iki kaynak:
+                                    · Overpass / OSM     → app.ingest
+                                    · Overture Maps (S3) → /enrich
 ```
 
 İki arama yolu var:
@@ -23,6 +27,11 @@ tarayıcı → Next.js (proxy + önbellek) → FastAPI → ┬ Overpass API  (ha
 | **Harita taraması** | İlçe seçilmemişken | Overpass API (canlı OSM) | Yavaş — soğuk önbellekte dakikayı bulabilir |
 | **İlçe sorgusu** | İlçe seçilince | Yerel SQLite (önceden çekilmiş) | Hızlı — ağ beklemesi yok |
 
+Yerel veritabanı **iki kaynaktan** besleniyor. OSM'de iletişim bilgisi
+seyrek (telefon %9,2); Overture Maps aynı bölgelerde çok daha dolu
+(%78,5) ve places teması OSM materyalini dışladığı için çakışmıyor.
+Kaynak seçimi lisansa göre yapıldı — ayrıntısı aşağıda "İlçe verisi".
+
 Tarayıcı backend'e doğrudan gitmez. Tüm istekler Next.js route'larından
 geçer; API anahtarı orada eklenir ve istemciye hiç ulaşmaz.
 
@@ -30,7 +39,7 @@ geçer; API anahtarı orada eklenir ve istemciye hiç ulaşmaz.
 
 | Route | Ne yapar |
 |---|---|
-| `/` | Harita + ilçe/kategori seçimi, sonuç listesi, kaydetme |
+| `/` | Harita + il/ilçe seçimi, kategori filtresi (çoklu seçim, sayılı), filtre paneli, sayfalanan sonuç listesi, kaydetme |
 | `/kayitli` | Kaydedilen yerler, adlandırılmış listeler, not alanı, CSV indirme, indirme geçmişi |
 | `/admin` | Yönetici paneli: hata raporları, özet sayılar |
 | `/admin/overrides` | OSM sınıflandırma düzeltmeleri |
@@ -81,8 +90,12 @@ Backend (`backend/.env`):
 |---|---|
 | `ADMIN_API_KEY` | `/admin` uçlarının anahtarı |
 | `DATABASE_URL` | Varsayılan SQLite. Docker'da `/app/data/storage.db` (volume) |
-| `OVERPASS_URLS` | Virgülle ayrılmış ayna listesi; failover buna göre |
+| `OVERPASS_URLS` | Virgülle ayrılmış ayna listesi; failover buna göre. **Cevap vermeyen aynayı listede tutmayın**: yedeklilik sağlamaz, yalnızca deneme başına 20-40 sn yer |
 | `OVERPASS_TIMEOUT` | Hem HTTP zaman aşımı hem sorguya gömülen `[out:json][timeout:N]` |
+| `OVERPASS_COOLDOWN_BASE` | Başarısız aynanın ilk bank süresi (sn, varsayılan 15). Üst üste hatalarda katlanarak uzar |
+| `OVERPASS_COOLDOWN_MAX` | Bank süresi tavanı (sn, varsayılan 300) |
+| `OVERPASS_PROVEN_FAIL_LIMIT` | Bir kez çalışmış ayna kaç ardışık hataya kadar öncelikli sayılır (varsayılan 3) |
+| `OVERTURE_RELEASE` | Overture sürümü (varsayılan `2026-07-22.0`). Sabit tutulur: "latest" yolu yok ve kategoriler sürümler arası değişebilir |
 | `REDIS_URL` | Sunucu tarafı önbellek |
 | `DISTRICT_BUFFER_M` | İlçe sınırına eklenen tampon (metre) |
 | `LOCAL_MODE` | `true` ise `X-API-KEY` zorunlu değil, kota işlemez. Üretimde `false` |
@@ -137,9 +150,48 @@ cd backend && .venv/Scripts/python.exe -m app.ingest --all
 Eşzamanlılık varsayılan 2'dir; Overpass IP başına 2 slot verdiği için
 yükseltmek işe yaramaz.
 
-> **Şu an 80 ilçenin hiçbiri çekilmemiş durumda.** Bu yüzden ilçe seçtiğinizde
-> arayüz "veri henüz çekilmemiş" der ve haritadan taramaya yönlendirir.
-> Yukarıdaki komutlardan biri çalıştırılana kadar ilçe yolu sonuç vermez.
+### İkinci kaynak: Overture Maps
+
+OSM tek başına yetmiyor. Ölçüldüğünde kayıtların yalnızca **%9,2'sinde
+telefon** vardı — ve bu bir çıkarım hatası değildi: 30 878 kaydın ham
+etiketleri kolonlarla karşılaştırıldığında etiketinde telefon olup
+kolonu boş kalan **sıfır** kayıt çıktı. Bilgi kaynakta yoktu.
+
+Kaynak seçimi teknik değil **lisans** kararıydı:
+
+| Kaynak | Durum | Sebep |
+|---|---|---|
+| Google Places | ✗ | "place ID dışında içerik saklanamaz". Kalıcı veritabanı + CSV dışa aktarımıyla bağdaşmıyor |
+| Yandex Geosearch | ✗ | Kalıcı saklama yasak (30 gün önbellek), sonuçlar Yandex haritası üzerinde ve sırası değiştirilmeden gösterilmeli |
+| **Overture Maps** | ✓ | CDLA Permissive 2.0 / Apache 2.0 — saklama, veritabanı, dışa aktarım kısıtı yok |
+
+Overture'ın places teması OSM materyalini **dışlıyor**, yani elimizdekiyle
+çakışmıyor; tamamlıyor. Veri S3'te GeoParquet olarak duruyor ve DuckDB ile
+uzaktan sorgulanıyor — indirme yok, ücretsiz, ilçe başına ~20 sn.
+
+CLI'si yok; ilçe bazında HTTP ucundan çalışır:
+
+```bash
+curl -X POST http://localhost:8004/api/districts/tr-34-kadikoy/enrich -H "X-API-KEY: $SEARCH_API_KEY"
+```
+
+Uç iki iş yapar: mevcut kayıtların **boş** iletişim alanlarını doldurur
+(dolu olanı ezmez — gönüllünün elle düzelttiği bir değeri geri almak en
+kötü davranış olurdu) ve taksonomiye uyan yeni kurumları ekler. Kaydın
+nereden geldiği `places.source` kolonunda (`osm` | `overture`) durur.
+
+### Şu anki durum
+
+80 ilçenin **tamamı** çekildi ve Overture ile zenginleştirildi:
+
+| Kaynak | Kayıt | Telefon | Website | Adres |
+|---|---:|---:|---:|---:|
+| OSM | 30 878 | %16,7 | %13,0 | %31,1 |
+| Overture | 23 379 | %78,5 | %63,4 | %85,5 |
+| **Toplam** | **54 257** | **%43,3** | %34,7 | %54,5 |
+
+Veri Docker volume'ünde (`backend_data`) durur, repoda değil. Yeni bir
+kurulumda bu tablo boştur ve yukarıdaki komutların çalıştırılması gerekir.
 
 ## Kayıtlı yerler
 
@@ -176,20 +228,27 @@ listeleri paylaşır"** olur.
 │   │   ├── MapView.tsx               # Leaflet haritası
 │   │   ├── StrictModeMapContainer.tsx# react-leaflet 4 + React 18 uyumsuzluğu için
 │   │   ├── DistrictPicker.tsx        # İl/ilçe seçimi
+│   │   ├── CategoryFilter.tsx        # Tür filtresi (çoklu seçim, sayılı çipler)
 │   │   ├── FilterPanel.tsx           # İlçe sorgusu filtreleri
 │   │   ├── PlaceList.tsx             # Sonuç listesi
 │   │   ├── SavedPlaceRow.tsx         # Kayıtlı yer satırı (not alanı dahil)
 │   │   └── ModalShell.tsx            # Ortak modal kabuğu (Escape + odak tuzağı)
-│   ├── lib/                    # İstemci API'leri, tipler, etiketler
+│   ├── lib/
+│   │   ├── districts.ts        # İlçe API istemcisi + tür dönüşümü
+│   │   ├── spring.ts           # Kesintiye uğratılabilir yay (harita uçuşu)
+│   │   └── savedApi.ts         # Kayıtlı yerler ve listeler istemcisi
 │   └── server/                 # Proxy katmanı, önbellek, hız sınırı
 ├── backend/
 │   ├── app/
 │   │   ├── routers/            # search, saved, export, districts, admin, ...
-│   │   ├── ingest.py           # İlçe verisi çekme CLI'si
+│   │   ├── ingest.py           # OSM/Overpass ilçe verisi çekme CLI'si
+│   │   ├── overture.py         # Overture Maps sorgusu (DuckDB → S3)
+│   │   ├── overture_ingest.py  # Zenginleştirme + yeni kayıt ekleme
 │   │   ├── database.py         # SQLAlchemy modelleri
 │   │   └── overpass.py         # Ayna failover + devre kesici
 │   ├── tests/
 │   └── README.md               # Backend ayrıntıları
+├── vitest.config.ts
 └── docker-compose.yml
 ```
 
@@ -201,21 +260,37 @@ Backend — `backend/` dizininden:
 cd backend && .venv/Scripts/python.exe -m pytest -q
 ```
 
-Frontend tip kontrolü — kökten:
+Frontend — kökten:
+
+```bash
+pnpm test
+```
 
 ```bash
 pnpm type-check
 ```
 
-Frontend'de test koşucusu yoktur; doğrulama tip kontrolü ve manuel
-gözden geçirmeyle yapılır.
+Frontend testleri Vitest ile koşuyor (`vitest.config.ts`). Kapsam şu an
+dar: ağırlıklı olarak ilçe veri istemcisi (`src/lib/districts.test.ts`).
+Bilinen üç kırık test var; hepsi dosyanın içinde **BULGU** olarak
+gerekçesiyle birlikte belgelendi — kırık bırakılmaları bilinçli, davranışı
+gizlemek yerine kayda geçirmek tercih edildi.
 
 ## Bilinen sınırlar
 
-- **İlçe verisi çekilmemiş** (yukarıya bakın) — ilçe yolu şu an sonuç vermez.
+- **İletişim kapsaması hâlâ kısmi.** İki kaynağa rağmen kayıtların
+  %43,3'ünde telefon var. Kalanı için üçüncü bir kaynak gerekir; OSM ve
+  Overture'da o bilgi yok.
 - **Harita taraması yavaş.** Soğuk önbellekte İstanbul viewport'unda bir
   arama dakikayı aşabilir; sebep Overpass'in yanıt süresi. İstemci zaman
   aşımı bu yüzden yüksek tutulmuştur.
+- **Overpass ingest'i ayna sağlığına bağımlı.** Toplu çekimde ilçe başına
+  3-20 dk sürdü ve ilk turda 74 ilçenin 14'ü düştü; tekrar turu 12'sini
+  kurtardı. Overture tarafında bu sorun yok (S3, ~20 sn, kotasız).
+- **DuckDB'de seyrek bir iç hata.** 79 ilçenin birinde
+  `INTERNAL Error: Information loss on integer cast` alındı; deterministik
+  değil, tekrar denemede geçti. Toplu koşularda tekrar denemeyi zorunlu
+  kılan sebep budur.
 - **Koyu mod yok.** `tailwind.config.ts` içindeki `darkMode: "class"`
   bilinçli olarak duruyor ama `dark` sınıfını hiçbir kod eklemiyor; Cobalt
   tek temalı bir sistemdir.
