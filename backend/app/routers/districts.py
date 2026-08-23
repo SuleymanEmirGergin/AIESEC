@@ -30,7 +30,7 @@ from app.districts import (
 )
 from app.ingest import FRESH_AFTER_DAYS, ingest_district
 from app.overture_ingest import ingest_overture_district
-from app.queries import ALL_TYPES, PlaceFilter, VALID_SORTS, count_by_type, fetch_places
+from app.queries import ALL_TYPES, VALID_SORTS, PlaceFilter, count_by_type, fetch_places
 from app.store import get_ingest_state, ingest_states
 
 logger = logging.getLogger(__name__)

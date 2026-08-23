@@ -61,12 +61,12 @@ class TestBboxParsing:
     @pytest.mark.parametrize(
         "bad",
         [
-            "28.96,41.00,29.00",            # 4 sayi degil
-            "a,b,c,d",                       # sayi degil
-            "29.00,41.00,28.96,41.03",       # ters (minLon > maxLon)
-            "28.96,41.03,29.00,41.00",       # ters (minLat > maxLat)
-            "28.96,91.00,29.00,92.00",       # enlem araligi disi
-            "-181,41.00,29.00,41.03",        # boylam araligi disi
+            "28.96,41.00,29.00",  # 4 sayi degil
+            "a,b,c,d",  # sayi degil
+            "29.00,41.00,28.96,41.03",  # ters (minLon > maxLon)
+            "28.96,41.03,29.00,41.00",  # ters (minLat > maxLat)
+            "28.96,91.00,29.00,92.00",  # enlem araligi disi
+            "-181,41.00,29.00,41.03",  # boylam araligi disi
         ],
     )
     def test_invalid_bbox_rejected(self, client, bad):
@@ -107,8 +107,7 @@ class TestBboxParsing:
         """
         api_key.plan = "free"  # free plan siniri 2000 m
         response = client.get(
-            "/api/search?lat=41.0&lon=29.0&type=kindergarten"
-            "&bbox=28.0,40.5,30.0,41.5"
+            "/api/search?lat=41.0&lon=29.0&type=kindergarten&bbox=28.0,40.5,30.0,41.5"
         )
         assert response.status_code == 403
         assert "plan" in response.json()["detail"].lower()
@@ -132,8 +131,9 @@ class TestBboxGeometry:
         """
         viewport = (41.00, 28.96, 41.03, 29.00)
         radius = bbox_circumscribed_radius_m(viewport)
-        circle_box = bbox_from_radius(*[(viewport[0] + viewport[2]) / 2,
-                                        (viewport[1] + viewport[3]) / 2], radius)
+        circle_box = bbox_from_radius(
+            *[(viewport[0] + viewport[2]) / 2, (viewport[1] + viewport[3]) / 2], radius
+        )
 
         def area(b):
             return (b[2] - b[0]) * (b[3] - b[1])

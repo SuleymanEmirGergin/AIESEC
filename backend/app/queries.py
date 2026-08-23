@@ -17,9 +17,16 @@ from app.database import PlaceDistrict, PlaceRow
 # arayuz chip'leri bu sozlukten besleniyor ve eksik anahtar "sayi yok"
 # ile "sifir" ayrimini bozar.
 ALL_TYPES: tuple[str, ...] = (
-    "factory", "office", "workshop",
-    "kindergarten", "primary_school", "middle_school", "high_school",
-    "private_school", "college_keyword", "college_university",
+    "factory",
+    "office",
+    "workshop",
+    "kindergarten",
+    "primary_school",
+    "middle_school",
+    "high_school",
+    "private_school",
+    "college_keyword",
+    "college_university",
 )
 
 # SQL'de siralanabilenler.
@@ -195,9 +202,7 @@ def _with_is_inside(row: PlaceRow, is_inside: bool) -> PlaceRow:
     return row
 
 
-async def fetch_places(
-    db: AsyncSession, f: PlaceFilter
-) -> tuple[list[PlaceRow], int]:
+async def fetch_places(db: AsyncSession, f: PlaceFilter) -> tuple[list[PlaceRow], int]:
     """
     Filtrelenmis ve siralanmis sayfa + filtrelenmis kumenin toplam
     boyutu.

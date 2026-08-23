@@ -1,14 +1,22 @@
 """Database configuration and SQLAlchemy models."""
 
-import os
 import datetime
-from typing import Optional, List
+import os
+
 from sqlalchemy import (
-    Column, Integer, String, Float, DateTime, Boolean, JSON,
-    ForeignKey, Index, UniqueConstraint, func, select, update
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+    select,
 )
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase
 
 DB_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./storage.db")
 
@@ -18,14 +26,18 @@ AsyncSessionLocal = async_sessionmaker(
     bind=engine, class_=AsyncSession, expire_on_commit=False
 )
 
+
 class Base(DeclarativeBase):
     """Base class for SQLAlchemy models."""
+
     pass
+
 
 class Report(Base):
     """User misclassification reports."""
+
     __tablename__ = "reports"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
     place_id = Column(String, index=True)
@@ -38,32 +50,38 @@ class Report(Base):
     client = Column(String, nullable=True)
     app_version = Column(String, nullable=True)
     ip = Column(String, nullable=True)
-    
+
     # Enhanced Fields
-    status = Column(String, default="open", index=True) # open, resolved, ignored
+    status = Column(String, default="open", index=True)  # open, resolved, ignored
     admin_notes = Column(String, nullable=True)
-    tags = Column(JSON, default=list) # e.g. ["false_positive", "high_priority"]
+    tags = Column(JSON, default=list)  # e.g. ["false_positive", "high_priority"]
     applied_override = Column(Boolean, default=False)
     resolved_at = Column(DateTime, nullable=True)
 
+
 class Override(Base):
     """Manual classification overrides for specific OSM objects."""
+
     __tablename__ = "overrides"
-    
-    id = Column(String, primary_key=True) # UUID
+
+    id = Column(String, primary_key=True)  # UUID
     place_id = Column(String, unique=True, index=True)
     forced_type = Column(String)
     forced_subtype = Column(String, nullable=True)
     notes = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    updated_at = Column(
+        DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow
+    )
     created_by = Column(String, nullable=True)
     is_active = Column(Boolean, default=True, index=True)
 
+
 class APIKey(Base):
     """API Keys for authenticated access and quota enforcement."""
+
     __tablename__ = "api_keys"
-    
+
     id = Column(Integer, primary_key=True)
     key_hash = Column(String, unique=True, index=True)
     name = Column(String)
@@ -71,12 +89,14 @@ class APIKey(Base):
     daily_limit = Column(Integer, default=500)
     used_today = Column(Integer, default=0)
     last_reset_date = Column(DateTime, default=datetime.datetime.utcnow)
-    plan = Column(String, default="free", index=True) # free, pro, enterprise
+    plan = Column(String, default="free", index=True)  # free, pro, enterprise
+
 
 class ExportLog(Base):
     """Audit logs for data exports."""
+
     __tablename__ = "export_logs"
-    
+
     id = Column(Integer, primary_key=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
     ip = Column(String)
@@ -87,6 +107,7 @@ class ExportLog(Base):
     center_lon = Column(Float)
     item_count = Column(Integer)
 
+
 class PlaceList(Base):
     """
     Gonullulerin olusturdugu adlandirilmis liste ("Kadikoy liseleri").
@@ -96,6 +117,7 @@ class PlaceList(Base):
     anahtarina dusuyor, dolayisiyla varsayilan davranis "tum ekip ayni
     listeleri paylasir" oluyor - urunun istedigi de bu.
     """
+
     __tablename__ = "place_lists"
 
     id = Column(String, primary_key=True)  # uuid
@@ -124,13 +146,17 @@ class SavedPlace(Base):
     kaydedilir, listeler arasinda tasinir. Ayni okulun iki listede iki
     farkli notla durmasi devir teslimi bozar - hangi not gecerli belli olmaz.
     """
+
     __tablename__ = "saved_places"
 
     id = Column(String, primary_key=True)  # uuid
     api_key_id = Column(Integer, ForeignKey("api_keys.id"), index=True, nullable=False)
     # NULL = henuz bir listeye konmamis ("Dosyalanmamis").
     list_id = Column(
-        String, ForeignKey("place_lists.id", ondelete="SET NULL"), index=True, nullable=True
+        String,
+        ForeignKey("place_lists.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
     )
 
     place_id = Column(String, nullable=False, index=True)  # osm:node:123
@@ -152,11 +178,15 @@ class SavedPlace(Base):
 
 class GlobalState(Base):
     """Global system status like overrides last updated timestamp."""
+
     __tablename__ = "global_state"
 
     key = Column(String, primary_key=True)
     value = Column(String)
-    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    updated_at = Column(
+        DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow
+    )
+
 
 class PlaceRow(Base):
     """
@@ -168,6 +198,7 @@ class PlaceRow(Base):
     atmak yerine saklaniyor, filtrelerde varsayilan olarak gizleniyor
     (include_unclassified ile gorulebilir).
     """
+
     __tablename__ = "places"
 
     id = Column(String, primary_key=True)  # osm:node:123
@@ -193,6 +224,7 @@ class PlaceRow(Base):
     # boylece mevcut satirlar migration'siz dogru degeri aliyor.
     source = Column(String, nullable=False, default="osm", index=True)
 
+
 class PlaceDistrict(Base):
     """
     POI - ilce uyeligi (cok-a-cok).
@@ -204,6 +236,7 @@ class PlaceDistrict(Base):
 
     is_inside: True = kesin sinir ici, False = tampon bolgesi.
     """
+
     __tablename__ = "place_districts"
 
     place_id = Column(
@@ -211,6 +244,7 @@ class PlaceDistrict(Base):
     )
     district_id = Column(String, primary_key=True, index=True)
     is_inside = Column(Boolean, nullable=False, default=True)
+
 
 class DistrictIngest(Base):
     """
@@ -222,6 +256,7 @@ class DistrictIngest(Base):
       - partial: bbox dortte bolunmesine ragmen bazi parcalar alinamadi
       - failed:  hicbir sorgu tamamlanmadi
     """
+
     __tablename__ = "district_ingest"
 
     district_id = Column(String, primary_key=True)
@@ -229,6 +264,7 @@ class DistrictIngest(Base):
     place_count = Column(Integer, nullable=False, default=0)
     query_count = Column(Integer, nullable=False, default=0)
     status = Column(String, nullable=False, default="ok", index=True)
+
 
 async def init_db():
     """Initialize database tables."""
@@ -245,14 +281,19 @@ async def init_db():
                 "ALTER TABLE places ADD COLUMN source TEXT NOT NULL DEFAULT 'osm'"
             )
 
-
     # Initialize overrides_version
     async with AsyncSessionLocal() as session:
-        result = await session.execute(select(GlobalState).where(GlobalState.key == "overrides_updated_at"))
+        result = await session.execute(
+            select(GlobalState).where(GlobalState.key == "overrides_updated_at")
+        )
         if not result.scalar_one_or_none():
-            state = GlobalState(key="overrides_updated_at", value=str(int(datetime.datetime.utcnow().timestamp())))
+            state = GlobalState(
+                key="overrides_updated_at",
+                value=str(int(datetime.datetime.utcnow().timestamp())),
+            )
             session.add(state)
             await session.commit()
+
 
 async def get_db():
     """Dependency for getting async database sessions."""

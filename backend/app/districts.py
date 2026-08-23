@@ -35,7 +35,7 @@ class District:
     province_plate: str
     osm_relation_id: int
     bbox: tuple[float, float, float, float]  # (south, west, north, east)
-    center: tuple[float, float]              # (lat, lon)
+    center: tuple[float, float]  # (lat, lon)
 
 
 @lru_cache(maxsize=1)
@@ -73,9 +73,7 @@ def get_district(district_id: str) -> District | None:
 
 def all_districts() -> list[District]:
     """Tum ilceler, il plakasi ve ada gore sirali."""
-    return sorted(
-        load_districts().values(), key=lambda d: (d.province_plate, d.name)
-    )
+    return sorted(load_districts().values(), key=lambda d: (d.province_plate, d.name))
 
 
 def districts_for_province(plate: str) -> list[District]:
@@ -95,9 +93,7 @@ def district_geometry(district_id: str) -> BaseGeometry:
     raise KeyError(f"Bilinmeyen ilce: {district_id}")
 
 
-def buffer_degrees(
-    geom: BaseGeometry, buffer_m: int, ref_lat: float
-) -> BaseGeometry:
+def buffer_degrees(geom: BaseGeometry, buffer_m: int, ref_lat: float) -> BaseGeometry:
     """
     lat/lon derece uzayinda metrik tampon.
 

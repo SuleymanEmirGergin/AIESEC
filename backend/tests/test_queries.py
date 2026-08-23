@@ -36,7 +36,9 @@ async def db():
         beta_tags = {"name": "Beta Fabrika", "man_made": "works"}
         isimsiz_tags = {"man_made": "works"}
         gama_tags = {
-            "name": "Gama Ofis", "office": "company", "website": "https://g.com",
+            "name": "Gama Ofis",
+            "office": "company",
+            "website": "https://g.com",
         }
         delta_tags = {"name": "Delta Anaokulu", "amenity": "kindergarten"}
         bilinmeyen_tags = {"name": "Bilinmeyen", "building": "school"}
@@ -52,28 +54,50 @@ async def db():
         # cevap onun TAM TERSI olacak sekilde kurdum (bkz. asagidaki test).
         rows = [
             place_row_values(
-                _element(1, alfa_tags, lat=41.20, lon=29.0), "factory", 70, None,
+                _element(1, alfa_tags, lat=41.20, lon=29.0),
+                "factory",
+                70,
+                None,
             ),
             place_row_values(
-                _element(2, beta_tags, lat=41.10, lon=29.0), "factory", 70, None,
+                _element(2, beta_tags, lat=41.10, lon=29.0),
+                "factory",
+                70,
+                None,
             ),
             place_row_values(
-                _element(3, isimsiz_tags, lat=41.05, lon=29.0), "factory", 40, None,
+                _element(3, isimsiz_tags, lat=41.05, lon=29.0),
+                "factory",
+                40,
+                None,
             ),
             place_row_values(
-                _element(4, gama_tags, lat=41.01, lon=29.0), "office", 70, None,
+                _element(4, gama_tags, lat=41.01, lon=29.0),
+                "office",
+                70,
+                None,
             ),
             place_row_values(
                 _element(5, delta_tags, lat=41.00, lon=29.0),
-                "kindergarten", 70, None,
+                "kindergarten",
+                70,
+                None,
             ),
             place_row_values(_element(6, bilinmeyen_tags), None, 40, None),
         ]
         await upsert_places(session, rows)
-        await replace_memberships(session, D, [
-            ("osm:node:1", True), ("osm:node:2", True), ("osm:node:3", True),
-            ("osm:node:4", True), ("osm:node:5", False), ("osm:node:6", True),
-        ])
+        await replace_memberships(
+            session,
+            D,
+            [
+                ("osm:node:1", True),
+                ("osm:node:2", True),
+                ("osm:node:3", True),
+                ("osm:node:4", True),
+                ("osm:node:5", False),
+                ("osm:node:6", True),
+            ],
+        )
         await replace_memberships(session, OTHER, [("osm:node:1", False)])
 
         yield session
@@ -150,9 +174,12 @@ class TestFiltreler:
         assert _ids(rows) == {"osm:node:1"}
 
     async def test_filtreler_birlesir(self, db):
-        rows, _ = await fetch_places(db, PlaceFilter(
-            district_id=D, types=("factory",), has_contact=True, named_only=True
-        ))
+        rows, _ = await fetch_places(
+            db,
+            PlaceFilter(
+                district_id=D, types=("factory",), has_contact=True, named_only=True
+            ),
+        )
         assert _ids(rows) == {"osm:node:1"}
 
 
@@ -213,7 +240,11 @@ class TestSiralama:
         )
         assert [r.has_contact for r in rows] == [True, True, False, False, False]
         assert [r.id for r in rows] == [
-            "osm:node:1", "osm:node:4", "osm:node:2", "osm:node:5", "osm:node:3",
+            "osm:node:1",
+            "osm:node:4",
+            "osm:node:2",
+            "osm:node:5",
+            "osm:node:3",
         ]
 
     async def test_name_alfabetik(self, db):
@@ -237,11 +268,16 @@ class TestSiralama:
         # TAM TERSI -- bu sorgunun ORDER BY'siz dogal donus sirasi ID artan
         # oldugu icin, siralamanin hic calismadigi bir kirilma bu tam ters
         # diziyle rastlantisal olarak ortusemez).
-        rows, _ = await fetch_places(db, PlaceFilter(
-            district_id=D, sort="ref_distance", ref_lat=41.0, ref_lon=29.0
-        ))
+        rows, _ = await fetch_places(
+            db,
+            PlaceFilter(district_id=D, sort="ref_distance", ref_lat=41.0, ref_lon=29.0),
+        )
         assert [r.id for r in rows] == [
-            "osm:node:5", "osm:node:4", "osm:node:3", "osm:node:2", "osm:node:1",
+            "osm:node:5",
+            "osm:node:4",
+            "osm:node:3",
+            "osm:node:2",
+            "osm:node:1",
         ]
 
     async def test_gecersiz_siralama_reddedilir(self, db):
@@ -255,7 +291,11 @@ class TestSiralama:
 # uyari = kusur, bkz. proje testi taban cizgisi).
 def test_gecerli_siralamalar():
     assert VALID_SORTS == {
-        "contact_first", "confidence", "name", "lead_score", "ref_distance"
+        "contact_first",
+        "confidence",
+        "name",
+        "lead_score",
+        "ref_distance",
     }
 
 
@@ -275,9 +315,19 @@ def test_ref_distance_referans_noktasi_yoksa_liste_degismez():
 class TestLeadScore:
     def _row(self, **kwargs) -> PlaceRow:
         defaults = dict(
-            id="osm:node:1", lat=41.0, lon=29.0, name="Test", place_type="factory",
-            subtype=None, confidence=70, has_contact=False, phone=None, email=None,
-            website=None, address=None, tags_json="{}",
+            id="osm:node:1",
+            lat=41.0,
+            lon=29.0,
+            name="Test",
+            place_type="factory",
+            subtype=None,
+            confidence=70,
+            has_contact=False,
+            phone=None,
+            email=None,
+            website=None,
+            address=None,
+            tags_json="{}",
         )
         defaults.update(kwargs)
         return PlaceRow(**defaults)

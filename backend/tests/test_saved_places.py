@@ -6,8 +6,6 @@ Urunun temel vaadi burada sinaniyor: gonullunun kaydettigi sey kaybolmaz
 liste silme, ayni yeri iki kez kaydetme, baskasinin listesine erisme.
 """
 
-import pytest
-
 
 def _place(place_id: str = "osm:node:1", **overrides) -> dict:
     body = {
@@ -72,7 +70,8 @@ class TestDeletingAListKeepsItsPlaces:
 
         # Kayit duruyor ve artik dosyalanmamis.
         still_there = [
-            p for p in client.get("/api/saved").json()
+            p
+            for p in client.get("/api/saved").json()
             if p["place_id"] == "osm:node:kalici-1"
         ]
         assert len(still_there) == 1
@@ -99,7 +98,8 @@ class TestSavingPlaces:
         assert second.json()["id"] == first.json()["id"]
 
         matching = [
-            p for p in client.get("/api/saved").json()
+            p
+            for p in client.get("/api/saved").json()
             if p["place_id"] == "osm:node:tekrar"
         ]
         assert len(matching) == 1, "ayni yer iki kayit uretmemeli"
@@ -169,10 +169,13 @@ class TestUpdatingSavedPlaces:
         assert patched.json()["list_id"] == list_id
 
     def test_delete(self, client):
-        saved_id = client.post("/api/saved", json=_place("osm:node:silinen")).json()["id"]
+        saved_id = client.post("/api/saved", json=_place("osm:node:silinen")).json()[
+            "id"
+        ]
         assert client.delete(f"/api/saved/{saved_id}").status_code == 200
         remaining = [
-            p for p in client.get("/api/saved").json()
+            p
+            for p in client.get("/api/saved").json()
             if p["place_id"] == "osm:node:silinen"
         ]
         assert remaining == []

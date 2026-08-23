@@ -56,15 +56,24 @@ async def ingested():
     async with AsyncSessionLocal() as session:
         rows = [
             place_row_values(
-                _element(301, {"name": "Test Fabrika", "man_made": "works", "phone": "111"}),
-                "factory", 80, None,
+                _element(
+                    301, {"name": "Test Fabrika", "man_made": "works", "phone": "111"}
+                ),
+                "factory",
+                80,
+                None,
             ),
         ]
         await upsert_places(session, rows)
         await replace_memberships(session, DISTRICT, [("osm:node:301", True)])
-        session.add(DistrictIngest(
-            district_id=DISTRICT, place_count=1, query_count=4, status="ok",
-        ))
+        session.add(
+            DistrictIngest(
+                district_id=DISTRICT,
+                place_count=1,
+                query_count=4,
+                status="ok",
+            )
+        )
         await session.commit()
         yield session
 
@@ -92,9 +101,11 @@ SORGU_UCLARI = [
 
 @pytest.mark.parametrize("path", SORGU_UCLARI)
 async def test_sorgu_ucu_overpass_e_gitmiyor(client, ingested, path):
-    patlayan = AsyncMock(side_effect=AssertionError(
-        f"{path} Overpass'e gitti. Sorgu yolu tamamen yerel olmali."
-    ))
+    patlayan = AsyncMock(
+        side_effect=AssertionError(
+            f"{path} Overpass'e gitti. Sorgu yolu tamamen yerel olmali."
+        )
+    )
     with patch("app.overpass.overpass_client.query", new=patlayan):
         response = client.get(path)
 

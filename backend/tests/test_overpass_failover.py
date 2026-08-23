@@ -324,7 +324,9 @@ class TestQueryFailover:
 
         assert result == {"elements": []}
         assert seen[0] == GOOD
-        assert seen[-1] == GOOD, f"olu aynalardan sonra kanitli aynaya donulmedi: {seen}"
+        assert seen[-1] == GOOD, (
+            f"olu aynalardan sonra kanitli aynaya donulmedi: {seen}"
+        )
 
     @pytest.mark.asyncio
     async def test_denemeler_farkli_aynalara_dagilir(self, monkeypatch):

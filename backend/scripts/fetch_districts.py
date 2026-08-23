@@ -47,11 +47,27 @@ PROVINCES = [
     {"slug": "malatya", "plate": "44", "name": "Malatya", "expected": 13},
 ]
 
-_TR_MAP = str.maketrans({
-    "ç": "c", "Ç": "c", "ğ": "g", "Ğ": "g", "ı": "i", "I": "i",
-    "İ": "i", "i": "i", "ö": "o", "Ö": "o", "ş": "s", "Ş": "s",
-    "ü": "u", "Ü": "u", "â": "a", "î": "i", "û": "u",
-})
+_TR_MAP = str.maketrans(
+    {
+        "ç": "c",
+        "Ç": "c",
+        "ğ": "g",
+        "Ğ": "g",
+        "ı": "i",
+        "I": "i",
+        "İ": "i",
+        "i": "i",
+        "ö": "o",
+        "Ö": "o",
+        "ş": "s",
+        "Ş": "s",
+        "ü": "u",
+        "Ü": "u",
+        "â": "a",
+        "î": "i",
+        "û": "u",
+    }
+)
 
 
 def tr_slug(text: str) -> str:
@@ -87,13 +103,15 @@ def parse_district_relations(
         name = (el.get("tags") or {}).get("name")
         if not name:
             continue
-        out.append({
-            "id": district_id(plate, province_slug, name),
-            "name": name,
-            "province": province,
-            "province_plate": plate,
-            "osm_relation_id": el["id"],
-        })
+        out.append(
+            {
+                "id": district_id(plate, province_slug, name),
+                "name": name,
+                "province": province,
+                "province_plate": plate,
+                "osm_relation_id": el["id"],
+            }
+        )
     return out
 
 
@@ -130,13 +148,15 @@ def attach_geometry(
         minx, miny, maxx, maxy = geom.bounds  # (lon, lat) sirasi
         centroid = geom.centroid
 
-        out.append({
-            **meta,
-            "geometry": mapping(geom),
-            # bbox (south, west, north, east) — geo.bbox_from_radius ile ayni sira
-            "bbox": (miny, minx, maxy, maxx),
-            "center": (centroid.y, centroid.x),
-        })
+        out.append(
+            {
+                **meta,
+                "geometry": mapping(geom),
+                # bbox (south, west, north, east) — geo.bbox_from_radius ile ayni sira
+                "bbox": (miny, minx, maxy, maxx),
+                "center": (centroid.y, centroid.x),
+            }
+        )
     return out
 
 
@@ -175,7 +195,8 @@ def _select_relation_candidate(candidates: list[dict], relation_id: int) -> dict
     """
     return next(
         (
-            c for c in candidates
+            c
+            for c in candidates
             if c.get("osm_id") == relation_id and c.get("osm_type") == "relation"
         ),
         None,
@@ -265,9 +286,7 @@ async def _query_nominatim_lookup(
     return response.json()
 
 
-async def _fetch_geometries(
-    client: httpx.AsyncClient, metas: list[dict]
-) -> list[dict]:
+async def _fetch_geometries(client: httpx.AsyncClient, metas: list[dict]) -> list[dict]:
     """Nominatim /lookup ile geometri cek. Istek basina en fazla 50 ID."""
     results: list[dict] = []
     for i in range(0, len(metas), 50):
@@ -281,9 +300,7 @@ async def _fetch_geometries(
 
 
 @_retry_transient
-async def _query_nominatim_search(
-    client: httpx.AsyncClient, meta: dict
-) -> list[dict]:
+async def _query_nominatim_search(client: httpx.AsyncClient, meta: dict) -> list[dict]:
     """Tek bir ilce icin Nominatim /search adaylarini ceker."""
     response = await client.get(
         NOMINATIM_SEARCH_URL,
@@ -336,8 +353,10 @@ async def main() -> int:
         }
         missing = [m for m in metas if m["osm_relation_id"] not in found_ids]
         if missing:
-            print(f"[NOMINATIM] {len(missing)} ilce /lookup ile bulunamadi, /search "
-                  "deneniyor...")
+            print(
+                f"[NOMINATIM] {len(missing)} ilce /lookup ile bulunamadi, /search "
+                "deneniyor..."
+            )
             lookup.extend(await _fetch_geometries_by_search(client, missing))
 
     districts = attach_geometry(metas, lookup, SIMPLIFY_TOLERANCE)

@@ -1,8 +1,7 @@
 """Integration tests for API endpoints."""
 
 from unittest.mock import patch
-
-import pytest
+from uuid import uuid4
 
 from tests.conftest import overpass_stub
 
@@ -102,15 +101,24 @@ class TestSearchResults:
         """Sadece istenen okul seviyesi donmeli."""
         elements = [
             {
-                "type": "node", "id": 1, "lat": 41.015, "lon": 28.980,
+                "type": "node",
+                "id": 1,
+                "lat": 41.015,
+                "lon": 28.980,
                 "tags": {"amenity": "school", "name": "Test İlkokulu"},
             },
             {
-                "type": "node", "id": 2, "lat": 41.016, "lon": 28.981,
+                "type": "node",
+                "id": 2,
+                "lat": 41.016,
+                "lon": 28.981,
                 "tags": {"amenity": "school", "name": "Test Ortaokulu"},
             },
             {
-                "type": "node", "id": 3, "lat": 41.017, "lon": 28.982,
+                "type": "node",
+                "id": 3,
+                "lat": 41.017,
+                "lon": 28.982,
                 "tags": {"amenity": "school", "name": "Another İlkokulu"},
             },
         ]
@@ -128,11 +136,16 @@ class TestSearchResults:
     def test_b2b_classification_filtering(self, client):
         elements = [
             {
-                "type": "way", "id": 1, "center": {"lat": 41.015, "lon": 28.980},
+                "type": "way",
+                "id": 1,
+                "center": {"lat": 41.015, "lon": 28.980},
                 "tags": {"industrial": "factory", "name": "Test Factory"},
             },
             {
-                "type": "node", "id": 2, "lat": 41.016, "lon": 28.981,
+                "type": "node",
+                "id": 2,
+                "lat": 41.016,
+                "lon": 28.981,
                 "tags": {"office": "company", "name": "Test Office"},
             },
         ]
@@ -154,7 +167,10 @@ class TestSearchResults:
         """
         elements = [
             {
-                "type": "node", "id": 1, "lat": 41.015, "lon": 28.980,
+                "type": "node",
+                "id": 1,
+                "lat": 41.015,
+                "lon": 28.980,
                 "tags": {"industrial": "workshop", "name": "Test Atolye"},
             }
         ]
@@ -171,11 +187,17 @@ class TestSearchResults:
     def test_distance_sorting(self, client):
         elements = [
             {
-                "type": "node", "id": 1, "lat": 41.020, "lon": 28.990,
+                "type": "node",
+                "id": 1,
+                "lat": 41.020,
+                "lon": 28.990,
                 "tags": {"amenity": "kindergarten", "name": "Far Kindergarten"},
             },
             {
-                "type": "node", "id": 2, "lat": 41.001, "lon": 29.001,
+                "type": "node",
+                "id": 2,
+                "lat": 41.001,
+                "lon": 29.001,
                 "tags": {"amenity": "kindergarten", "name": "Near Kindergarten"},
             },
         ]
@@ -195,7 +217,10 @@ class TestSearchResults:
         """Isimsiz B2B kayitlari stage 2'den geliyor ve isaretleniyor."""
         unnamed = [
             {
-                "type": "node", "id": 1, "lat": 41.015, "lon": 28.980,
+                "type": "node",
+                "id": 1,
+                "lat": 41.015,
+                "lon": 28.980,
                 "tags": {"industrial": "factory"},
             }
         ]
@@ -211,12 +236,72 @@ class TestSearchResults:
         assert results[0]["unnamed"] is True
 
 
+class TestSearchOrchestrationRecovery:
+    async def test_stage_two_failure_keeps_stage_one_results(self):
+        """Isimsiz ikinci tur hatasi, ilk turdaki sonucu silmemeli."""
+        from app.search_service import run_search_orchestration
+
+        async def fail_only_unnamed_stage(query_text: str, debug: bool = False):
+            if '[!"name"]' in query_text:
+                raise RuntimeError("stage two failed")
+            return {"elements": []}
+
+        with patch(SEAM, new=fail_only_unnamed_stage):
+            results, stage2_used = await run_search_orchestration(
+                mode="bbox",
+                radius=1_500,
+                place_type="factory",
+                lat=41.0,
+                lon=29.0,
+            )
+
+        assert results == []
+        assert stage2_used is True
+
+
+class TestSearchOverrides:
+    def test_override_keeps_matching_place_and_applies_subtype(self, client):
+        osm_id = f"override-{uuid4().hex}"
+        place_id = f"osm:node:{osm_id}"
+        created = client.post(
+            "/admin/overrides",
+            headers={"X-ADMIN-KEY": "test-admin-key"},
+            json={
+                "place_id": place_id,
+                "forced_type": "factory",
+                "forced_subtype": "priority",
+                "notes": "Test override",
+            },
+        )
+        assert created.status_code == 200, created.text
+
+        element = {
+            "type": "node",
+            "id": osm_id,
+            "lat": 41.015,
+            "lon": 28.980,
+            "tags": {"industrial": "factory", "name": "Test Fabrika"},
+        }
+        with patch(SEAM, new=overpass_stub([element])):
+            response = client.get(
+                "/api/search?lat=41.0&lon=29.0&radius=1500&type=factory"
+            )
+
+        assert response.status_code == 200
+        place = response.json()["results"][0]
+        assert place["subtype"] == "priority"
+        assert place["confidence_level"] == "medium"
+
+
 class TestSearchCaching:
     def test_cache_prevents_second_upstream_call(self, client):
         """Ayni sorgu iki kez istenirse Overpass'e bir kez gidilmeli."""
         elements = [
             {
-                "type": "node", "id": 123, "lat": 41.015, "lon": 28.980,
+                "type": "node",
+                "id": 123,
+                "lat": 41.015,
+                "lon": 28.980,
                 "tags": {"amenity": "kindergarten", "name": "Test"},
             }
         ]

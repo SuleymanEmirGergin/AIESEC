@@ -27,8 +27,7 @@ logger = logging.getLogger(__name__)
 # cunku kategoriler ve id'ler surumler arasi degisebiliyor.
 OVERTURE_RELEASE = os.getenv("OVERTURE_RELEASE", "2026-07-22.0")
 OVERTURE_S3 = (
-    f"s3://overturemaps-us-west-2/release/{OVERTURE_RELEASE}"
-    "/theme=places/type=place/*"
+    f"s3://overturemaps-us-west-2/release/{OVERTURE_RELEASE}/theme=places/type=place/*"
 )
 
 # Overture kategorisi -> bizim PlaceType.
@@ -125,17 +124,30 @@ def fetch_places(
                phones, websites, emails,
                addresses
         FROM read_parquet('{OVERTURE_S3}', hive_partitioning=1)
-        WHERE {' AND '.join(where)}
+        WHERE {" AND ".join(where)}
     """
 
     rows = con.execute(query).fetchall()
     con.close()
 
     out: list[dict] = []
-    for gid, name, category, lon, lat, conf, phones, websites, emails, addresses in rows:
+    for (
+        gid,
+        name,
+        category,
+        lon,
+        lat,
+        conf,
+        phones,
+        websites,
+        emails,
+        addresses,
+    ) in rows:
         addr = None
         if addresses:
-            first_addr = addresses[0] if isinstance(addresses, (list, tuple)) else addresses
+            first_addr = (
+                addresses[0] if isinstance(addresses, (list, tuple)) else addresses
+            )
             if isinstance(first_addr, dict):
                 addr = first_addr.get("freeform") or None
 

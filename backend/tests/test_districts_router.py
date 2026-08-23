@@ -40,29 +40,43 @@ async def seeded():
     async with AsyncSessionLocal() as session:
         rows = [
             place_row_values(
-                _element(101, {"name": "Alfa Fabrika", "man_made": "works", "phone": "111"}),
-                "factory", 80, None,
+                _element(
+                    101, {"name": "Alfa Fabrika", "man_made": "works", "phone": "111"}
+                ),
+                "factory",
+                80,
+                None,
             ),
             place_row_values(
                 _element(102, {"name": "Beta Fabrika", "man_made": "works"}),
-                "factory", 60, None,
+                "factory",
+                60,
+                None,
             ),
             place_row_values(
                 _element(103, {"name": "Gama Ofis", "office": "company"}),
-                "office", 70, None,
+                "office",
+                70,
+                None,
             ),
             place_row_values(
                 _element(104, {"name": "Tampon Fabrika", "man_made": "works"}),
-                "factory", 50, None,
+                "factory",
+                50,
+                None,
             ),
         ]
         await upsert_places(session, rows)
-        await replace_memberships(session, DISTRICT, [
-            ("osm:node:101", True),
-            ("osm:node:102", True),
-            ("osm:node:103", True),
-            ("osm:node:104", False),  # tampon bolgesi
-        ])
+        await replace_memberships(
+            session,
+            DISTRICT,
+            [
+                ("osm:node:101", True),
+                ("osm:node:102", True),
+                ("osm:node:103", True),
+                ("osm:node:104", False),  # tampon bolgesi
+            ],
+        )
         yield session
 
         for table in (PlaceDistrict, PlaceRow):
@@ -78,7 +92,13 @@ class TestDistrictListing:
         body = response.json()["districts"]
         assert len(body) == 80
         assert {
-            "id", "name", "province", "province_plate", "bbox", "center", "ingest",
+            "id",
+            "name",
+            "province",
+            "province_plate",
+            "bbox",
+            "center",
+            "ingest",
         } <= set(body[0])
 
     def test_metadata_is_cacheable(self, client):
@@ -136,10 +156,15 @@ class TestIngestStateShape:
         old = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(
             days=FRESH_AFTER_DAYS + 5
         )
-        ingest_state.add(DistrictIngest(
-            district_id=DISTRICT, fetched_at=old, place_count=4,
-            query_count=4, status="ok",
-        ))
+        ingest_state.add(
+            DistrictIngest(
+                district_id=DISTRICT,
+                fetched_at=old,
+                place_count=4,
+                query_count=4,
+                status="ok",
+            )
+        )
         await ingest_state.commit()
 
         body = client.get(f"/api/districts/{DISTRICT}/summary").json()
@@ -149,14 +174,17 @@ class TestIngestStateShape:
         assert body["ingest"]["age_days"] == FRESH_AFTER_DAYS + 5
         assert body["ingest"]["stale"] is True
 
-    async def test_stale_false_when_within_fresh_after_days(
-        self, client, ingest_state
-    ):
+    async def test_stale_false_when_within_fresh_after_days(self, client, ingest_state):
         recent = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)
-        ingest_state.add(DistrictIngest(
-            district_id=DISTRICT, fetched_at=recent, place_count=2,
-            query_count=4, status="ok",
-        ))
+        ingest_state.add(
+            DistrictIngest(
+                district_id=DISTRICT,
+                fetched_at=recent,
+                place_count=2,
+                query_count=4,
+                status="ok",
+            )
+        )
         await ingest_state.commit()
 
         body = client.get(f"/api/districts/{DISTRICT}/summary").json()
@@ -184,9 +212,7 @@ class TestDistrictPlaces:
         assert [p["name"] for p in response.json()["results"]] == ["Gama Ofis"]
 
     async def test_excluding_buffer_drops_buffer_rows(self, client, seeded):
-        response = client.get(
-            f"/api/districts/{DISTRICT}/places?include_buffer=false"
-        )
+        response = client.get(f"/api/districts/{DISTRICT}/places?include_buffer=false")
         names = [p["name"] for p in response.json()["results"]]
         assert "Tampon Fabrika" not in names
         assert response.json()["total"] == 3
@@ -280,9 +306,7 @@ class TestDistrictSummary:
         assert body["name"] == DISTRICT_NAME
 
     async def test_excluding_buffer_lowers_counts(self, client, seeded):
-        response = client.get(
-            f"/api/districts/{DISTRICT}/summary?include_buffer=false"
-        )
+        response = client.get(f"/api/districts/{DISTRICT}/summary?include_buffer=false")
         assert response.json()["counts"]["factory"] == 2
 
     async def test_reports_never_ingested_as_null(self, client, seeded):
@@ -310,14 +334,19 @@ class TestDistrictIngest:
     @staticmethod
     def _stub_result(**overrides):
         defaults = dict(
-            district_id=DISTRICT, place_count=12, query_count=4,
-            status="ok", skipped=False,
+            district_id=DISTRICT,
+            place_count=12,
+            query_count=4,
+            status="ok",
+            skipped=False,
         )
         defaults.update(overrides)
         return IngestResult(**defaults)
 
     def test_unknown_district_is_422(self, client):
-        exploding = AsyncMock(side_effect=AssertionError("ingest_district cagrilmamali"))
+        exploding = AsyncMock(
+            side_effect=AssertionError("ingest_district cagrilmamali")
+        )
         with patch("app.routers.districts.ingest_district", new=exploding):
             response = client.post("/api/districts/tr-99-yok/ingest")
         assert response.status_code == 422
@@ -328,16 +357,23 @@ class TestDistrictIngest:
         from app.main import app as fastapi_app
 
         fastapi_app.dependency_overrides.pop(verify_api_key, None)
-        exploding = AsyncMock(side_effect=AssertionError("ingest_district cagrilmamali"))
+        exploding = AsyncMock(
+            side_effect=AssertionError("ingest_district cagrilmamali")
+        )
         with patch("app.routers.districts.ingest_district", new=exploding):
             response = client.post(f"/api/districts/{DISTRICT}/ingest")
         assert response.status_code == 401
         exploding.assert_not_awaited()
 
     def test_maps_ingest_result_into_response(self, client):
-        stub = AsyncMock(return_value=self._stub_result(
-            place_count=12, query_count=4, status="ok", skipped=False,
-        ))
+        stub = AsyncMock(
+            return_value=self._stub_result(
+                place_count=12,
+                query_count=4,
+                status="ok",
+                skipped=False,
+            )
+        )
         with patch("app.routers.districts.ingest_district", new=stub):
             response = client.post(f"/api/districts/{DISTRICT}/ingest")
 

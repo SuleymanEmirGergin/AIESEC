@@ -1,9 +1,12 @@
-from fastapi.testclient import TestClient
 from unittest.mock import patch
-from app.main import app
+
+from fastapi.testclient import TestClient
+
 from app.cache import cache
+from app.main import app
 
 client = TestClient(app)
+
 
 def verify():
     cache.clear()
@@ -17,7 +20,8 @@ def verify():
                     "lat": 41.0 + (i * 0.001),
                     "lon": 29.0 + (i * 0.001),
                     "tags": {"amenity": "kindergarten", "name": f"Node {i}"},
-                } for i in range(10)
+                }
+                for i in range(10)
             ]
         }
 
@@ -25,17 +29,18 @@ def verify():
         response = client.get("/api/search?lat=41.0&lon=29.0&type=kindergarten")
         assert response.status_code == 200
         assert len(response.json()["results"]) == 10
-        
+
         print("Testing custom limit (5)...")
         response = client.get("/api/search?lat=41.0&lon=29.0&type=kindergarten&limit=5")
         assert len(response.json()["results"]) == 5
-        
+
         print("Testing cache key isolation (limit 5 vs default)...")
         # If cache key didn't include limit, this might return 10 or 5 incorrectly
         # Our implementation includes limit in key, so this should trigger another fetch or unique cache
         assert cache.get_stats()["total_entries"] > 0
-        
+
     print("Verification successful!")
+
 
 if __name__ == "__main__":
     verify()

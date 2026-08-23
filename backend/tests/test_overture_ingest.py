@@ -18,7 +18,7 @@ from sqlalchemy import text
 
 from app.database import AsyncSessionLocal, init_db
 from app.overture_ingest import _looks_same, ingest_overture_district
-from app.store import upsert_places, replace_memberships
+from app.store import replace_memberships, upsert_places
 
 DISTRICT = "tr-22-edirne-merkez"
 # Edirne Merkez sinirlari icinde bir nokta.
@@ -48,12 +48,26 @@ class TestIsimEslestirme:
 @pytest.mark.asyncio
 class TestZenginlestirme:
     async def _osm_kaydi(self, db, pid: str, name: str, **kw):
-        await upsert_places(db, [{
-            "id": pid, "lat": LAT, "lon": LON, "name": name,
-            "place_type": "primary_school", "subtype": None, "confidence": 80,
-            "has_contact": False, "phone": kw.get("phone"), "email": None,
-            "website": None, "address": None, "tags_json": "{}",
-        }])
+        await upsert_places(
+            db,
+            [
+                {
+                    "id": pid,
+                    "lat": LAT,
+                    "lon": LON,
+                    "name": name,
+                    "place_type": "primary_school",
+                    "subtype": None,
+                    "confidence": 80,
+                    "has_contact": False,
+                    "phone": kw.get("phone"),
+                    "email": None,
+                    "website": None,
+                    "address": None,
+                    "tags_json": "{}",
+                }
+            ],
+        )
 
     async def test_mevcut_uyelikler_silinmiyor(self):
         """
@@ -66,21 +80,43 @@ class TestZenginlestirme:
             await self._osm_kaydi(db, "osm:node:9990001", "Test OSM Okulu")
             await replace_memberships(db, DISTRICT, [("osm:node:9990001", True)])
 
-            before = (await db.execute(text(
-                "SELECT COUNT(*) FROM place_districts WHERE district_id=:d AND place_id LIKE 'osm:%'"
-            ), {"d": DISTRICT})).scalar()
+            before = (
+                await db.execute(
+                    text(
+                        "SELECT COUNT(*) FROM place_districts WHERE district_id=:d AND place_id LIKE 'osm:%'"
+                    ),
+                    {"d": DISTRICT},
+                )
+            ).scalar()
 
-            with patch("app.overture_ingest.fetch_places", return_value=[{
-                "id": "ov-1", "name": "Bambaska Bir Fabrika", "category": "factory",
-                "place_type": "factory", "lat": LAT, "lon": LON, "confidence": 90,
-                "phone": "+902841112233", "website": None, "email": None,
-                "address": "Merkez",
-            }]):
+            with patch(
+                "app.overture_ingest.fetch_places",
+                return_value=[
+                    {
+                        "id": "ov-1",
+                        "name": "Bambaska Bir Fabrika",
+                        "category": "factory",
+                        "place_type": "factory",
+                        "lat": LAT,
+                        "lon": LON,
+                        "confidence": 90,
+                        "phone": "+902841112233",
+                        "website": None,
+                        "email": None,
+                        "address": "Merkez",
+                    }
+                ],
+            ):
                 await ingest_overture_district(db, DISTRICT)
 
-            after = (await db.execute(text(
-                "SELECT COUNT(*) FROM place_districts WHERE district_id=:d AND place_id LIKE 'osm:%'"
-            ), {"d": DISTRICT})).scalar()
+            after = (
+                await db.execute(
+                    text(
+                        "SELECT COUNT(*) FROM place_districts WHERE district_id=:d AND place_id LIKE 'osm:%'"
+                    ),
+                    {"d": DISTRICT},
+                )
+            ).scalar()
 
         assert after == before, "Overture ingest'i OSM uyeliklerini sildi"
 
@@ -91,21 +127,38 @@ class TestZenginlestirme:
         """
         await init_db()
         async with AsyncSessionLocal() as db:
-            await self._osm_kaydi(db, "osm:node:9990002", "Ayni Isimli Okul",
-                                  phone="+900000000000")
+            await self._osm_kaydi(
+                db, "osm:node:9990002", "Ayni Isimli Okul", phone="+900000000000"
+            )
             await replace_memberships(db, DISTRICT, [("osm:node:9990002", True)])
 
-            with patch("app.overture_ingest.fetch_places", return_value=[{
-                "id": "ov-2", "name": "Ayni Isimli Okul", "category": "elementary_school",
-                "place_type": "primary_school", "lat": LAT, "lon": LON, "confidence": 90,
-                "phone": "+902849998877", "website": "https://ornek.tr",
-                "email": None, "address": None,
-            }]):
+            with patch(
+                "app.overture_ingest.fetch_places",
+                return_value=[
+                    {
+                        "id": "ov-2",
+                        "name": "Ayni Isimli Okul",
+                        "category": "elementary_school",
+                        "place_type": "primary_school",
+                        "lat": LAT,
+                        "lon": LON,
+                        "confidence": 90,
+                        "phone": "+902849998877",
+                        "website": "https://ornek.tr",
+                        "email": None,
+                        "address": None,
+                    }
+                ],
+            ):
                 await ingest_overture_district(db, DISTRICT)
 
-            row = (await db.execute(text(
-                "SELECT phone, website FROM places WHERE id='osm:node:9990002'"
-            ))).one()
+            row = (
+                await db.execute(
+                    text(
+                        "SELECT phone, website FROM places WHERE id='osm:node:9990002'"
+                    )
+                )
+            ).one()
 
         assert row[0] == "+900000000000", "mevcut telefon ezildi"
         assert row[1] == "https://ornek.tr", "bos website doldurulmadi"
@@ -118,19 +171,34 @@ class TestZenginlestirme:
         """
         await init_db()
         async with AsyncSessionLocal() as db:
-            with patch("app.overture_ingest.fetch_places", return_value=[{
-                "id": "ov-yunanistan", "name": "Dimotiko Scholeio",
-                "category": "elementary_school", "place_type": "primary_school",
-                # Yunanistan tarafi
-                "lat": 41.50, "lon": 26.10, "confidence": 90,
-                "phone": "+302552093293", "website": None, "email": None,
-                "address": None,
-            }]):
+            with patch(
+                "app.overture_ingest.fetch_places",
+                return_value=[
+                    {
+                        "id": "ov-yunanistan",
+                        "name": "Dimotiko Scholeio",
+                        "category": "elementary_school",
+                        "place_type": "primary_school",
+                        # Yunanistan tarafi
+                        "lat": 41.50,
+                        "lon": 26.10,
+                        "confidence": 90,
+                        "phone": "+302552093293",
+                        "website": None,
+                        "email": None,
+                        "address": None,
+                    }
+                ],
+            ):
                 result = await ingest_overture_district(db, DISTRICT)
 
-            leaked = (await db.execute(text(
-                "SELECT COUNT(*) FROM places WHERE id='overture:ov-yunanistan'"
-            ))).scalar()
+            leaked = (
+                await db.execute(
+                    text(
+                        "SELECT COUNT(*) FROM places WHERE id='overture:ov-yunanistan'"
+                    )
+                )
+            ).scalar()
 
         assert result.inserted == 0
         assert leaked == 0
