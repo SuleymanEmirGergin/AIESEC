@@ -64,3 +64,6 @@ factory_search.json
 
 # Superpowers plan execution scratchpad and review ledger.
 .superpowers/
+
+# Git worktree copies used for isolated feature implementation.
+.worktrees/
