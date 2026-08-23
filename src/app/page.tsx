@@ -150,7 +150,10 @@ export default function Home() {
         }
       } catch (err: any) {
         setSavedIds(snapshot);
-        setNotice(err?.message || "Kaydedilemedi.");
+        if (err?.message === "Gönüllü adınızı Ayarlar'dan girin.") {
+          setSettingsOpen(true);
+          setNotice("Yer kaydetmek için önce Ayarlar’dan gönüllü adınızı girin.");
+        } else setNotice(err?.message || "Kaydedilemedi.");
       } finally {
         setSavingId(null);
       }
@@ -172,7 +175,10 @@ export default function Home() {
         setSavedIds((prev) => new Map(prev).set(place.id, created.id));
       }
     } catch (err: any) {
-      setNotice(err?.message || "Bazı kayıtlar eklenemedi.");
+      if (err?.message === "Gönüllü adınızı Ayarlar'dan girin.") {
+        setSettingsOpen(true);
+        setNotice("Yer kaydetmek için önce Ayarlar’dan gönüllü adınızı girin.");
+      } else setNotice(err?.message || "Bazı kayıtlar eklenemedi.");
     } finally {
       setSavingAll(false);
     }

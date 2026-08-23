@@ -4,8 +4,9 @@ import React, { useEffect, useState } from "react";
 import { MapPin, Trash2, FolderInput, Check } from "lucide-react";
 import ContactLinks from "./ContactLinks";
 import { PLACE_TYPE_LABELS } from "../lib/labels";
-import type { PlaceListSummary, SavedPlace } from "../lib/savedApi";
+import { fetchContactEvents, type ContactEvent, type ContactEventCreate, type ContactStatus, type PlaceListSummary, type SavedPlace } from "../lib/savedApi";
 import type { PlaceType } from "../lib/types";
+import { CONTACT_STATUS_LABELS } from "../lib/contactTracking";
 
 interface SavedPlaceRowProps {
   place: SavedPlace;
@@ -13,6 +14,7 @@ interface SavedPlaceRowProps {
   onSaveNote: (id: string, note: string) => Promise<void>;
   onMove: (id: string, listId: string | null) => void;
   onRemove: (id: string) => void;
+  onAddContact: (id: string, data: ContactEventCreate) => Promise<void>;
 }
 
 const dateFormat = new Intl.DateTimeFormat("tr-TR", {
@@ -37,10 +39,19 @@ export default function SavedPlaceRow({
   onSaveNote,
   onMove,
   onRemove,
+  onAddContact,
 }: SavedPlaceRowProps) {
   const [note, setNote] = useState(place.note ?? "");
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
+  const [contactStatus, setContactStatus] = useState<ContactStatus>(place.contact_status);
+  const [contactedAt, setContactedAt] = useState(() => new Date().toISOString().slice(0, 10));
+  const [contactNote, setContactNote] = useState("");
+  const [followUpAt, setFollowUpAt] = useState("");
+  const [contactError, setContactError] = useState<string | null>(null);
+  const [history, setHistory] = useState<ContactEvent[] | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   // Dis kaynak degisirse (baska bir listeye tasindi, yenilendi) yerel
   // taslak degil gercek deger gosterilsin.
@@ -65,6 +76,21 @@ export default function SavedPlaceRow({
 
   const typeLabel =
     PLACE_TYPE_LABELS[place.place_type as PlaceType] ?? place.place_type ?? "—";
+
+  const loadHistory = async () => {
+    setHistoryLoading(true);
+    try { setHistory(await fetchContactEvents(place.id)); } finally { setHistoryLoading(false); }
+  };
+
+  const submitContact = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setContactError(null);
+    try {
+      await onAddContact(place.id, { status: contactStatus, contacted_at: contactedAt, note: contactNote || null, next_follow_up_at: followUpAt || null });
+      setContactOpen(false);
+      await loadHistory();
+    } catch (err: any) { setContactError(err?.message || "Temas kaydedilemedi."); }
+  };
 
   return (
     <li className="rule-b last:border-b-0">
@@ -134,6 +160,8 @@ export default function SavedPlaceRow({
 
         <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <span className="mono-label">{typeLabel}</span>
+          <span className="mono-label">{CONTACT_STATUS_LABELS[place.contact_status]}</span>
+          {place.next_follow_up_at && <span className="mono-label tabular">Takip zamanı: {place.next_follow_up_at}</span>}
 
           {/* Kim, ne zaman - devir teslimin tasiyicisi. */}
           <span className="mono-label tabular">
@@ -171,6 +199,26 @@ export default function SavedPlaceRow({
             </span>
           )}
         </div>
+
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button type="button" onClick={() => setContactOpen((open) => !open)} className="btn btn--ghost px-2.5 py-1.5 text-2xs">Temas ekle</button>
+          <button type="button" onClick={() => history === null ? loadHistory() : setHistory(null)} className="btn btn--ghost px-2.5 py-1.5 text-2xs">{history === null ? "Geçmişi göster" : "Geçmişi gizle"}</button>
+        </div>
+
+        {contactOpen && (
+          <form onSubmit={submitContact} className="mt-2.5 grid gap-2 rounded-input bg-paper-2 p-2.5 text-2xs">
+            <select value={contactStatus} onChange={(e) => setContactStatus(e.target.value as ContactStatus)} className="rounded-input border border-rule bg-paper px-2 py-1.5">
+              {Object.entries(CONTACT_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+            <label>Temas tarihi<input required type="date" value={contactedAt} onChange={(e) => setContactedAt(e.target.value)} className="ml-2 rounded-input border border-rule bg-paper px-2 py-1" /></label>
+            <label>Takip tarihi<input type="date" value={followUpAt} onChange={(e) => setFollowUpAt(e.target.value)} className="ml-2 rounded-input border border-rule bg-paper px-2 py-1" /></label>
+            <input value={contactNote} onChange={(e) => setContactNote(e.target.value)} placeholder="Not" className="rounded-input border border-rule bg-paper px-2 py-1.5" />
+            {contactError && <p className="text-critical">{contactError}</p>}
+            <button className="btn btn--primary justify-center px-3 py-1.5 text-2xs">Kaydet</button>
+          </form>
+        )}
+        {historyLoading && <p className="mt-2 mono-label">Geçmiş yükleniyor</p>}
+        {history && <ol className="mt-2 space-y-1 text-2xs text-ink-3">{history.map((item) => <li key={item.id}>{item.contacted_at} · {CONTACT_STATUS_LABELS[item.status]} · {item.volunteer_name}{item.note ? ` · ${item.note}` : ""}</li>)}</ol>}
       </div>
     </li>
   );

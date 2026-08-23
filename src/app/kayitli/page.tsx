@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Plus, Download, FolderOpen, Trash2, AlertCircle, Search } from "lucide-react";
+import { getDueFollowUps, isOverdue } from "../../lib/contactTracking";
 import AppHeader from "../../components/AppHeader";
 import SavedPlaceRow from "../../components/SavedPlaceRow";
 import SettingsModal from "../../components/SettingsModal";
@@ -11,6 +12,7 @@ import { fetchAccount, exportLeads } from "../../lib/api";
 import type { AccountInfo } from "../../lib/api";
 import {
   createList,
+  addContactEvent,
   deleteList,
   fetchLists,
   fetchSavedPlaces,
@@ -76,6 +78,7 @@ export default function SavedPage() {
     () => places.filter((p) => !p.list_id).length,
     [places]
   );
+  const dueFollowUps = useMemo(() => getDueFollowUps(places, new Date()), [places]);
 
   const activeListName =
     activeList === ALL
@@ -96,7 +99,10 @@ export default function SavedPage() {
       setActiveList(created.id);
       await reload();
     } catch (err: any) {
-      setError(err?.message || "Liste oluşturulamadı.");
+      if (err?.message === "Gönüllü adınızı Ayarlar'dan girin.") {
+        setSettingsOpen(true);
+        setError("Liste oluşturmak için önce Ayarlar’dan gönüllü adınızı girin.");
+      } else setError(err?.message || "Liste oluşturulamadı.");
     } finally {
       setCreating(false);
     }
@@ -149,6 +155,19 @@ export default function SavedPage() {
     } catch (err: any) {
       setPlaces(snapshot);
       setError(err?.message || "Kayıt kaldırılamadı.");
+    }
+  };
+
+  const handleAddContact = async (id: string, data: Parameters<typeof addContactEvent>[1]) => {
+    try {
+      const updated = await addContactEvent(id, data);
+      setPlaces((prev) => prev.map((place) => (place.id === id ? updated : place)));
+    } catch (err: any) {
+      if (err?.message === "Gönüllü adınızı Ayarlar'dan girin.") {
+        setSettingsOpen(true);
+        setError("Temas eklemek için önce Ayarlar’dan gönüllü adınızı girin.");
+      }
+      throw err;
     }
   };
 
@@ -330,6 +349,16 @@ export default function SavedPage() {
           </div>
 
           <div className="flex-1 overflow-y-auto">
+            {dueFollowUps.length > 0 && (
+              <section className="rule-b bg-caution-bg px-4 py-3">
+                <h2 className="mono-label">Takip zamanı ({dueFollowUps.length})</h2>
+                <ul className="mt-2 space-y-1 text-xs text-ink">
+                  {dueFollowUps.map((place) => (
+                    <li key={place.id}>{place.name || "İsimsiz Yer"} · {place.next_follow_up_at} {isOverdue(place, new Date()) && <span className="ml-1 text-critical">Gecikmiş</span>}</li>
+                  ))}
+                </ul>
+              </section>
+            )}
             {loading ? (
               <div className="flex items-center justify-center p-10">
                 <span className="mono-label">Yükleniyor</span>
@@ -383,6 +412,7 @@ export default function SavedPage() {
                     onSaveNote={handleNote}
                     onMove={handleMove}
                     onRemove={handleRemove}
+                    onAddContact={handleAddContact}
                   />
                 ))}
               </ul>
