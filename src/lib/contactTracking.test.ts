@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SavedPlace } from "./savedApi";
-import { getDueFollowUps } from "./contactTracking";
+import { getDueFollowUps, localDateInputValue } from "./contactTracking";
 
 const place = (id: string, next_follow_up_at: string | null): SavedPlace => ({
   id, list_id: null, place_id: id, name: id, place_type: "high_school", lat: 0, lon: 0,
@@ -24,4 +24,8 @@ describe("getDueFollowUps", () => {
     expect(due).not.toContain("no-date");
     expect(due).not.toContain("too-late");
   });
+});
+
+it("yerel takvim gününü tarih alanı değeri olarak kullanır", () => {
+  expect(localDateInputValue(new Date(2026, 0, 2, 0, 30))).toBe("2026-01-02");
 });

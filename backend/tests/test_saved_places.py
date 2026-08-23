@@ -237,6 +237,26 @@ class TestSavingPlaces:
 @pytest.mark.asyncio
 async def test_saved_places_contact_columns_are_migrated_idempotently():
     await init_db()
+
+
+@pytest.mark.asyncio
+async def test_contact_event_history_index_is_migrated_idempotently():
+    await init_db()
+    async with engine.connect() as connection:
+        indexes = await connection.exec_driver_sql("PRAGMA index_list(contact_events)")
+        index_name = next(
+            row[1]
+            for row in indexes.fetchall()
+            if row[1] == "ix_contact_events_history"
+        )
+        columns = await connection.exec_driver_sql(f"PRAGMA index_info({index_name})")
+
+    assert [row[2] for row in columns.fetchall()] == [
+        "saved_place_id",
+        "contacted_at",
+        "created_at",
+    ]
+    await init_db()
     async with engine.connect() as connection:
         columns = await connection.exec_driver_sql("PRAGMA table_info(saved_places)")
         column_names = {row[1] for row in columns.fetchall()}

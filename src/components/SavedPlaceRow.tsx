@@ -6,7 +6,7 @@ import ContactLinks from "./ContactLinks";
 import { PLACE_TYPE_LABELS } from "../lib/labels";
 import { fetchContactEvents, type ContactEvent, type ContactEventCreate, type ContactStatus, type PlaceListSummary, type SavedPlace } from "../lib/savedApi";
 import type { PlaceType } from "../lib/types";
-import { CONTACT_STATUS_LABELS } from "../lib/contactTracking";
+import { CONTACT_STATUS_LABELS, localDateInputValue } from "../lib/contactTracking";
 
 interface SavedPlaceRowProps {
   place: SavedPlace;
@@ -48,7 +48,7 @@ export default function SavedPlaceRow({
   const [saving, setSaving] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   const [contactStatus, setContactStatus] = useState<ContactStatus>(place.contact_status);
-  const [contactedAt, setContactedAt] = useState(() => new Date().toISOString().slice(0, 10));
+  const [contactedAt, setContactedAt] = useState(localDateInputValue);
   const [contactNote, setContactNote] = useState("");
   const [followUpAt, setFollowUpAt] = useState("");
   const [contactError, setContactError] = useState<string | null>(null);

@@ -9,6 +9,13 @@ export const CONTACT_STATUS_LABELS: Record<ContactStatus, string> = {
   not_suitable: "Uygun değil",
 };
 
+export function localDateInputValue(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function toDayNumber(value: string): number {
   const [year, month, day] = value.split("-").map(Number);
   return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000);

@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     UniqueConstraint,
@@ -199,6 +200,15 @@ class ContactEvent(Base):
     volunteer_name = Column(String, nullable=False)
     created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
 
+    __table_args__ = (
+        Index(
+            "ix_contact_events_history",
+            "saved_place_id",
+            "contacted_at",
+            "created_at",
+        ),
+    )
+
 
 class GlobalState(Base):
     """Global system status like overrides last updated timestamp."""
@@ -320,6 +330,11 @@ async def init_db():
         for column, statement in saved_place_migrations.items():
             if column not in existing_saved_place_columns:
                 await conn.exec_driver_sql(statement)
+
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_contact_events_history "
+            "ON contact_events (saved_place_id, contacted_at, created_at)"
+        )
 
     # Initialize overrides_version
     async with AsyncSessionLocal() as session:
