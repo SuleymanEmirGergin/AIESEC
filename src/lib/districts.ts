@@ -147,7 +147,7 @@ export function groupByProvince(
     .sort((a, b) => a.plate.localeCompare(b.plate));
 }
 
-function buildQuery(query: PlaceQuery): string {
+export function buildPlacesParams(query: PlaceQuery): URLSearchParams {
   const params = new URLSearchParams();
 
   if (query.types?.length) params.set("types", query.types.join(","));
@@ -164,8 +164,7 @@ function buildQuery(query: PlaceQuery): string {
   if (query.limit !== undefined) params.set("limit", String(query.limit));
   if (query.offset) params.set("offset", String(query.offset));
 
-  const raw = params.toString();
-  return raw ? `?${raw}` : "";
+  return params;
 }
 
 export function fetchDistrictPlaces(
@@ -173,8 +172,10 @@ export function fetchDistrictPlaces(
   query: PlaceQuery = {},
   signal?: AbortSignal
 ): Promise<DistrictPlacesResponse> {
+  const params = buildPlacesParams(query).toString();
+  const suffix = params ? `?${params}` : "";
   return getJson<DistrictPlacesResponse>(
-    `/api/districts/${districtId}/places${buildQuery(query)}`,
+    `/api/districts/${encodeURIComponent(districtId)}/places${suffix}`,
     signal
   );
 }
@@ -186,7 +187,7 @@ export function fetchDistrictSummary(
 ): Promise<DistrictSummary> {
   const suffix = includeBuffer ? "" : "?include_buffer=false";
   return getJson<DistrictSummary>(
-    `/api/districts/${districtId}/summary${suffix}`,
+    `/api/districts/${encodeURIComponent(districtId)}/summary${suffix}`,
     signal
   );
 }
