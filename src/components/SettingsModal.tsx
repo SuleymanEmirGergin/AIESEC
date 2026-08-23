@@ -29,12 +29,14 @@ export default function SettingsModal({
   account,
 }: SettingsModalProps) {
   const [apiKey, setApiKey] = useState("");
+  const [volunteerName, setVolunteerName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setApiKey(localStorage.getItem("api_key") || "");
+      setVolunteerName(localStorage.getItem("volunteer_name") || "");
       setShowSuccess(false);
     }
   }, [isOpen]);
@@ -56,6 +58,12 @@ export default function SettingsModal({
       localStorage.setItem("api_key", apiKey.trim());
     } else {
       localStorage.removeItem("api_key");
+    }
+
+    if (volunteerName.trim()) {
+      localStorage.setItem("volunteer_name", volunteerName.trim());
+    } else {
+      localStorage.removeItem("volunteer_name");
     }
 
     setIsSaving(false);
@@ -115,6 +123,35 @@ export default function SettingsModal({
         )}
 
         <form onSubmit={handleSave} className="space-y-3">
+          <div className="space-y-2">
+            <label
+              htmlFor="settings-volunteer-name"
+              className="block text-xs font-medium text-ink"
+            >
+              Gönüllü adı{" "}
+              <span className="font-normal text-ink-4">· kayıtlar için gerekli</span>
+            </label>
+
+            <input
+              id="settings-volunteer-name"
+              type="text"
+              value={volunteerName}
+              onChange={(e) => {
+                setVolunteerName(e.target.value);
+                setShowSuccess(false);
+              }}
+              placeholder="Örn. Ece"
+              autoComplete="name"
+              maxLength={120}
+              className="w-full rounded-input border border-rule-2 bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-4 transition-colors duration-fast ease-out hover:border-ink-4 focus:border-accent"
+            />
+
+            <p className="text-2xs leading-relaxed text-ink-4">
+              Ekip içi kayıtların kim tarafından eklendiğini gösterir; yalnızca bu
+              tarayıcıda saklanır.
+            </p>
+          </div>
+
           <label htmlFor="settings-api-key" className="block text-xs font-medium text-ink">
             Kişisel API anahtarı{" "}
             <span className="font-normal text-ink-4">· isteğe bağlı</span>
