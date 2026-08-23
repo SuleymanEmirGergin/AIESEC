@@ -164,6 +164,18 @@ class TestSavingPlaces:
         assert len(matching) == 1, "ayni yer iki kayit uretmemeli"
         assert second.json()["saved_by"] == "Ece"
 
+    def test_repeat_save_does_not_require_volunteer_name(self, client):
+        place_id = f"osm:node:repeat-without-name-{uuid.uuid4()}"
+        first = client.post(
+            "/api/saved", json=_place(place_id), headers=VOLUNTEER_HEADERS
+        )
+        assert first.status_code == 201
+
+        repeated = client.post("/api/saved", json=_place(place_id))
+        assert repeated.status_code == 201
+        assert repeated.json()["id"] == first.json()["id"]
+        assert repeated.json()["saved_by"] == "Ece"
+
     def test_resaving_with_a_list_moves_the_existing_record(self, client):
         """Kayitli bir yeri listeye eklemek onu oraya tasimali."""
         list_id = client.post(
@@ -214,7 +226,9 @@ class TestSavingPlaces:
         headers = {} if name is None else {"X-VOLUNTEER-NAME": name}
         assert (
             client.post(
-                "/api/saved", json=_place("osm:node:ad-gerekli"), headers=headers
+                "/api/saved",
+                json=_place(f"osm:node:ad-gerekli-{uuid.uuid4()}"),
+                headers=headers,
             ).status_code
             == 422
         )

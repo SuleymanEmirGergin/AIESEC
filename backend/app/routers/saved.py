@@ -235,7 +235,7 @@ async def list_saved_places(
 @router.post("/saved", response_model=SavedPlaceResponse, status_code=201)
 async def save_place(
     data: SavedPlaceCreate,
-    volunteer_name: str = Depends(_volunteer_name),
+    x_volunteer_name: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
     api_key: APIKey = Depends(validate_api_key),
 ):
@@ -265,6 +265,7 @@ async def save_place(
     if data.list_id:
         await _owned_list(data.list_id, api_key, db)
 
+    volunteer_name = _volunteer_name(x_volunteer_name)
     place = SavedPlace(
         id=str(uuid.uuid4()),
         api_key_id=api_key.id,
