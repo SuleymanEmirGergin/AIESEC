@@ -80,12 +80,21 @@ class TestAttachGeometry:
     def _kare(self):
         return {
             "type": "Polygon",
-            "coordinates": [[[29.0, 41.0], [29.1, 41.0], [29.1, 41.1], [29.0, 41.1], [29.0, 41.0]]],
+            "coordinates": [
+                [[29.0, 41.0], [29.1, 41.0], [29.1, 41.1], [29.0, 41.1], [29.0, 41.0]]
+            ],
         }
 
     def test_geometri_bbox_ve_merkez_eklenir(self):
-        metas = [{"id": "tr-34-x", "name": "X", "province": "istanbul",
-                  "province_plate": "34", "osm_relation_id": 1234}]
+        metas = [
+            {
+                "id": "tr-34-x",
+                "name": "X",
+                "province": "istanbul",
+                "province_plate": "34",
+                "osm_relation_id": 1234,
+            }
+        ]
         lookup = [{"osm_type": "relation", "osm_id": 1234, "geojson": self._kare()}]
 
         result = attach_geometry(metas, lookup, tolerance=0.001)
@@ -105,8 +114,15 @@ class TestAttachGeometry:
     def test_geometrisi_olmayan_ilce_hata_verir(self):
         # Sessizce eksik veri uretmek en kotu sonuc: arayuzde o ilce
         # tiklanabilir gorunur ama hicbir zaman sonuc vermez.
-        metas = [{"id": "tr-34-x", "name": "X", "province": "istanbul",
-                  "province_plate": "34", "osm_relation_id": 1234}]
+        metas = [
+            {
+                "id": "tr-34-x",
+                "name": "X",
+                "province": "istanbul",
+                "province_plate": "34",
+                "osm_relation_id": 1234,
+            }
+        ]
         try:
             attach_geometry(metas, [], tolerance=0.001)
         except ValueError as exc:
@@ -117,13 +133,23 @@ class TestAttachGeometry:
 
 class TestBuildFeatureCollection:
     def test_featurecollection_semasi(self):
-        districts = [{
-            "id": "tr-34-x", "name": "X", "province": "istanbul",
-            "province_plate": "34", "osm_relation_id": 1234,
-            "geometry": {"type": "Polygon", "coordinates": [[[29.0, 41.0], [29.1, 41.0], [29.0, 41.1], [29.0, 41.0]]]},
-            "bbox": (41.0, 29.0, 41.1, 29.1),
-            "center": (41.05, 29.05),
-        }]
+        districts = [
+            {
+                "id": "tr-34-x",
+                "name": "X",
+                "province": "istanbul",
+                "province_plate": "34",
+                "osm_relation_id": 1234,
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [[29.0, 41.0], [29.1, 41.0], [29.0, 41.1], [29.0, 41.0]]
+                    ],
+                },
+                "bbox": (41.0, 29.0, 41.1, 29.1),
+                "center": (41.05, 29.05),
+            }
+        ]
 
         fc = build_feature_collection(districts)
 

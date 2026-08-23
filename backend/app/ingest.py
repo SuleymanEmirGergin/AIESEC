@@ -370,9 +370,13 @@ async def ingest_many(
 
             done["n"] += 1
             elapsed = time.monotonic() - started
-            note = "atlandi" if result.skipped else (
-                f"{result.query_count} sorgu {elapsed:.1f}s "
-                f"{result.place_count} kayit [{result.status}]"
+            note = (
+                "atlandi"
+                if result.skipped
+                else (
+                    f"{result.query_count} sorgu {elapsed:.1f}s "
+                    f"{result.place_count} kayit [{result.status}]"
+                )
             )
             print(f"[INGEST] {done['n']}/{total} {district_id} {note}")
             results.append(result)
@@ -395,8 +399,7 @@ def _resolve_targets(args: argparse.Namespace) -> list[str]:
         plate = PROVINCE_PLATES.get(args.province.lower())
         if plate is None:
             raise SystemExit(
-                f"Kapsam disi il: {args.province}\n"
-                f"Kapsam: {', '.join(PROVINCE_PLATES)}"
+                f"Kapsam disi il: {args.province}\nKapsam: {', '.join(PROVINCE_PLATES)}"
             )
         return [d.id for d in districts_for_province(plate)]
 
@@ -409,9 +412,7 @@ async def _run(args: argparse.Namespace) -> int:
 
     print(f"[INGEST] {len(targets)} ilce, es zamanlilik {args.concurrency}")
     started = time.monotonic()
-    results = await ingest_many(
-        targets, args.concurrency, args.buffer, args.force
-    )
+    results = await ingest_many(targets, args.concurrency, args.buffer, args.force)
     elapsed = time.monotonic() - started
 
     queries = sum(r.query_count for r in results)
@@ -445,12 +446,16 @@ def main(argv: list[str] | None = None) -> int:
         "--force", action="store_true", help="Taze kayitlari da yeniden cek"
     )
     parser.add_argument(
-        "--concurrency", type=int, default=DEFAULT_CONCURRENCY,
+        "--concurrency",
+        type=int,
+        default=DEFAULT_CONCURRENCY,
         help=f"Es zamanli ilce sayisi (varsayilan {DEFAULT_CONCURRENCY}; "
-             f"Overpass IP basina 2 slot veriyor)",
+        f"Overpass IP basina 2 slot veriyor)",
     )
     parser.add_argument(
-        "--buffer", type=int, default=DEFAULT_BUFFER_M,
+        "--buffer",
+        type=int,
+        default=DEFAULT_BUFFER_M,
         help=f"Ilce sinirina eklenen tampon, metre (varsayilan {DEFAULT_BUFFER_M})",
     )
 

@@ -1,7 +1,6 @@
 """Unit tests for classification logic."""
 
-import pytest
-from app.classify import classify_school_level, classify_b2b_type, has_name
+from app.classify import classify_b2b_type, classify_school_level, has_name
 
 
 class TestSchoolClassification:

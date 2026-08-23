@@ -46,7 +46,9 @@ async def db():
             for row in (await session.execute(select(table))).scalars().all():
                 await session.delete(row)
         result = await session.execute(
-            select(DistrictIngest).where(DistrictIngest.district_id.in_(_INGEST_DISTRICT_IDS))
+            select(DistrictIngest).where(
+                DistrictIngest.district_id.in_(_INGEST_DISTRICT_IDS)
+            )
         )
         for row in result.scalars().all():
             await session.delete(row)
@@ -86,7 +88,9 @@ class TestBuildFamilyQuery:
         assert "(41.000000,29.000000,41.100000,29.100000)" in query
 
     def test_her_selector_icin_bir_satir(self):
-        query = build_family_query(('["office"]', '["craft"]'), (41.0, 29.0, 41.1, 29.1), 1)
+        query = build_family_query(
+            ('["office"]', '["craft"]'), (41.0, 29.0, 41.1, 29.1), 1
+        )
         assert query.count("nwr") == 2
 
     def test_out_tags_center(self):
@@ -118,12 +122,15 @@ class TestSplitBbox:
 class TestClassifyElement:
     def test_okul_once_denenir(self):
         assert classify_element({"amenity": "school"}, "node") is None or True
-        assert classify_element(
-            {"amenity": "school", "isced:level": "1"}, "node"
-        ) == "primary_school"
+        assert (
+            classify_element({"amenity": "school", "isced:level": "1"}, "node")
+            == "primary_school"
+        )
 
     def test_universite(self):
-        assert classify_element({"amenity": "university"}, "way") == "college_university"
+        assert (
+            classify_element({"amenity": "university"}, "way") == "college_university"
+        )
 
     def test_anaokulu(self):
         assert classify_element({"amenity": "kindergarten"}, "node") == "kindergarten"
@@ -147,9 +154,11 @@ class TestClassifyElement:
 
 def _overpass_stub(elements_by_stage):
     """stage 1 / stage 2 icin ayri eleman listesi donen mock."""
+
     async def _query(query_text: str, debug: bool = False):
         stage = 2 if '[!"name"]' in query_text else 1
         return {"elements": list(elements_by_stage.get(stage, []))}
+
     return _query
 
 
@@ -163,6 +172,7 @@ class TestIngestDistrict:
 
     async def _kadikoy_merkez(self):
         from app.districts import get_district
+
         district = get_district("tr-34-kadikoy")
         if district is None:
             pytest.skip("districts.geojson yok; once fetch_districts.py calistir")
@@ -170,10 +180,15 @@ class TestIngestDistrict:
 
     async def test_kayitlar_yazilir_ve_uyelik_kurulur(self, db):
         lat, lon = await self._kadikoy_merkez()
-        elements = [{
-            "type": "node", "id": 9001, "lat": lat, "lon": lon,
-            "tags": {"name": "Test Fabrika", "man_made": "works", "phone": "111"},
-        }]
+        elements = [
+            {
+                "type": "node",
+                "id": 9001,
+                "lat": lat,
+                "lon": lon,
+                "tags": {"name": "Test Fabrika", "man_made": "works", "phone": "111"},
+            }
+        ]
 
         with patch(
             "app.ingest.overpass_client.query",
@@ -185,23 +200,40 @@ class TestIngestDistrict:
         assert result.place_count == 1
         assert result.query_count == 4  # 2 aile x 2 asama
 
-        rows = (await db.execute(
-            select(PlaceRow).where(PlaceRow.id == "osm:node:9001")
-        )).scalars().all()
+        rows = (
+            (await db.execute(select(PlaceRow).where(PlaceRow.id == "osm:node:9001")))
+            .scalars()
+            .all()
+        )
         assert len(rows) == 1
         assert rows[0].place_type == "factory"
 
-        memberships = (await db.execute(
-            select(PlaceDistrict).where(PlaceDistrict.place_id == "osm:node:9001")
-        )).scalars().all()
-        assert any(m.district_id == "tr-34-kadikoy" and m.is_inside for m in memberships)
+        memberships = (
+            (
+                await db.execute(
+                    select(PlaceDistrict).where(
+                        PlaceDistrict.place_id == "osm:node:9001"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert any(
+            m.district_id == "tr-34-kadikoy" and m.is_inside for m in memberships
+        )
 
     async def test_taze_ilce_atlanir_sorgu_atilmaz(self, db):
         lat, lon = await self._kadikoy_merkez()
-        elements = [{
-            "type": "node", "id": 9002, "lat": lat, "lon": lon,
-            "tags": {"name": "A", "man_made": "works"},
-        }]
+        elements = [
+            {
+                "type": "node",
+                "id": 9002,
+                "lat": lat,
+                "lon": lon,
+                "tags": {"name": "A", "man_made": "works"},
+            }
+        ]
         stub = AsyncMock(side_effect=_overpass_stub({1: elements}))
 
         with patch("app.ingest.overpass_client.query", new=stub):
@@ -216,10 +248,15 @@ class TestIngestDistrict:
 
     async def test_force_taze_kaydi_yeniden_ceker(self, db):
         lat, lon = await self._kadikoy_merkez()
-        elements = [{
-            "type": "node", "id": 9003, "lat": lat, "lon": lon,
-            "tags": {"name": "A", "man_made": "works"},
-        }]
+        elements = [
+            {
+                "type": "node",
+                "id": 9003,
+                "lat": lat,
+                "lon": lon,
+                "tags": {"name": "A", "man_made": "works"},
+            }
+        ]
         stub = AsyncMock(side_effect=_overpass_stub({1: elements}))
 
         with patch("app.ingest.overpass_client.query", new=stub):
@@ -232,10 +269,14 @@ class TestIngestDistrict:
 
     async def test_siniflandirilamayan_kayit_saklanir(self, db):
         lat, lon = await self._kadikoy_merkez()
-        elements = [{
-            "type": "way", "id": 9004, "center": {"lat": lat, "lon": lon},
-            "tags": {"name": "Bilinmeyen Okul", "building": "school"},
-        }]
+        elements = [
+            {
+                "type": "way",
+                "id": 9004,
+                "center": {"lat": lat, "lon": lon},
+                "tags": {"name": "Bilinmeyen Okul", "building": "school"},
+            }
+        ]
 
         with patch(
             "app.ingest.overpass_client.query",
@@ -243,17 +284,22 @@ class TestIngestDistrict:
         ):
             await ingest_district(db, "tr-34-kadikoy", 2000, force=True)
 
-        row = (await db.execute(
-            select(PlaceRow).where(PlaceRow.id == "osm:way:9004")
-        )).scalar_one()
+        row = (
+            await db.execute(select(PlaceRow).where(PlaceRow.id == "osm:way:9004"))
+        ).scalar_one()
         assert row.place_type is None
 
     async def test_timeout_bbox_bolunerek_yeniden_denenir(self, db):
         lat, lon = await self._kadikoy_merkez()
-        elements = [{
-            "type": "node", "id": 9005, "lat": lat, "lon": lon,
-            "tags": {"name": "A", "man_made": "works"},
-        }]
+        elements = [
+            {
+                "type": "node",
+                "id": 9005,
+                "lat": lat,
+                "lon": lon,
+                "tags": {"name": "A", "man_made": "works"},
+            }
+        ]
         cagri_sayaci = {"n": 0}
 
         async def _query(query_text: str, debug: bool = False):
@@ -265,7 +311,9 @@ class TestIngestDistrict:
             stage = 2 if '[!"name"]' in query_text else 1
             return {"elements": list(elements) if stage == 1 else []}
 
-        with patch("app.ingest.overpass_client.query", new=AsyncMock(side_effect=_query)):
+        with patch(
+            "app.ingest.overpass_client.query", new=AsyncMock(side_effect=_query)
+        ):
             result = await ingest_district(db, "tr-34-kadikoy", 2000, force=True)
 
         # Deterministik sayim: b2b/stage1 ilk deneme basarisiz (1) + 4
@@ -294,10 +342,15 @@ class TestIngestDistrict:
         En az bir kayit toplanmis olsa bile status 'partial' olmali.
         """
         lat, lon = await self._kadikoy_merkez()
-        elements = [{
-            "type": "node", "id": 9007, "lat": lat, "lon": lon,
-            "tags": {"name": "A", "man_made": "works"},
-        }]
+        elements = [
+            {
+                "type": "node",
+                "id": 9007,
+                "lat": lat,
+                "lon": lon,
+                "tags": {"name": "A", "man_made": "works"},
+            }
+        ]
         cagri_sayaci = {"n": 0}
 
         async def _query(query_text: str, debug: bool = False):
@@ -357,10 +410,15 @@ class TestIngestDistrict:
         dusurulur. Siniflandirma filtreden once yapilmali.
         """
         lat, lon = await self._kadikoy_merkez()
-        isimsiz_atolye = [{
-            "type": "node", "id": 9006, "lat": lat, "lon": lon,
-            "tags": {"craft": "carpenter"},  # isim yok, iletisim yok
-        }]
+        isimsiz_atolye = [
+            {
+                "type": "node",
+                "id": 9006,
+                "lat": lat,
+                "lon": lon,
+                "tags": {"craft": "carpenter"},  # isim yok, iletisim yok
+            }
+        ]
 
         with patch(
             "app.ingest.overpass_client.query",
@@ -368,9 +426,9 @@ class TestIngestDistrict:
         ):
             await ingest_district(db, "tr-34-kadikoy", 2000, force=True)
 
-        row = (await db.execute(
-            select(PlaceRow).where(PlaceRow.id == "osm:node:9006")
-        )).scalar_one_or_none()
+        row = (
+            await db.execute(select(PlaceRow).where(PlaceRow.id == "osm:node:9006"))
+        ).scalar_one_or_none()
         assert row is not None, "isimsiz atolye dusuruldu"
         assert row.place_type == "workshop"
 

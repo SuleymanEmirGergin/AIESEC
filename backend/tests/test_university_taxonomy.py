@@ -68,11 +68,17 @@ class TestUniversityIsASearchableType:
         """Uctan uca: universite etiketli kayit sonuca girmeli."""
         elements = [
             {
-                "type": "node", "id": 1, "lat": 41.015, "lon": 28.980,
+                "type": "node",
+                "id": 1,
+                "lat": 41.015,
+                "lon": 28.980,
                 "tags": {"amenity": "university", "name": "Istanbul Universitesi"},
             },
             {
-                "type": "node", "id": 2, "lat": 41.016, "lon": 28.981,
+                "type": "node",
+                "id": 2,
+                "lat": 41.016,
+                "lon": 28.981,
                 "tags": {"amenity": "school", "name": "Test Ilkokulu"},
             },
         ]
@@ -98,6 +104,8 @@ class TestUniversityIsASearchableType:
         assert body["type_labels_tr"]["college_keyword"] == "Kolej"
 
         education = next(
-            g["types"] for g in body["type_groups_tr"] if g["group"] == "Eğitim Kurumları"
+            g["types"]
+            for g in body["type_groups_tr"]
+            if g["group"] == "Eğitim Kurumları"
         )
         assert "college_university" in education

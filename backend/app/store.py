@@ -22,17 +22,23 @@ from app.database import DistrictIngest, PlaceDistrict, PlaceRow
 #
 # `fax` bilincli olarak DISARIDA: tags_json icinde saklaniyor ama
 # "bu kayda ulasabilirim" demek icin yeterli degil.
-CONTACT_TAGS = frozenset({
-    "phone", "mobile", "email", "website",
-    "contact:phone", "contact:mobile", "contact:email", "contact:website",
-})
+CONTACT_TAGS = frozenset(
+    {
+        "phone",
+        "mobile",
+        "email",
+        "website",
+        "contact:phone",
+        "contact:mobile",
+        "contact:email",
+        "contact:website",
+    }
+)
 
 
 def derive_has_contact(tags: dict) -> bool:
     """Kayitta kullanilabilir bir iletisim kanali var mi?"""
-    return any(
-        tags.get(tag) for tag in CONTACT_TAGS
-    )
+    return any(tags.get(tag) for tag in CONTACT_TAGS)
 
 
 def extract_contact(tags: dict) -> tuple[str | None, str | None, str | None]:
@@ -121,9 +127,19 @@ async def upsert_places(db: AsyncSession, rows: list[dict]) -> int:
     updatable = {
         column: getattr(statement.excluded, column)
         for column in (
-            "lat", "lon", "name", "place_type", "subtype", "confidence",
-            "has_contact", "phone", "email", "website", "address",
-            "tags_json", "fetched_at",
+            "lat",
+            "lon",
+            "name",
+            "place_type",
+            "subtype",
+            "confidence",
+            "has_contact",
+            "phone",
+            "email",
+            "website",
+            "address",
+            "tags_json",
+            "fetched_at",
         )
     }
     await db.execute(
@@ -156,14 +172,16 @@ async def replace_memberships(
     )
 
     if memberships:
-        statement = sqlite_insert(PlaceDistrict).values([
-            {
-                "place_id": place_id,
-                "district_id": district_id,
-                "is_inside": is_inside,
-            }
-            for place_id, is_inside in memberships
-        ])
+        statement = sqlite_insert(PlaceDistrict).values(
+            [
+                {
+                    "place_id": place_id,
+                    "district_id": district_id,
+                    "is_inside": is_inside,
+                }
+                for place_id, is_inside in memberships
+            ]
+        )
         await db.execute(
             statement.on_conflict_do_update(
                 index_elements=["place_id", "district_id"],
@@ -190,10 +208,12 @@ async def add_memberships(
     if not memberships:
         return 0
 
-    statement = sqlite_insert(PlaceDistrict).values([
-        {"place_id": place_id, "district_id": district_id, "is_inside": is_inside}
-        for place_id, is_inside in memberships
-    ])
+    statement = sqlite_insert(PlaceDistrict).values(
+        [
+            {"place_id": place_id, "district_id": district_id, "is_inside": is_inside}
+            for place_id, is_inside in memberships
+        ]
+    )
     await db.execute(
         statement.on_conflict_do_update(
             index_elements=["place_id", "district_id"],
@@ -232,9 +252,7 @@ async def mark_ingest(
     await db.commit()
 
 
-async def get_ingest_state(
-    db: AsyncSession, district_id: str
-) -> DistrictIngest | None:
+async def get_ingest_state(db: AsyncSession, district_id: str) -> DistrictIngest | None:
     """Bir ilcenin ingest durumu; hic cekilmemisse None."""
     result = await db.execute(
         select(DistrictIngest).where(DistrictIngest.district_id == district_id)

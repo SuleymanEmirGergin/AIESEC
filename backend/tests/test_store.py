@@ -45,7 +45,9 @@ async def db():
         # (veya calisma sirasina gore ayni testi) sessizce etkileyebilir --
         # tam olarak T4'un DistrictIngest icin surdugu ayrik silme deseni.
         result = await session.execute(
-            select(DistrictIngest).where(DistrictIngest.district_id.in_(_INGEST_DISTRICT_IDS))
+            select(DistrictIngest).where(
+                DistrictIngest.district_id.in_(_INGEST_DISTRICT_IDS)
+            )
         )
         for row in result.scalars().all():
             await session.delete(row)
@@ -80,19 +82,26 @@ class TestDeriveHasContact:
 
 class TestExtractContact:
     def test_duz_etiketler_oncelikli(self):
-        phone, email, website = extract_contact({
-            "phone": "111", "contact:phone": "222",
-            "email": "a@b.com", "website": "https://x.com",
-        })
+        phone, email, website = extract_contact(
+            {
+                "phone": "111",
+                "contact:phone": "222",
+                "email": "a@b.com",
+                "website": "https://x.com",
+            }
+        )
         assert phone == "111"
         assert email == "a@b.com"
         assert website == "https://x.com"
 
     def test_onekli_etiketlere_geri_duser(self):
-        phone, email, website = extract_contact({
-            "contact:phone": "222", "contact:email": "c@d.com",
-            "contact:website": "https://y.com",
-        })
+        phone, email, website = extract_contact(
+            {
+                "contact:phone": "222",
+                "contact:email": "c@d.com",
+                "contact:website": "https://y.com",
+            }
+        )
         assert (phone, email, website) == ("222", "c@d.com", "https://y.com")
 
     def test_mobil_telefon_yerine_gecer(self):
@@ -103,7 +112,10 @@ class TestExtractContact:
 class TestPlaceRowValues:
     def test_node_elemani(self):
         element = {
-            "type": "node", "id": 123, "lat": 41.0, "lon": 29.0,
+            "type": "node",
+            "id": 123,
+            "lat": 41.0,
+            "lon": 29.0,
             "tags": {"name": "Test Fabrika", "man_made": "works", "phone": "111"},
         }
         values = place_row_values(element, "factory", 60, "Test Mah.")
@@ -118,7 +130,8 @@ class TestPlaceRowValues:
     def test_way_elemani_center_kullanir(self):
         # Overpass `out center` way/relation icin center alani doner.
         element = {
-            "type": "way", "id": 456,
+            "type": "way",
+            "id": 456,
             "center": {"lat": 41.5, "lon": 29.5},
             "tags": {"building": "industrial"},
         }
@@ -137,25 +150,58 @@ class TestPlaceRowValues:
 @pytest.mark.asyncio
 class TestUpsertPlaces:
     async def test_yeni_kayit_eklenir(self, db):
-        rows = [place_row_values(
-            {"type": "node", "id": 2001, "lat": 41.0, "lon": 29.0,
-             "tags": {"name": "A", "man_made": "works"}},
-            "factory", 60, None,
-        )]
+        rows = [
+            place_row_values(
+                {
+                    "type": "node",
+                    "id": 2001,
+                    "lat": 41.0,
+                    "lon": 29.0,
+                    "tags": {"name": "A", "man_made": "works"},
+                },
+                "factory",
+                60,
+                None,
+            )
+        ]
         assert await upsert_places(db, rows) == 1
 
-        result = await db.execute(select(PlaceRow).where(PlaceRow.id == "osm:node:2001"))
+        result = await db.execute(
+            select(PlaceRow).where(PlaceRow.id == "osm:node:2001")
+        )
         assert result.scalar_one().name == "A"
 
     async def test_ayni_id_guncellenir_cogaltilmaz(self, db):
         base = {"type": "node", "id": 2002, "lat": 41.0, "lon": 29.0}
-        await upsert_places(db, [place_row_values(
-            {**base, "tags": {"name": "Eski", "man_made": "works"}}, "factory", 60, None)])
-        await upsert_places(db, [place_row_values(
-            {**base, "tags": {"name": "Yeni", "man_made": "works", "phone": "111"}},
-            "factory", 70, None)])
+        await upsert_places(
+            db,
+            [
+                place_row_values(
+                    {**base, "tags": {"name": "Eski", "man_made": "works"}},
+                    "factory",
+                    60,
+                    None,
+                )
+            ],
+        )
+        await upsert_places(
+            db,
+            [
+                place_row_values(
+                    {
+                        **base,
+                        "tags": {"name": "Yeni", "man_made": "works", "phone": "111"},
+                    },
+                    "factory",
+                    70,
+                    None,
+                )
+            ],
+        )
 
-        result = await db.execute(select(PlaceRow).where(PlaceRow.id == "osm:node:2002"))
+        result = await db.execute(
+            select(PlaceRow).where(PlaceRow.id == "osm:node:2002")
+        )
         rows = result.scalars().all()
         assert len(rows) == 1
         assert rows[0].name == "Yeni"
@@ -165,9 +211,23 @@ class TestUpsertPlaces:
 @pytest.mark.asyncio
 class TestReplaceMemberships:
     async def test_ilcenin_uyelikleri_degistirilir(self, db):
-        await upsert_places(db, [place_row_values(
-            {"type": "node", "id": 3001, "lat": 41.0, "lon": 29.0,
-             "tags": {"man_made": "works"}}, "factory", 60, None)])
+        await upsert_places(
+            db,
+            [
+                place_row_values(
+                    {
+                        "type": "node",
+                        "id": 3001,
+                        "lat": 41.0,
+                        "lon": 29.0,
+                        "tags": {"man_made": "works"},
+                    },
+                    "factory",
+                    60,
+                    None,
+                )
+            ],
+        )
 
         await replace_memberships(db, "tr-34-kadikoy", [("osm:node:3001", True)])
         await replace_memberships(db, "tr-34-kadikoy", [("osm:node:3001", False)])
@@ -182,9 +242,23 @@ class TestReplaceMemberships:
     async def test_diger_ilcenin_uyelikleri_korunur(self, db):
         # Kadikoy yeniden ingest edilirken Atasehir'in uyelikleri
         # silinmemeli; ayni kayit ikisine de uye olabiliyor.
-        await upsert_places(db, [place_row_values(
-            {"type": "node", "id": 3002, "lat": 41.0, "lon": 29.0,
-             "tags": {"man_made": "works"}}, "factory", 60, None)])
+        await upsert_places(
+            db,
+            [
+                place_row_values(
+                    {
+                        "type": "node",
+                        "id": 3002,
+                        "lat": 41.0,
+                        "lon": 29.0,
+                        "tags": {"man_made": "works"},
+                    },
+                    "factory",
+                    60,
+                    None,
+                )
+            ],
+        )
 
         await replace_memberships(db, "tr-34-kadikoy", [("osm:node:3002", True)])
         await replace_memberships(db, "tr-34-atasehir", [("osm:node:3002", False)])
@@ -202,12 +276,27 @@ class TestReplaceMemberships:
         # replace_memberships cagrisinda iki kez gelebiliyor. ON CONFLICT
         # olmadan bu toplu INSERT SQLite'ta "UNIQUE constraint failed"
         # ile patlardi -- upsert_places'in zaten cozdugu sorunun aynisi.
-        await upsert_places(db, [place_row_values(
-            {"type": "node", "id": 3003, "lat": 41.0, "lon": 29.0,
-             "tags": {"man_made": "works"}}, "factory", 60, None)])
+        await upsert_places(
+            db,
+            [
+                place_row_values(
+                    {
+                        "type": "node",
+                        "id": 3003,
+                        "lat": 41.0,
+                        "lon": 29.0,
+                        "tags": {"man_made": "works"},
+                    },
+                    "factory",
+                    60,
+                    None,
+                )
+            ],
+        )
 
         await replace_memberships(
-            db, "tr-34-kadikoy",
+            db,
+            "tr-34-kadikoy",
             [("osm:node:3003", True), ("osm:node:3003", False)],
         )
 

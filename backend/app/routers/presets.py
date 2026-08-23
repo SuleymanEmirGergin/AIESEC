@@ -29,20 +29,21 @@ async def get_search_presets():
             "high_school": "Lise",
             "private_school": "Özel Okul",
             "college_keyword": "Kolej",
-            "college_university": "Üniversite"
+            "college_university": "Üniversite",
         },
         type_groups_tr=[
-            {
-                "group": "İşletmeler",
-                "types": ["factory", "office", "workshop"]
-            },
+            {"group": "İşletmeler", "types": ["factory", "office", "workshop"]},
             {
                 "group": "Eğitim Kurumları",
                 "types": [
-                    "kindergarten", "primary_school", "middle_school",
-                    "high_school", "private_school", "college_keyword",
-                    "college_university"
-                ]
-            }
-        ]
+                    "kindergarten",
+                    "primary_school",
+                    "middle_school",
+                    "high_school",
+                    "private_school",
+                    "college_keyword",
+                    "college_university",
+                ],
+            },
+        ],
     )

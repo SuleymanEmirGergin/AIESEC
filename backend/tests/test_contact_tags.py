@@ -117,7 +117,15 @@ class TestExportCsv:
 
     def test_missing_tags_produce_empty_cells_not_crash(self):
         rows = self._rows(
-            [{"id": "osm:node:3", "name": "Bos", "type": "factory", "lat": 41.0, "lon": 29.0}]
+            [
+                {
+                    "id": "osm:node:3",
+                    "name": "Bos",
+                    "type": "factory",
+                    "lat": 41.0,
+                    "lon": 29.0,
+                }
+            ]
         )
         header, row = rows[0], rows[1]
         assert row[header.index("phone")] == ""

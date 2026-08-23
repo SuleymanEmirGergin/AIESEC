@@ -10,9 +10,16 @@ from app.config import settings
 from app.database import init_db
 from app.middleware import MetricsMiddleware
 from app.routers import (
-    account, admin, districts, export, health, metrics, presets, saved, search
+    account,
+    admin,
+    districts,
+    export,
+    health,
+    metrics,
+    presets,
+    saved,
+    search,
 )
-
 
 # Rate limiter setup (IP-based)
 limiter = Limiter(key_func=get_remote_address)
@@ -41,6 +48,7 @@ async def startup_event():
     cagrisi yapilmiyor.
     """
     await init_db()
+
 
 # Add metrics middleware
 app.add_middleware(MetricsMiddleware)

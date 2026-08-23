@@ -12,7 +12,13 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from app.database import AsyncSessionLocal, DistrictIngest, PlaceDistrict, PlaceRow, init_db
+from app.database import (
+    AsyncSessionLocal,
+    DistrictIngest,
+    PlaceDistrict,
+    PlaceRow,
+    init_db,
+)
 
 # Testlerin yazdigi tek DistrictIngest satiri. Teardown'da tabloyu
 # tamamen bosaltmak yerine yalnizca bunu siliyoruz (bkz. db fixture).
@@ -40,7 +46,9 @@ async def db():
         # atlanmayacagina karar veriyor. Tabloyu tamamen bosaltmak yerine
         # yalnizca bu modulun yazdigi satiri siliyoruz.
         result = await session.execute(
-            select(DistrictIngest).where(DistrictIngest.district_id == _INGEST_DISTRICT_ID)
+            select(DistrictIngest).where(
+                DistrictIngest.district_id == _INGEST_DISTRICT_ID
+            )
         )
         for row in result.scalars().all():
             await session.delete(row)
@@ -83,7 +91,11 @@ async def test_place_yazilip_okunur(db):
 async def test_place_type_null_olabilir(db):
     # building=school tasiyip amenity=school tasimayan kayitlar
     # siniflandirilamiyor ama atilmiyor.
-    db.add(_place("osm:node:1002", place_type=None, name=None, has_contact=False, phone=None))
+    db.add(
+        _place(
+            "osm:node:1002", place_type=None, name=None, has_contact=False, phone=None
+        )
+    )
     await db.commit()
 
     result = await db.execute(select(PlaceRow).where(PlaceRow.id == "osm:node:1002"))
@@ -121,8 +133,16 @@ async def test_confidence_null_reddedilir(db):
 async def test_bir_kayit_iki_ilceye_uye_olabilir(db):
     # Sinirdaki fabrika: Kadikoy'un icinde, Atasehir'in tamponunda.
     db.add(_place("osm:node:1003"))
-    db.add(PlaceDistrict(place_id="osm:node:1003", district_id="tr-34-kadikoy", is_inside=True))
-    db.add(PlaceDistrict(place_id="osm:node:1003", district_id="tr-34-atasehir", is_inside=False))
+    db.add(
+        PlaceDistrict(
+            place_id="osm:node:1003", district_id="tr-34-kadikoy", is_inside=True
+        )
+    )
+    db.add(
+        PlaceDistrict(
+            place_id="osm:node:1003", district_id="tr-34-atasehir", is_inside=False
+        )
+    )
     await db.commit()
 
     result = await db.execute(
@@ -138,13 +158,15 @@ async def test_bir_kayit_iki_ilceye_uye_olabilir(db):
 
 @pytest.mark.asyncio
 async def test_ingest_durumu_yazilir(db):
-    db.add(DistrictIngest(
-        district_id="tr-34-kadikoy",
-        fetched_at=datetime.now(timezone.utc).replace(tzinfo=None),
-        place_count=412,
-        query_count=4,
-        status="ok",
-    ))
+    db.add(
+        DistrictIngest(
+            district_id="tr-34-kadikoy",
+            fetched_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            place_count=412,
+            query_count=4,
+            status="ok",
+        )
+    )
     await db.commit()
 
     result = await db.execute(

@@ -5,7 +5,12 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, Tuple
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from app.middleware import OVERPASS_REQUESTS_TOTAL
 
@@ -14,16 +19,19 @@ logger = logging.getLogger(__name__)
 
 class OverpassError(Exception):
     """Base exception for Overpass related errors."""
+
     pass
 
 
 class OverpassTransientError(OverpassError):
     """Errors that are potentially recoverable (Mirror down, Timeout, 429)."""
+
     pass
 
 
 class OverpassPermanentError(OverpassError):
     """Errors that won't resolve with retry (Query syntax, Input validation)."""
+
     pass
 
 
@@ -103,10 +111,13 @@ class OverpassClient:
 
     def __init__(self):
         # Configure endpoints from env
-        urls_raw = os.getenv("OVERPASS_URLS", os.getenv("OVERPASS_URL", "https://overpass-api.de/api/interpreter"))
+        urls_raw = os.getenv(
+            "OVERPASS_URLS",
+            os.getenv("OVERPASS_URL", "https://overpass-api.de/api/interpreter"),
+        )
         urls = [u.strip() for u in urls_raw.split(",") if u.strip()]
         self.endpoints = [OverpassEndpoint(u) for u in urls]
-       
+
         # Increased default to 60s
         self.timeout = int(os.getenv("OVERPASS_TIMEOUT", "60"))
         self._lock = threading.Lock()
@@ -163,7 +174,7 @@ class OverpassClient:
     async def query(self, query_text: str, debug: bool = False) -> Dict[str, Any]:
         """
         Execute query with retry/failover.
-       
+
         Returns:
             Dict containing OSM results and debug metadata
         """
@@ -184,7 +195,7 @@ class OverpassClient:
             stop=stop_after_attempt(attempts),
             wait=wait_exponential(multiplier=1, min=1, max=4),
             retry=retry_if_exception_type((OverpassTransientError, httpx.RequestError)),
-            reraise=True
+            reraise=True,
         )
         async def _do_query():
             endpoint = self._select_endpoint(tried)
@@ -205,13 +216,13 @@ class OverpassClient:
                             "User-Agent": self.user_agent,
                         },
                     )
-               
+
                 if response.status_code == 429:
-                    raise OverpassTransientError(f"HTTP 429")
-               
+                    raise OverpassTransientError("HTTP 429")
+
                 if response.status_code in [500, 502, 503, 504]:
                     raise OverpassTransientError(f"HTTP {response.status_code}")
-               
+
                 # 4xx (429 disinda) sorgunun ya da basliklarimizin sorunu:
                 # ornegin User-Agent eksikse Overpass 406 donuyor. Bunu
                 # aynanin hatasi saymak, kendi hatamiz yuzunden tum
@@ -224,8 +235,11 @@ class OverpassClient:
 
                 if "remark" in data or "message" in data:
                     msg = data.get("remark") or data.get("message")
-                    if any(kw in msg.lower() for kw in ["too many", "load", "runtime error"]):
-                        raise OverpassTransientError(f"Overpass Remark Limit")
+                    if any(
+                        kw in msg.lower()
+                        for kw in ["too many", "load", "runtime error"]
+                    ):
+                        raise OverpassTransientError("Overpass Remark Limit")
                     raise OverpassPermanentError(msg)
 
                 endpoint.mark_success()
@@ -270,11 +284,11 @@ def build_overpass_query(
     radius: int,
     stage: int = 1,
     mode: str = "around",
-    bbox: Optional[Tuple[float, float, float, float]] = None
+    bbox: Optional[Tuple[float, float, float, float]] = None,
 ) -> str:
     """
     Build optimized Overpass QL query.
-   
+
     Args:
         requested_type: Search category
         lat, lon, radius: Search constraints
@@ -290,23 +304,32 @@ def build_overpass_query(
 
     # Filter chunks
     name_filter = '["name"]' if stage == 1 else '[!"name"]'
-   
+
     # Tag logic mapping
     type_filters = {
         "factory": [
-            '["man_made"="works"]', '["industrial"]', '["building"="industrial"]', 
-            '["building"="warehouse"]', '["landuse"="industrial"]'
+            '["man_made"="works"]',
+            '["industrial"]',
+            '["building"="industrial"]',
+            '["building"="warehouse"]',
+            '["landuse"="industrial"]',
         ],
         "office": ['["office"]', '["building"="commercial"]', '["building"="office"]'],
         "workshop": ['["craft"]', '["industrial"="workshop"]'],
         "kindergarten": ['["amenity"="kindergarten"]', '["building"="kindergarten"]'],
-        "school": ['["amenity"="school"]', '["building"="school"]', '["education"="school"]'],
+        "school": [
+            '["amenity"="school"]',
+            '["building"="school"]',
+            '["education"="school"]',
+        ],
         "college_university": [
-            '["amenity"="university"]', '["amenity"="college"]', 
-            '["building"="university"]', '["education"="university"]'
-        ]
+            '["amenity"="university"]',
+            '["amenity"="college"]',
+            '["building"="university"]',
+            '["education"="university"]',
+        ],
     }
-   
+
     # Specialized type map
     t_map = {
         "primary_school": "school",
@@ -314,19 +337,19 @@ def build_overpass_query(
         "high_school": "school",
         "private_school": "school",
         "college_keyword": "school",
-        "college_university": "college_university"
+        "college_university": "college_university",
     }
     key = t_map.get(requested_type, requested_type)
 
     filters = type_filters.get(key, [])
-   
+
     query_lines = []
     for f in filters:
         # Optimization: use nwr shorthand
         query_lines.append(f"  nwr{f}{name_filter}{loc};")
 
     timeout_cfg = int(os.getenv("OVERPASS_TIMEOUT", "60"))
-   
+
     query_body = "\n".join(query_lines)
 
     # `qt`: sonuclari id yerine quadtile (mekansal) sirasina gore dondur.

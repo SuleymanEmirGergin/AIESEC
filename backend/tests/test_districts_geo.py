@@ -27,12 +27,14 @@ REF_LAT = 41.0
 
 def _kare(lat0=41.0, lon0=29.0, boyut=0.1) -> Polygon:
     """Kose noktalari (lon, lat) sirasinda — shapely x=lon, y=lat."""
-    return Polygon([
-        (lon0, lat0),
-        (lon0 + boyut, lat0),
-        (lon0 + boyut, lat0 + boyut),
-        (lon0, lat0 + boyut),
-    ])
+    return Polygon(
+        [
+            (lon0, lat0),
+            (lon0 + boyut, lat0),
+            (lon0 + boyut, lat0 + boyut),
+            (lon0, lat0 + boyut),
+        ]
+    )
 
 
 class TestPointInGeometry:
@@ -51,7 +53,7 @@ class TestPointInGeometry:
         dis = [(29.0, 41.0), (29.4, 41.0), (29.4, 41.4), (29.0, 41.4)]
         delik = [(29.1, 41.1), (29.3, 41.1), (29.3, 41.3), (29.1, 41.3)]
         geom = Polygon(dis, [delik])
-        assert point_in_geometry(geom, 41.2, 29.2) is False   # delik icinde
+        assert point_in_geometry(geom, 41.2, 29.2) is False  # delik icinde
         assert point_in_geometry(geom, 41.05, 29.05) is True  # delik disinda
 
 
@@ -108,6 +110,7 @@ class TestDefaultBuffer:
 
 
 # --- districts.geojson'a bagimli testler ---
+
 
 def _veri_var() -> bool:
     try:

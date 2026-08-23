@@ -1,5 +1,5 @@
-﻿import os
 import logging
+import os
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import select
@@ -51,14 +51,16 @@ def _parse_bbox(raw: str | None):
     try:
         min_lon, min_lat, max_lon, max_lat = (float(p) for p in parts)
     except ValueError:
-        raise HTTPException(
-            status_code=422, detail="bbox degerleri sayi olmali."
-        )
+        raise HTTPException(status_code=422, detail="bbox degerleri sayi olmali.")
 
     if not (-90 <= min_lat <= 90 and -90 <= max_lat <= 90):
-        raise HTTPException(status_code=422, detail="bbox enlemi -90..90 araliginda olmali.")
+        raise HTTPException(
+            status_code=422, detail="bbox enlemi -90..90 araliginda olmali."
+        )
     if not (-180 <= min_lon <= 180 and -180 <= max_lon <= 180):
-        raise HTTPException(status_code=422, detail="bbox boylami -180..180 araliginda olmali.")
+        raise HTTPException(
+            status_code=422, detail="bbox boylami -180..180 araliginda olmali."
+        )
     if min_lat >= max_lat or min_lon >= max_lon:
         raise HTTPException(
             status_code=422,
@@ -113,7 +115,7 @@ async def search_places(
         ),
     ),
     db: AsyncSession = Depends(get_db),
-    api_key: APIKey = Depends(verify_api_key)
+    api_key: APIKey = Depends(verify_api_key),
 ) -> SearchResponse:
     """
     Unified search with Plans, Confidence, and Grid Caching.
@@ -179,16 +181,22 @@ async def search_places(
         eff_mode = decision.effective_mode
 
     # 3. Check Cache with Override Version Partitioning
-    ov_query = select(GlobalState).where(
-        GlobalState.key == "overrides_updated_at"
-    )
+    ov_query = select(GlobalState).where(GlobalState.key == "overrides_updated_at")
     ov_st = await db.execute(ov_query)
     ov_obj = ov_st.scalar_one_or_none()
     ov_ver = ov_obj.value if ov_obj else "0"
-    
+
     # We cache based on effective params + current overrides version
     cache_key = build_cache_key(
-        lat, lon, eff_radius, type, limit, ref_lat, ref_lon, eff_mode, ov_ver,
+        lat,
+        lon,
+        eff_radius,
+        type,
+        limit,
+        ref_lat,
+        ref_lon,
+        eff_mode,
+        ov_ver,
         bbox=query_bbox,
     )
     cached = cache.get(cache_key)
@@ -201,16 +209,22 @@ async def search_places(
             results=cached[offset : offset + limit],
             count=len(cached),
             query=SearchParams(
-                lat=lat, lon=lon, radius=eff_radius, type=type,
-                limit=limit, offset=offset, ref_lat=ref_lat,
-                ref_lon=ref_lon, mode=mode
-            )
+                lat=lat,
+                lon=lon,
+                radius=eff_radius,
+                type=type,
+                limit=limit,
+                offset=offset,
+                ref_lat=ref_lat,
+                ref_lon=ref_lon,
+                mode=mode,
+            ),
         )
 
     # 4. Execute Search Orchestration with Fallback
     results = []
     stage2_used = False
-    
+
     # Acik bbox varken alternatif moda dusmek anlamsiz: cagiran taranacak
     # dikdortgeni kesin olarak vermis, "around" moduna gecmek baska bir
     # alani taramak olurdu.
@@ -233,7 +247,7 @@ async def search_places(
                 ref_lat=ref_lat,
                 ref_lon=ref_lon,
                 db=db,
-                explicit_bbox=query_bbox
+                explicit_bbox=query_bbox,
             )
             # If we found something, break
             if results:
@@ -246,16 +260,15 @@ async def search_places(
             last_err = e
             logger.error(f"Unexpected search error in mode {attempt_mode}: {str(e)}")
             continue
-            
+
     if not results and last_err:
         if isinstance(last_err, OverpassError):
             raise HTTPException(
                 status_code=503,
-                detail=f"Overpass API currently unavailable: {str(last_err)}"
+                detail=f"Overpass API currently unavailable: {str(last_err)}",
             )
         raise HTTPException(
-            status_code=500,
-            detail=f"Search orchestration error: {str(last_err)}"
+            status_code=500, detail=f"Search orchestration error: {str(last_err)}"
         )
 
     # 5. Sorting
@@ -266,19 +279,25 @@ async def search_places(
 
     # 6. Finalize & Cache
     cache.set(cache_key, results, get_ttl_for_type(type))
-    
+
     if debug_mode:
         response.headers["X-Applied-Mode"] = applied_mode
         response.headers["X-Stage2-Used"] = str(stage2_used).lower()
-    
+
     return SearchResponse(
         results=results[offset : offset + limit],
         count=len(results),
         query=SearchParams(
-            lat=lat, lon=lon, radius=eff_radius, type=type,
-            limit=limit, offset=offset, ref_lat=ref_lat,
-            ref_lon=ref_lon, mode=applied_mode
-        )
+            lat=lat,
+            lon=lon,
+            radius=eff_radius,
+            type=type,
+            limit=limit,
+            offset=offset,
+            ref_lat=ref_lat,
+            ref_lon=ref_lon,
+            mode=applied_mode,
+        ),
     )
 
 
@@ -286,7 +305,7 @@ async def search_places(
 async def report_incorrect_data(
     request: ReportRequest,
     db: AsyncSession = Depends(get_db),
-    api_key: APIKey = Depends(validate_api_key)
+    api_key: APIKey = Depends(validate_api_key),
 ):
     """Handle data quality reports by persisting to SQLite."""
     new_report = Report(
@@ -299,7 +318,7 @@ async def report_incorrect_data(
         notes=request.notes,
         client=request.client,
         app_version=request.app_version,
-        ip="X-API-KEY:" + api_key.name
+        ip="X-API-KEY:" + api_key.name,
     )
     db.add(new_report)
     await db.commit()
