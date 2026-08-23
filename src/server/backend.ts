@@ -79,6 +79,9 @@ function authHeaders(
   const adminKey = req.headers.get("x-admin-key");
   if (adminKey) headers["X-ADMIN-KEY"] = adminKey;
 
+  const volunteerName = req.headers.get("x-volunteer-name");
+  if (volunteerName) headers["X-VOLUNTEER-NAME"] = volunteerName;
+
   return headers;
 }
 

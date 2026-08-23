@@ -13,11 +13,21 @@ const TIMEOUT_MS = 15_000;
 const getApiKey = () =>
   typeof window !== "undefined" ? localStorage.getItem("api_key") : null;
 
+/** Gönüllünün tarayıcıdaki görünen adı; boşluklardan ibaret değerler geçersizdir. */
+export function getVolunteerName(): string | null {
+  const value = typeof window === "undefined" ? null : localStorage.getItem("volunteer_name");
+  return value?.trim() || null;
+}
+
 async function request<T>(
   url: string,
-  options: { method?: string; body?: unknown } = {}
+  options: { method?: string; body?: unknown; requireVolunteer?: boolean; volunteer?: boolean } = {}
 ): Promise<T> {
   const apiKey = getApiKey();
+  const volunteerName = getVolunteerName();
+  if (options.requireVolunteer && !volunteerName) {
+    throw new Error("Gönüllü adınızı Ayarlar'dan girin.");
+  }
   const timeout = withTimeout(TIMEOUT_MS);
 
   let response: Response;
@@ -27,6 +37,9 @@ async function request<T>(
       headers: {
         ...(options.body !== undefined ? { "Content-Type": "application/json" } : {}),
         ...(apiKey ? { "X-API-KEY": apiKey } : {}),
+        ...((options.volunteer || options.requireVolunteer) && volunteerName
+          ? { "X-VOLUNTEER-NAME": volunteerName }
+          : {}),
       },
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
       signal: timeout.signal,
@@ -73,6 +86,35 @@ export interface SavedPlace {
   tags: Record<string, string>;
   note: string | null;
   saved_by: string | null;
+  contact_status: ContactStatus;
+  last_contact_at: string | null;
+  next_follow_up_at: string | null;
+  created_at: string;
+}
+
+export type ContactStatus =
+  | "uncontacted"
+  | "preparing"
+  | "contacted"
+  | "follow_up"
+  | "positive"
+  | "not_suitable";
+
+export interface ContactEventCreate {
+  status: ContactStatus;
+  contacted_at: string;
+  note?: string | null;
+  next_follow_up_at?: string | null;
+}
+
+export interface ContactEvent {
+  id: string;
+  saved_place_id: string;
+  status: ContactStatus;
+  contacted_at: string;
+  note: string | null;
+  next_follow_up_at: string | null;
+  volunteer_name: string;
   created_at: string;
 }
 
@@ -94,6 +136,7 @@ export const createList = (name: string, note?: string) =>
   request<PlaceListSummary>("/api/lists", {
     method: "POST",
     body: { name, note: note || null },
+    requireVolunteer: true,
   });
 
 export const renameList = (id: string, name: string) =>
@@ -125,6 +168,10 @@ export const fetchSavedPlaces = (listId?: string) =>
 export const savePlace = (place: Place, listId?: string | null) =>
   request<SavedPlace>("/api/saved", {
     method: "POST",
+    // Tekrarlanan kayitlar backend tarafinda idempotenttir ve ad istemez.
+    // Istemci yeni mi tekrar mi oldugunu bilemeyecegi icin ad varsa iletir,
+    // yoksa istegi gonderir; backend yalnizca yeni kaydi reddeder.
+    volunteer: true,
     body: {
       place_id: place.id,
       name: place.name,
@@ -144,6 +191,16 @@ export const updateSavedPlace = (
 
 export const removeSavedPlace = (id: string) =>
   request<{ success: boolean }>(`/api/saved/${id}`, { method: "DELETE" });
+
+export const addContactEvent = (id: string, body: ContactEventCreate) =>
+  request<SavedPlace>(`/api/saved/${encodeURIComponent(id)}/contacts`, {
+    method: "POST",
+    body,
+    requireVolunteer: true,
+  });
+
+export const fetchContactEvents = (id: string) =>
+  request<ContactEvent[]>(`/api/saved/${encodeURIComponent(id)}/contacts`);
 
 // --- Gecmis -----------------------------------------------------------------
 
