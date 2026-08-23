@@ -6,6 +6,10 @@ Urunun temel vaadi burada sinaniyor: gonullunun kaydettigi sey kaybolmaz
 liste silme, ayni yeri iki kez kaydetme, baskasinin listesine erisme.
 """
 
+import pytest
+
+from app.database import engine, init_db
+
 
 def _place(place_id: str = "osm:node:1", **overrides) -> dict:
     body = {
@@ -84,6 +88,16 @@ class TestDeletingAListKeepsItsPlaces:
 
 
 class TestSavingPlaces:
+    def test_new_saved_place_has_contact_defaults(self, client):
+        saved = client.post(
+            "/api/saved",
+            json=_place("osm:node:contact-default"),
+            headers={"X-VOLUNTEER-NAME": "Ece"},
+        ).json()
+        assert saved["contact_status"] == "uncontacted"
+        assert saved["last_contact_at"] is None
+        assert saved["next_follow_up_at"] is None
+
     def test_saving_twice_is_not_an_error(self, client):
         """
         Ayni yeri iki kez kaydetmek bir hata degil, basari durumu.
@@ -134,6 +148,19 @@ class TestSavingPlaces:
             "/api/saved", json=_place("osm:node:hayalet", list_id="yok-boyle-bir-liste")
         )
         assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_saved_places_contact_columns_are_migrated_idempotently():
+    await init_db()
+    async with engine.connect() as connection:
+        columns = await connection.exec_driver_sql("PRAGMA table_info(saved_places)")
+        column_names = {row[1] for row in columns.fetchall()}
+
+    assert {"contact_status", "last_contact_at", "next_follow_up_at"} <= column_names
+
+    # Mevcut tabloya migration ikinci kez uygulandiginda da hata olmamali.
+    await init_db()
 
 
 class TestUpdatingSavedPlaces:

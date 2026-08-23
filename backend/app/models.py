@@ -1,5 +1,6 @@
 import os
-from datetime import datetime
+from datetime import date, datetime
+from enum import Enum
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
@@ -471,6 +472,33 @@ class SavedPlaceUpdate(BaseModel):
     # gercekten gonderildigini ayirmak icin exclude_unset kullaniliyor.
 
 
+class ContactStatus(str, Enum):
+    uncontacted = "uncontacted"
+    preparing = "preparing"
+    contacted = "contacted"
+    follow_up = "follow_up"
+    positive = "positive"
+    not_suitable = "not_suitable"
+
+
+class ContactEventCreate(BaseModel):
+    status: ContactStatus
+    contacted_at: date
+    note: Optional[str] = Field(None, max_length=1000)
+    next_follow_up_at: Optional[date] = None
+
+
+class ContactEventResponse(BaseModel):
+    id: str
+    saved_place_id: str
+    status: ContactStatus
+    contacted_at: date
+    note: Optional[str]
+    next_follow_up_at: Optional[date]
+    volunteer_name: str
+    created_at: datetime
+
+
 class SavedPlaceResponse(BaseModel):
     id: str
     list_id: Optional[str]
@@ -483,6 +511,9 @@ class SavedPlaceResponse(BaseModel):
     tags: Dict[str, Any]
     note: Optional[str]
     saved_by: Optional[str]
+    contact_status: ContactStatus
+    last_contact_at: Optional[date]
+    next_follow_up_at: Optional[date]
     created_at: datetime
 
 

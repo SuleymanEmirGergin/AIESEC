@@ -7,6 +7,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     Column,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -169,11 +170,34 @@ class SavedPlace(Base):
 
     note = Column(String, nullable=True)
     saved_by = Column(String, nullable=True)
+    contact_status = Column(String, nullable=False, default="uncontacted")
+    last_contact_at = Column(Date, nullable=True)
+    next_follow_up_at = Column(Date, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
 
     __table_args__ = (
         UniqueConstraint("api_key_id", "place_id", name="uq_saved_place_per_key"),
     )
+
+
+class ContactEvent(Base):
+    """Kaydedilmis bir yerle kurulan temasin degistirilemez gecmisi."""
+
+    __tablename__ = "contact_events"
+
+    id = Column(String, primary_key=True)
+    saved_place_id = Column(
+        String,
+        ForeignKey("saved_places.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    status = Column(String, nullable=False)
+    contacted_at = Column(Date, nullable=False)
+    note = Column(String, nullable=True)
+    next_follow_up_at = Column(Date, nullable=True)
+    volunteer_name = Column(String, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
 
 
 class GlobalState(Base):
@@ -280,6 +304,22 @@ async def init_db():
             await conn.exec_driver_sql(
                 "ALTER TABLE places ADD COLUMN source TEXT NOT NULL DEFAULT 'osm'"
             )
+
+        saved_place_cols = await conn.exec_driver_sql("PRAGMA table_info(saved_places)")
+        existing_saved_place_columns = {row[1] for row in saved_place_cols.fetchall()}
+        saved_place_migrations = {
+            "contact_status": (
+                "ALTER TABLE saved_places ADD COLUMN "
+                "contact_status TEXT NOT NULL DEFAULT 'uncontacted'"
+            ),
+            "last_contact_at": "ALTER TABLE saved_places ADD COLUMN last_contact_at DATE",
+            "next_follow_up_at": (
+                "ALTER TABLE saved_places ADD COLUMN next_follow_up_at DATE"
+            ),
+        }
+        for column, statement in saved_place_migrations.items():
+            if column not in existing_saved_place_columns:
+                await conn.exec_driver_sql(statement)
 
     # Initialize overrides_version
     async with AsyncSessionLocal() as session:
