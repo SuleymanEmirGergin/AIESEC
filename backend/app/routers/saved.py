@@ -19,13 +19,15 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import desc, func, select
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from sqlalchemy import delete, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import validate_api_key
-from app.database import APIKey, ExportLog, PlaceList, SavedPlace, get_db
+from app.database import APIKey, ContactEvent, ExportLog, PlaceList, SavedPlace, get_db
 from app.models import (
+    ContactEventCreate,
+    ContactEventResponse,
     ExportHistoryItem,
     PlaceListCreate,
     PlaceListResponse,
@@ -40,6 +42,16 @@ router = APIRouter(prefix="/api", tags=["saved"])
 
 def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _volunteer_name(x_volunteer_name: str | None = Header(None)) -> str:
+    name = (x_volunteer_name or "").strip()
+    if not name or len(name) > 120:
+        raise HTTPException(
+            status_code=422,
+            detail="Gönüllü adı gerekli ve en fazla 120 karakter olmalı.",
+        )
+    return name
 
 
 # --- Listeler ---------------------------------------------------------------
@@ -82,6 +94,7 @@ async def list_place_lists(
 @router.post("/lists", response_model=PlaceListResponse, status_code=201)
 async def create_place_list(
     data: PlaceListCreate,
+    volunteer_name: str = Depends(_volunteer_name),
     db: AsyncSession = Depends(get_db),
     api_key: APIKey = Depends(validate_api_key),
 ):
@@ -98,7 +111,7 @@ async def create_place_list(
         note=(data.note or "").strip() or None,
         created_at=now,
         updated_at=now,
-        created_by=api_key.name,
+        created_by=volunteer_name,
     )
     db.add(new_list)
     await db.commit()
@@ -222,6 +235,7 @@ async def list_saved_places(
 @router.post("/saved", response_model=SavedPlaceResponse, status_code=201)
 async def save_place(
     data: SavedPlaceCreate,
+    volunteer_name: str = Depends(_volunteer_name),
     db: AsyncSession = Depends(get_db),
     api_key: APIKey = Depends(validate_api_key),
 ):
@@ -263,7 +277,7 @@ async def save_place(
         address=data.address,
         tags=data.tags or {},
         note=(data.note or "").strip() or None,
-        saved_by=api_key.name,
+        saved_by=volunteer_name,
         created_at=_now(),
     )
     db.add(place)
@@ -319,9 +333,63 @@ async def delete_saved_place(
 ):
     """Kaydi kaldir."""
     place = await _owned_place(saved_id, api_key, db)
+    await db.execute(
+        delete(ContactEvent).where(ContactEvent.saved_place_id == place.id)
+    )
     await db.delete(place)
     await db.commit()
     return {"success": True}
+
+
+# --- Temas gecmisi ----------------------------------------------------------
+
+
+@router.post(
+    "/saved/{saved_id}/contacts", response_model=SavedPlaceResponse, status_code=201
+)
+async def create_contact_event(
+    saved_id: str,
+    data: ContactEventCreate,
+    volunteer_name: str = Depends(_volunteer_name),
+    db: AsyncSession = Depends(get_db),
+    api_key: APIKey = Depends(validate_api_key),
+):
+    """Temasi gecmise ekle ve kaydin guncel temas durumunu yenile."""
+    place = await _owned_place(saved_id, api_key, db)
+    db.add(
+        ContactEvent(
+            id=str(uuid.uuid4()),
+            saved_place_id=place.id,
+            status=data.status.value,
+            contacted_at=data.contacted_at,
+            note=(data.note or "").strip() or None,
+            next_follow_up_at=data.next_follow_up_at,
+            volunteer_name=volunteer_name,
+            created_at=_now(),
+        )
+    )
+    place.contact_status = data.status.value
+    place.last_contact_at = data.contacted_at
+    place.next_follow_up_at = data.next_follow_up_at
+    await db.commit()
+    await db.refresh(place)
+    return place
+
+
+@router.get("/saved/{saved_id}/contacts", response_model=List[ContactEventResponse])
+async def list_contact_events(
+    saved_id: str,
+    db: AsyncSession = Depends(get_db),
+    api_key: APIKey = Depends(validate_api_key),
+):
+    """Kayda ait temas gecmisini en yeni olaydan baslayarak getir."""
+    place = await _owned_place(saved_id, api_key, db)
+    result = await db.execute(
+        select(ContactEvent)
+        .where(ContactEvent.saved_place_id == place.id)
+        .order_by(desc(ContactEvent.contacted_at), desc(ContactEvent.created_at))
+    )
+    return result.scalars().all()
 
 
 # --- Disa aktarim gecmisi ---------------------------------------------------
