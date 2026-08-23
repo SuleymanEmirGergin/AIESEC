@@ -15,6 +15,7 @@ interface SavedPlaceRowProps {
   onMove: (id: string, listId: string | null) => void;
   onRemove: (id: string) => void;
   onAddContact: (id: string, data: ContactEventCreate) => Promise<void>;
+  onHistoryError: (message: string) => void;
 }
 
 const dateFormat = new Intl.DateTimeFormat("tr-TR", {
@@ -40,6 +41,7 @@ export default function SavedPlaceRow({
   onMove,
   onRemove,
   onAddContact,
+  onHistoryError,
 }: SavedPlaceRowProps) {
   const [note, setNote] = useState(place.note ?? "");
   const [saved, setSaved] = useState(false);
@@ -51,7 +53,9 @@ export default function SavedPlaceRow({
   const [followUpAt, setFollowUpAt] = useState("");
   const [contactError, setContactError] = useState<string | null>(null);
   const [history, setHistory] = useState<ContactEvent[] | null>(null);
+  const [historyVisible, setHistoryVisible] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   // Dis kaynak degisirse (baska bir listeye tasindi, yenilendi) yerel
   // taslak degil gercek deger gosterilsin.
@@ -79,7 +83,14 @@ export default function SavedPlaceRow({
 
   const loadHistory = async () => {
     setHistoryLoading(true);
-    try { setHistory(await fetchContactEvents(place.id)); } finally { setHistoryLoading(false); }
+    setHistoryError(null);
+    try {
+      setHistory(await fetchContactEvents(place.id));
+    } catch (err: any) {
+      const message = err?.message || "Temas geçmişi yüklenemedi.";
+      setHistoryError(message);
+      onHistoryError(message);
+    } finally { setHistoryLoading(false); }
   };
 
   const submitContact = async (event: React.FormEvent) => {
@@ -202,7 +213,10 @@ export default function SavedPlaceRow({
 
         <div className="mt-2 flex flex-wrap gap-2">
           <button type="button" onClick={() => setContactOpen((open) => !open)} className="btn btn--ghost px-2.5 py-1.5 text-2xs">Temas ekle</button>
-          <button type="button" onClick={() => history === null ? loadHistory() : setHistory(null)} className="btn btn--ghost px-2.5 py-1.5 text-2xs">{history === null ? "Geçmişi göster" : "Geçmişi gizle"}</button>
+          <button type="button" onClick={() => {
+            if (!historyVisible && history === null) loadHistory();
+            setHistoryVisible((visible) => !visible);
+          }} className="btn btn--ghost px-2.5 py-1.5 text-2xs">{historyVisible ? "Geçmişi gizle" : "Geçmişi göster"}</button>
         </div>
 
         {contactOpen && (
@@ -217,8 +231,9 @@ export default function SavedPlaceRow({
             <button className="btn btn--primary justify-center px-3 py-1.5 text-2xs">Kaydet</button>
           </form>
         )}
-        {historyLoading && <p className="mt-2 mono-label">Geçmiş yükleniyor</p>}
-        {history && <ol className="mt-2 space-y-1 text-2xs text-ink-3">{history.map((item) => <li key={item.id}>{item.contacted_at} · {CONTACT_STATUS_LABELS[item.status]} · {item.volunteer_name}{item.note ? ` · ${item.note}` : ""}</li>)}</ol>}
+        {historyVisible && historyLoading && <p className="mt-2 mono-label">Geçmiş yükleniyor</p>}
+        {historyVisible && historyError && <p className="mt-2 text-2xs text-critical">{historyError}</p>}
+        {historyVisible && history && <ol className="mt-2 space-y-1 text-2xs text-ink-3">{history.map((item) => <li key={item.id}>{item.contacted_at} · {CONTACT_STATUS_LABELS[item.status]} · {item.volunteer_name}{item.note ? ` · ${item.note}` : ""}</li>)}</ol>}
       </div>
     </li>
   );

@@ -413,6 +413,7 @@ export default function SavedPage() {
                     onMove={handleMove}
                     onRemove={handleRemove}
                     onAddContact={handleAddContact}
+                    onHistoryError={setError}
                   />
                 ))}
               </ul>
