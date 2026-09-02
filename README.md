@@ -1,222 +1,97 @@
-# Nearby Place Finder 🗺️
+# Nearby Place Finder — Location Intelligence Platform
 
-Yakındaki fabrika, okul, ofis ve eğitim kurumlarını harita üzerinde gösteren modern Next.js aplikasyonu.
+A full-stack location search platform for discovering nearby schools, factories, offices, and workshops using OpenStreetMap data.
 
-## ✨ Özellikler
+Built as an AIESEC-oriented engineering project, the repository contains a **Next.js web client**, a **FastAPI search backend**, and an **Expo / React Native mobile client**.
 
-- 🗺️ **İnteraktif Harita:** OpenStreetMap entegrasyonu ile Leaflet haritası
-- 🎯 **Konum Tabanlı Arama:** Geolocation API ile kullanıcı konumu algılama
-- 🏭 **Tip Filtreleme:** Fabrika, ofis, atölye, okul türleri için filtreleme
-- 📏 **Yarıçap Seçimi:** 500m - 5km arası ayarlanabilir arama yarıçapı
-- 🎨 **Modern Tasarım:** Trust & Authority + Educational tasarım sistemi
-- 🌗 **Dark Mode:** Otomatik dark mode desteği
-- 📱 **Responsive:** Mobil-öncelikli, tüm ekran boyutlarına uyumlu
-- 🐳 **Docker Ready:** Production-ready multi-stage Dockerfile
+## Why this project matters
 
-## 🚀 Hızlı Başlangıç
+The main engineering problem is not drawing markers on a map. It is making public geospatial data reliable enough for product use: selecting the right search strategy, handling unstable Overpass endpoints, normalizing results, applying distance-aware defaults, and exposing the same search capability to web and mobile clients.
 
-### Gereksinimler
+## Architecture
 
-- Node.js 18.17+
-- pnpm 8+ (önerilen)
-
-### Kurulum
-
-```bash
-# 1. Bağımlılıkları yükle
-pnpm install
-
-# 2. Environment dosyasını oluştur
-cp .env.local.example .env.local
-
-# 3. .env.local dosyasını düzenle
-# NEXT_PUBLIC_API_BASE=https://your-external-api.com
-
-# 4. Development server'ı başlat
-pnpm dev
+```text
+Web (Next.js) ───────┐
+                     ├──> FastAPI Search API ──> OpenStreetMap / Overpass
+Mobile (Expo / RN) ──┘           │
+                                  ├── adaptive search policy
+                                  ├── mirror failover / retry
+                                  ├── pagination + validation
+                                  └── Prometheus observability
 ```
 
-Tarayıcıda [http://localhost:3000](http://localhost:3000) adresini açın.
+## Stack
 
-## 🐳 Docker ile Çalıştırma
+- **Web:** Next.js, TypeScript, Tailwind CSS, Leaflet
+- **Backend:** Python, FastAPI, Pydantic, SQLAlchemy async, HTTPX
+- **Mobile:** Expo, React Native, Expo Router, React Native Maps, Expo Location
+- **Infrastructure:** Docker, Docker Compose
+- **Observability & Quality:** Prometheus, Pytest, Ruff
+- **Data:** OpenStreetMap / Overpass API
 
-### Development
+## Backend engineering highlights
 
-```bash
-# Build
-docker build -t nearby-place-finder .
+- Adaptive **Around vs. Bounding Box** search strategy based on entity type and radius.
+- Multi-endpoint Overpass **mirror failover** with retry-oriented behavior for transient failures.
+- Two-stage retrieval that prioritizes named POIs while preserving valid unnamed results as fallback.
+- Type-aware radius defaults for education and B2B place categories.
+- Paginated search API with validation and explicit result normalization.
+- Health probes, Prometheus metrics, and container-ready deployment.
 
-# Run
-docker run -p 3000:3000 --env-file .env.local nearby-place-finder
+### API
+
+```http
+GET /api/search?lat=41.015137&lon=28.979530&radius=2000&type=primary_school
 ```
 
-### Production (Docker Compose)
+Supported categories include kindergarten, primary/middle/high/private schools, colleges, factories, offices, and workshops.
 
-```bash
-# Build ve başlat
-docker-compose up -d
+## Mobile client
 
-# Logları izle
-docker-compose logs -f
+The `expo-osm-map/` package provides a dedicated mobile experience built with Expo and React Native. It uses device location and map-native UI rather than wrapping the web application.
 
-# Durdur
-docker-compose down
-```
+## Repository structure
 
-## 📁 Proje Yapısı
-
-```
-├── src/
+```text
+AIESEC/
+├── src/                 # Next.js web application
+├── backend/             # FastAPI location-search service
 │   ├── app/
-│   │   ├── api/search/       # API route (external API proxy)
-│   │   ├── layout.tsx         # Root layout
-│   │   ├── page.tsx           # Ana sayfa
-│   │   └── globals.css        # Global styles
-│   ├── components/
-│   │   ├── MapContainer.tsx   # Leaflet map wrapper
-│   │   ├── SearchControls.tsx # Arama kontrolleri
-│   │   └── PlaceList.tsx      # Sonuç listesi
-│   └── lib/
-│       ├── types.ts           # TypeScript tanımları
-│       ├── api-client.ts      # API client fonksiyonları
-│       └── map-utils.ts       # Harita yardımcı fonksiyonları
-├── public/                     # Static dosyalar
-├── Dockerfile                  # Multi-stage production build
-├── docker-compose.yml          # Docker Compose config
-└── tailwind.config.ts          # Tailwind tema
+│   ├── tests/
+│   └── requirements.txt
+├── expo-osm-map/        # Expo / React Native mobile client
+├── docs/
+├── Dockerfile
+└── docker-compose.yml
 ```
 
-## 🎨 Tasarım Sistemi
+## Run locally
 
-### Renkler
-
-- **Primary:** `#0369A1` (Professional Blue)
-- **Background (Light):** `#F8FAFC` (Slate 50)
-- **Background (Dark):** `#0F172A` (Slate 900)
-
-### Tipografi
-
-- **Başlıklar:** Baloo 2 (Friendly, Educational)
-- **Body:** Comic Neue (Readable, Approachable)
-
-### Marker Renkleri (Tip Bazlı)
-
-| Tip | Renk |
-|-----|------|
-| Fabrika | Kırmızı |
-| Ofis | Mavi |
-| Atölye | Turuncu |
-| Anaokulu | Pembe |
-| İlkokul | Mor |
-| Ortaokul | Cyan |
-| Lise | Yeşil |
-| Özel Okul | Portakal |
-| Üniversite | İndigo |
-
-## 🔧 Environment Variables
+### Full stack with Docker
 
 ```bash
-# API Endpoint (required for production)
-NEXT_PUBLIC_API_BASE=https://your-external-api.com
-
-# Varsayılan harita konumu (İstanbul)
-NEXT_PUBLIC_DEFAULT_LAT=41.0082
-NEXT_PUBLIC_DEFAULT_LNG=28.9784
-NEXT_PUBLIC_DEFAULT_ZOOM=12
+docker compose up --build
 ```
 
-## 🧪 API Endpoint Formatı
-
-### Request
-
-```
-GET /api/search?type={type}&radius={radius}&lat={lat}&lng={lng}
-```
-
-**Parameters:**
-- `type`: PlaceType ("factory" | "office" | "workshop" | "kindergarten" | ...)
-- `radius`: number (500 | 1000 | 1500 | 3000 | 5000) in meters
-- `lat`: number (latitude)
-- `lng`: number (longitude)
-
-### Response
-
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": "unique-id",
-      "name": "Yer Adı",
-      "type": "kindergarten",
-      "coordinates": {
-        "lat": 41.0082,
-        "lng": 28.9784
-      },
-      "address": "Tam adres",
-      "distance": 850
-    }
-  ],
-  "total": 5
-}
-```
-
-## 📝 Geliştirme Notları
-
-### SSR vs Client-Side
-
-- **Leaflet:** Client-only (dynamic import ile)
-- **Map State:** Client-side state management
-- **API Calls:** Client-side (browser → Next.js API Route → External API)
-
-### Mock Data
-
-Eğer `NEXT_PUBLIC_API_BASE` tanımlanmamışsa, API route otomatik olarak mock data döner (development için).
-
-## 🚢 Production Deployment
-
-### Build
+### Backend only
 
 ```bash
-pnpm build
-pnpm start
+cd backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload
 ```
 
-### Docker Production
+### Mobile
 
 ```bash
-docker-compose up -d --build
+cd expo-osm-map
+npm install
+npm start
 ```
 
-### Vercel Deploy
+## What I would discuss in an interview
 
-```bash
-# .env.production dosyasını ayarla
-vercel --prod
-```
-
-## 🧪 Test Checklist
-
-- [ ] Leaflet haritası SSR hatası olmadan yükleniyor
-- [ ] Tip seçimi çalışıyor
-- [ ] Yarıçap değiştirme çalışıyor
-- [ ] "Konumumu Kullan" butonu çalışıyor (permission handling)
-- [ ] Search butonu API çağrısı yapıyor
-- [ ] Marker'lar haritada görünüyor
-- [ ] Popup açılıyor
-- [ ] Liste ile harita senkronize
-- [ ] Dark mode geçişi sorunsuz
-- [ ] Mobile responsive (375px+)
-- [ ] Docker container başarıyla çalışıyor
-
-## 📄 Lisans
-
-MIT License - AIESEC
-
-## 🤝 Katkı
-
-Pull request'ler kabul edilir. Büyük değişiklikler için önce issue açın.
-
----
-
-**Built with ❤️ using Next.js 14, TypeScript, Tailwind CSS, and Leaflet**
+- Why proximity search behaves differently for dense schools vs. large industrial areas.
+- How I handle unreliable third-party geospatial infrastructure without silently returning poor results.
+- Trade-offs between web map rendering and a native mobile map experience.
+- How search policy, validation, failover, and observability make a map feature production-lean rather than demo-only.
