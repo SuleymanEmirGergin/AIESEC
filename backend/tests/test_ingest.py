@@ -60,10 +60,10 @@ class TestSelectorFamilies:
         assert set(SELECTOR_FAMILIES) == {"b2b", "education"}
 
     def test_onsekiz_selector(self):
-        # 10 turun secicilerinin birlesimi. Sayi degisirse ingest sorgu
+        # 16 turun secicilerinin birlesimi. Sayi degisirse ingest sorgu
         # maliyeti de degisir; bu test o degisikligi gorunur kiliyor.
         total = sum(len(v) for v in SELECTOR_FAMILIES.values())
-        assert total == 18
+        assert total == 21
 
     def test_universite_secicileri_var(self):
         # T1'de duzeltilen hatanin ikinci yarisi: universite hic
@@ -144,7 +144,8 @@ class TestClassifyElement:
         assert classify_element({"craft": "carpenter"}, "node") == "workshop"
 
     def test_ofis(self):
-        assert classify_element({"office": "company"}, "node") == "office"
+        # office=company artik Sirket; genel ofis icin serbest meslek.
+        assert classify_element({"office": "lawyer"}, "node") == "office"
 
     def test_siniflandirilamayan_none(self):
         # building=school ama amenity=school yok: classify_school_level

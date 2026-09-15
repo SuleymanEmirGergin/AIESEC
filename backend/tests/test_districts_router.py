@@ -291,14 +291,14 @@ class TestDistrictPlaces:
 class TestDistrictSummary:
     async def test_counts_every_type(self, client, seeded):
         """
-        10 turun hepsi anahtar olarak donmeli: eksik anahtar
+        16 turun hepsi anahtar olarak donmeli: eksik anahtar
         "sayi yok" ile "sifir" ayrimini bozar.
         """
         response = client.get(f"/api/districts/{DISTRICT}/summary")
         assert response.status_code == 200
         body = response.json()
 
-        assert len(body["counts"]) == 10
+        assert len(body["counts"]) == 16
         assert body["counts"]["factory"] == 3
         assert body["counts"]["office"] == 1
         assert body["counts"]["workshop"] == 0

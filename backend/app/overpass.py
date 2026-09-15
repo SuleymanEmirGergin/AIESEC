@@ -328,6 +328,13 @@ def build_overpass_query(
             '["building"="university"]',
             '["education"="university"]',
         ],
+        "hotel": ['["tourism"~"^(hotel|hostel|motel|guest_house|resort)$"]'],
+        "company": ['["office"~"^(company|it|telecommunication|energy_supplier)$"]'],
+        # Holding etiketle degil adla bulunur; adaylar ofis havuzu + ad.
+        "holding": ['["office"]', '["name"~"[Hh]olding"]'],
+        "real_estate": ['["office"="estate_agent"]'],
+        "language_school": ['["amenity"="language_school"]'],
+        "travel_agency": ['["office"="travel_agent"]', '["shop"="travel_agency"]'],
     }
 
     # Specialized type map

@@ -33,7 +33,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.classify import classify_b2b_type, classify_school_level
+from app.classify import classify_b2b_type, classify_school_level, classify_service_type
 from app.database import AsyncSessionLocal, init_db
 from app.districts import (
     DEFAULT_BUFFER_M,
@@ -55,8 +55,8 @@ from app.store import (
 
 logger = logging.getLogger(__name__)
 
-# 10 turun secicilerinin birlesimi, iki aileye bolunmus.
-# Toplam 18; bu sayi degisirse ingest sorgu maliyeti de degisir.
+# 16 turun secicilerinin birlesimi, iki aileye bolunmus.
+# Toplam 21; bu sayi degisirse ingest sorgu maliyeti de degisir.
 SELECTOR_FAMILIES: dict[str, tuple[str, ...]] = {
     "b2b": (
         '["man_made"="works"]',
@@ -68,6 +68,12 @@ SELECTOR_FAMILIES: dict[str, tuple[str, ...]] = {
         '["landuse"="industrial"]',
         '["office"]',
         '["craft"]',
+        # Otel, dil kursu, seyahat acentesi de bu ailede: ucuncu bir aile
+        # Overpass sorgu sayisini %50 artirirdi. Sirket ve emlak ofisi
+        # zaten `["office"]` secicisinden geliyor.
+        '["tourism"~"^(hotel|hostel|motel|guest_house|resort)$"]',
+        '["amenity"="language_school"]',
+        '["shop"="travel_agency"]',
     ),
     "education": (
         '["amenity"="kindergarten"]',
@@ -168,9 +174,14 @@ def classify_element(tags: dict, element_type: str) -> str | None:
     None donen kayitlar atilmiyor, place_type=NULL ile saklaniyor
     (or. `building=school` tasiyip `amenity=school` tasimayanlar).
     """
-    school = classify_school_level(tags, tags.get("name") or "")
+    name = tags.get("name") or ""
+    school = classify_school_level(tags, name)
     if school:
         return school
+
+    service = classify_service_type(tags, name)
+    if service:
+        return service
 
     return classify_b2b_type(tags, element_type)
 

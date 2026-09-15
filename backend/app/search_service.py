@@ -6,7 +6,12 @@ from geopy.distance import geodesic
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.classify import classify_b2b_type, classify_school_level
+from app.classify import (
+    SERVICE_TYPES,
+    classify_b2b_type,
+    classify_school_level,
+    classify_service_type,
+)
 from app.database import Override
 from app.geo import bbox_from_radius
 from app.models import Place
@@ -280,11 +285,16 @@ async def run_search_orchestration(
                 or (place_type == "school" and classified != "None")
             )
         ]
+    elif place_type in SERVICE_TYPES:
+        deduped = [
+            p for p in deduped if classify_service_type(p.tags, p.name or "") == place_type
+        ]
     elif place_type in {"factory", "office", "workshop"}:
         deduped = [
             p
             for p in deduped
-            if classify_b2b_type(p.tags, p.id.split(":")[1]) == place_type
+            if classify_service_type(p.tags, p.name or "") is None
+            and classify_b2b_type(p.tags, p.id.split(":")[1]) == place_type
         ]
 
     return deduped, stage2_used

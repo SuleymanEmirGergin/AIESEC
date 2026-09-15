@@ -18,6 +18,13 @@ RADIUS_PRESETS = {
     "office": 2000,
     "workshop": 3000,
     "factory": 5000,
+    "hotel": 3000,
+    "company": 3000,
+    # Holdingler seyrek; genis yaricap.
+    "holding": 5000,
+    "real_estate": 2000,
+    "language_school": 2000,
+    "travel_agency": 2000,
 }
 
 # Tag whitelist for result cleanup

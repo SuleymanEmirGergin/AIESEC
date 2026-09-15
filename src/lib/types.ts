@@ -8,7 +8,13 @@ export type PlaceType =
   | "high_school"
   | "private_school"
   | "college_keyword"
-  | "college_university";
+  | "college_university"
+  | "hotel"
+  | "company"
+  | "holding"
+  | "real_estate"
+  | "language_school"
+  | "travel_agency";
 
 export interface Place {
   id: string;

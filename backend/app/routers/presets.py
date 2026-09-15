@@ -21,7 +21,7 @@ async def get_search_presets():
         notes="auto selects 'around' for schools and 'bbox' for B2B by default",
         type_labels_tr={
             "factory": "Fabrika",
-            "office": "Ofis / Şirket",
+            "office": "Ofis",
             "workshop": "Atölye / İmalathane",
             "kindergarten": "Anaokulu",
             "primary_school": "İlkokul",
@@ -30,9 +30,18 @@ async def get_search_presets():
             "private_school": "Özel Okul",
             "college_keyword": "Kolej",
             "college_university": "Üniversite",
+            "hotel": "Otel",
+            "company": "Şirket",
+            "holding": "Holding",
+            "real_estate": "Emlak Ofisi",
+            "language_school": "Dil Kursu",
+            "travel_agency": "Seyahat Acentesi",
         },
         type_groups_tr=[
-            {"group": "İşletmeler", "types": ["factory", "office", "workshop"]},
+            {
+                "group": "İşletmeler",
+                "types": ["factory", "company", "holding", "office", "workshop"],
+            },
             {
                 "group": "Eğitim Kurumları",
                 "types": [
@@ -43,7 +52,12 @@ async def get_search_presets():
                     "private_school",
                     "college_keyword",
                     "college_university",
+                    "language_school",
                 ],
+            },
+            {
+                "group": "Konaklama & Hizmet",
+                "types": ["hotel", "real_estate", "travel_agency"],
             },
         ],
     )

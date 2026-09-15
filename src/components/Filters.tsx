@@ -8,6 +8,12 @@ import {
   GraduationCap,
   Briefcase,
   Wrench,
+  Hotel,
+  Building2,
+  Landmark,
+  KeyRound,
+  Languages,
+  Plane,
 } from "lucide-react";
 import type { PlaceType } from "../lib/types";
 import { PLACE_TYPE_LABELS } from "../lib/labels";
@@ -47,11 +53,19 @@ const CATEGORY_ICONS: Record<PlaceType, typeof Factory> = {
   // sembolu tasiyor ama kategori listesinde adlariyla ayrisiyorlar.
   college_keyword: GraduationCap,
   college_university: GraduationCap,
+  hotel: Hotel,
+  company: Building2,
+  holding: Landmark,
+  real_estate: KeyRound,
+  language_school: Languages,
+  travel_agency: Plane,
 };
 
 /** Isletmeler once, egitim kurumlari sonra - arama niyetiyle ayni sira. */
 const CATEGORY_ORDER: PlaceType[] = [
   "factory",
+  "company",
+  "holding",
   "office",
   "workshop",
   "kindergarten",
@@ -61,6 +75,10 @@ const CATEGORY_ORDER: PlaceType[] = [
   "private_school",
   "college_keyword",
   "college_university",
+  "language_school",
+  "hotel",
+  "real_estate",
+  "travel_agency",
 ];
 
 export default function Filters({ selectedCategory, onCategoryChange }: FiltersProps) {

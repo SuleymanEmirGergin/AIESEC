@@ -50,6 +50,12 @@ TYPE_LABELS = {
     "private_school": "Özel Okul",
     "college_keyword": "Kolej",
     "college_university": "Üniversite",
+    "hotel": "Otel",
+    "company": "Şirket",
+    "holding": "Holding",
+    "real_estate": "Emlak Ofisi",
+    "language_school": "Dil Kursu",
+    "travel_agency": "Seyahat Acentesi",
 }
 
 # Arayuzde bos adres bu metinle gosteriliyor; CSV'ye tasinmamali.

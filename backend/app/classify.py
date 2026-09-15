@@ -177,6 +177,45 @@ def classify_b2b_type(tags: dict, element_type: str) -> Optional[str]:
     return None
 
 
+# Hizmet turleri. Holding disindakiler etiketten okunuyor; holding icin
+# ne OSM'de ne Overture'da kategori var, adiyla taninir (Kolej'deki
+# isim-anahtar kelime kalibi).
+HOTEL_TOURISM = {"hotel", "hostel", "motel", "guest_house", "resort"}
+COMPANY_OFFICE = {"company", "it", "telecommunication", "energy_supplier"}
+TRAVEL_OFFICE = {"travel_agent", "travel_agency"}
+SERVICE_TYPES = frozenset(
+    {"hotel", "company", "holding", "real_estate", "language_school", "travel_agency"}
+)
+
+
+def is_holding_name(name: str) -> bool:
+    return "holding" in tr_fold(name or "")
+
+
+def classify_service_type(tags: dict, name: str) -> Optional[str]:
+    """
+    hotel | company | holding | real_estate | language_school |
+    travel_agency | None.
+
+    B2B siniflandirmasindan ONCE cagrilmali: office=estate_agent gibi
+    etiketler aksi halde genel `office` dalina dusuyor.
+    """
+    if is_holding_name(name):
+        return "holding"
+    if tags.get("tourism") in HOTEL_TOURISM:
+        return "hotel"
+    office = tags.get("office")
+    if office == "estate_agent":
+        return "real_estate"
+    if office in TRAVEL_OFFICE or tags.get("shop") == "travel_agency":
+        return "travel_agency"
+    if office in COMPANY_OFFICE:
+        return "company"
+    if tags.get("amenity") == "language_school":
+        return "language_school"
+    return None
+
+
 def has_name(tags: dict) -> bool:
     """Check if element has a name tag."""
     return bool(tags.get("name") or tags.get("official_name"))

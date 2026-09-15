@@ -53,11 +53,50 @@ CATEGORY_MAP: dict[str, str] = {
     "factory": "factory",
     "industrial_company": "factory",
     "office": "office",
-    "corporate_office": "office",
     "professional_services": "office",
     "workshop": "workshop",
     "repair_shop": "workshop",
+    # Sirket: kurumsal ofis. `*_company` soneki classify_overture'da
+    # toptan yakalaniyor (information_technology_company vb.).
+    "corporate_office": "company",
+    "business": "company",
+    "business_to_business": "company",
+    "business_to_business_services": "company",
+    # Hizmet
+    "hotel": "hotel",
+    "accommodation": "hotel",
+    "hostel": "hotel",
+    "motel": "hotel",
+    "resort": "hotel",
+    "lodge": "hotel",
+    "bed_and_breakfast": "hotel",
+    "real_estate": "real_estate",
+    "real_estate_agent": "real_estate",
+    "real_estate_service": "real_estate",
+    "property_management": "real_estate",
+    "commercial_real_estate": "real_estate",
+    "language_school": "language_school",
+    "tutoring_center": "language_school",
+    "travel_services": "travel_agency",
+    "travel_agents": "travel_agency",
+    "travel_company": "travel_agency",
+    "tours": "travel_agency",
+    "sightseeing_tour_agency": "travel_agency",
 }
+
+
+def classify_overture(category: str | None, name: str | None) -> str | None:
+    """Overture kategorisi + ad -> PlaceType. Holding ad kuralidir."""
+    from app.classify import is_holding_name
+
+    if is_holding_name(name or ""):
+        return "holding"
+    mapped = CATEGORY_MAP.get(category or "")
+    if mapped:
+        return mapped
+    if category and category.endswith("_company"):
+        return "company"
+    return None
 
 
 def _first(value: Any) -> Optional[str]:
@@ -112,7 +151,11 @@ def fetch_places(
     ]
     if only_mapped:
         keys = ",".join(f"'{k}'" for k in CATEGORY_MAP)
-        where.append(f"categories.primary IN ({keys})")
+        where.append(
+            f"(categories.primary IN ({keys})"
+            " OR categories.primary LIKE '%\\_company' ESCAPE '\\'"
+            " OR lower(names.primary) LIKE '%holding%')"
+        )
 
     query = f"""
         SELECT id,
@@ -156,7 +199,7 @@ def fetch_places(
                 "id": f"overture:{gid}",
                 "name": name or None,
                 "category": category,
-                "place_type": CATEGORY_MAP.get(category),
+                "place_type": classify_overture(category, name),
                 "lat": lat,
                 "lon": lon,
                 # Overture guveni 0-1; bizim confidence kolonu 0-100.
