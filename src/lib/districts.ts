@@ -26,8 +26,8 @@ export interface DistrictMeta {
 export interface DistrictPlace {
   id: string;
   name: string | null;
-  place_type: PlaceType | null;
-  subtype: string | null;
+  /** Backend `type` dondurur (bkz. test_districts_router: ClientPlace sozlesmesi). */
+  type: PlaceType | null;
   lat: number;
   lon: number;
   address: string | null;
@@ -224,7 +224,7 @@ export function districtPlaceToPlace(place: DistrictPlace): Place {
   return {
     id: place.id,
     name: place.name || "İsimsiz Yer",
-    type: (place.place_type ?? "factory") as PlaceType,
+    type: (place.type ?? "factory") as PlaceType,
     coordinates: { lat: place.lat, lng: place.lon },
     address: place.address || "Adres bilgisi yok",
     tags,

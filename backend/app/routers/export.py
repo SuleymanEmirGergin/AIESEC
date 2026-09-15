@@ -2,6 +2,7 @@
 
 import csv
 import io
+import re
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -32,44 +33,91 @@ def pick_tag(tags: Dict[str, Any], keys: tuple) -> str:
     return ""
 
 
+# Excel, Turkce yerelde liste ayiracini ';' olarak okuyor; virgulle
+# ayrilmis dosya tek sutuna yigiliyor. Dosyanin ilk hedefi Excel.
+CSV_DELIMITER = ";"
+
+# Arayuzdeki src/lib/labels.ts ile ayni; kullanici teknik olmayan gonullu,
+# CSV'de "kindergarten" degil "Anaokulu" gormeli.
+TYPE_LABELS = {
+    "factory": "Fabrika",
+    "office": "Ofis",
+    "workshop": "Atölye",
+    "kindergarten": "Anaokulu",
+    "primary_school": "İlkokul",
+    "middle_school": "Ortaokul",
+    "high_school": "Lise",
+    "private_school": "Özel Okul",
+    "college_keyword": "Kolej",
+    "college_university": "Üniversite",
+}
+
+# Arayuzde bos adres bu metinle gosteriliyor; CSV'ye tasinmamali.
+EMPTY_ADDRESS = "Adres bilgisi yok"
+
+CSV_HEADER = [
+    "Ad",
+    "Tür",
+    "Telefon",
+    "E-posta",
+    "Web Sitesi",
+    "Adres",
+    "Konum",
+    "Harita",
+    "Kayıt No",
+]
+
+
+def format_phone(raw: str) -> str:
+    """
+    Telefonu okunur ve Excel'in sayi sanmayacagi bicime getirir.
+
+    "+905424703486" Excel'de 9,05E+11 oluyor. Bosluklu yazim hem gozle
+    okunur hem de metin olarak kalir. Turk numaralari (+90 / 0 onekli,
+    10 hane) "+90 542 470 34 86" seklinde; taninmayanlar oldugu gibi.
+    """
+    raw = raw.strip()
+    if not raw:
+        return ""
+    digits = re.sub(r"\D", "", raw)
+    if digits.startswith("90") and len(digits) == 12:
+        digits = digits[2:]
+    elif digits.startswith("0") and len(digits) == 11:
+        digits = digits[1:]
+    if len(digits) == 10:
+        return f"+90 {digits[:3]} {digits[3:6]} {digits[6:8]} {digits[8:]}"
+    return raw
+
+
 def build_csv(items: List[Dict[str, Any]]) -> str:
     """Construct CSV string from OSM items."""
     output = io.StringIO()
-    writer = csv.writer(output)
-
-    # Headers
-    writer.writerow(
-        [
-            "name",
-            "type",
-            "subtype",
-            "lat",
-            "lon",
-            "city",
-            "district",
-            "street",
-            "phone",
-            "email",
-            "website",
-            "osm_id",
-        ]
-    )
+    writer = csv.writer(output, delimiter=CSV_DELIMITER)
+    writer.writerow(CSV_HEADER)
 
     for item in items:
         tags = item.get("tags", {}) or {}
+        lat, lon = item.get("lat"), item.get("lon")
+        # Tek hucre metin: Turkce Excel "28.86" degerini binlik ayirac
+        # sanip bozuyor; "41.030743, 28.860546" ise oldugu gibi kalir ve
+        # dogrudan haritaya yapistirilabilir.
+        has_coords = isinstance(lat, (int, float)) and isinstance(lon, (int, float))
+        location = f"{lat:.6f}, {lon:.6f}" if has_coords else ""
+        maps_url = f"https://www.google.com/maps?q={lat:.6f},{lon:.6f}" if has_coords else ""
+        address = (item.get("address") or tags.get("addr:full") or "").strip()
+        if address == EMPTY_ADDRESS:
+            address = ""
+        place_type = item.get("type") or ""
         writer.writerow(
             [
                 item.get("name") or "",
-                item.get("type") or "",
-                item.get("subtype") or "",
-                item.get("lat"),
-                item.get("lon"),
-                tags.get("addr:city") or "",
-                tags.get("addr:district") or tags.get("addr:suburb") or "",
-                tags.get("addr:street") or "",
-                pick_tag(tags, PHONE_KEYS),
+                TYPE_LABELS.get(place_type, place_type),
+                format_phone(pick_tag(tags, PHONE_KEYS)),
                 pick_tag(tags, EMAIL_KEYS),
                 pick_tag(tags, WEBSITE_KEYS),
+                address,
+                location,
+                maps_url,
                 item.get("id") or "",
             ]
         )

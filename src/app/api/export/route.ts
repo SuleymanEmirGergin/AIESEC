@@ -32,6 +32,7 @@ function toBackendItem(place: Place) {
     subtype: null,
     lat: place.coordinates?.lat,
     lon: place.coordinates?.lng,
+    address: place.address,
     tags: place.tags ?? {},
   };
 }
