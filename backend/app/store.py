@@ -160,7 +160,7 @@ async def replace_memberships(
     """
     Bir ilcenin uyelik satirlarini bastan yaz.
 
-    Yalnizca bu district_id'ye ait satirlar siliniyor: ayni kayit baska
+    Yalnizca bu district_id'ye ait OSM satirlari siliniyor: ayni kayit baska
     ilcelerin de uyesi olabiliyor (Kadikoy'un icinde VE Atasehir'in
     tamponunda) ve o satirlar korunmali.
 
@@ -172,8 +172,16 @@ async def replace_memberships(
     ihlaliyle patlardi; ON CONFLICT DO UPDATE ile SQLite ayni toplu
     INSERT icindeki tekrarlari da sirayla isler, son deger kazanir.
     """
+    # Yalnizca OSM kaynakli kayitlarin uyeligi siliniyor. Overture
+    # uyeligini enrich yaziyor; burada silinirse tam OSM cekimi Overture
+    # kayitlarini ilce sorgusundan dusurur (yasandi: 228k uyelik 82k'ya
+    # indi, kayitlar tabloda durdugu halde hicbir ilceye ait gorunmedi).
+    osm_ids = select(PlaceRow.id).where(PlaceRow.source == "osm")
     await db.execute(
-        delete(PlaceDistrict).where(PlaceDistrict.district_id == district_id)
+        delete(PlaceDistrict).where(
+            PlaceDistrict.district_id == district_id,
+            PlaceDistrict.place_id.in_(osm_ids),
+        )
     )
 
     if memberships:

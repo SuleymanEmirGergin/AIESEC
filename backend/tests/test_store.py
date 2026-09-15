@@ -273,6 +273,36 @@ class TestReplaceMemberships:
         assert len(rows) == 1
         assert rows[0].is_inside is False
 
+    async def test_overture_uyeligi_osm_yeniden_cekiminde_korunur(self, db):
+        """
+        Tam OSM cekimi replace_memberships ile ilcenin TUM uyeligini
+        siliyordu; Overture kayitlari tabloda kaldigi halde ilce
+        sorgusundan dusuyordu (228k -> 82k uyelik). Yalnizca OSM
+        kaynakli uyelik yeniden yazilmali.
+        """
+        base = {"type": "node", "lat": 41.0, "lon": 29.0, "tags": {"name": "X", "man_made": "works"}}
+        await upsert_places(db, [place_row_values({**base, "id": 3101}, "factory", 60, None)])
+        overture = {
+            **place_row_values({**base, "id": 3102}, "factory", 60, None),
+            "id": "overture:abc",
+            "source": "overture",
+        }
+        await upsert_places(db, [overture])
+        await replace_memberships(
+            db, "tr-59-cerkezkoy", [("osm:node:3101", True), ("overture:abc", True)]
+        )
+
+        # Yeniden cekim: yalnizca OSM kaydi geldi.
+        await replace_memberships(db, "tr-59-cerkezkoy", [("osm:node:3101", False)])
+
+        rows = (
+            await db.execute(
+                select(PlaceDistrict).where(PlaceDistrict.district_id == "tr-59-cerkezkoy")
+            )
+        ).scalars().all()
+        by_id = {r.place_id: r.is_inside for r in rows}
+        assert by_id == {"osm:node:3101": False, "overture:abc": True}
+
     async def test_diger_ilcenin_uyelikleri_korunur(self, db):
         # Kadikoy yeniden ingest edilirken Atasehir'in uyelikleri
         # silinmemeli; ayni kayit ikisine de uye olabiliyor.
