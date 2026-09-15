@@ -207,6 +207,40 @@ class TestUpsertPlaces:
         assert rows[0].name == "Yeni"
         assert rows[0].has_contact is True
 
+    async def test_yeniden_cekim_dolu_iletisimi_bosla_ezmez(self, db):
+        """
+        Overture enrich OSM'de bos olan telefonu doldurur. Sonraki tam OSM
+        cekimi ayni kaydi telefonsuz getirir; upsert dolu alani bosla
+        ezmemeli, yoksa zenginlestirme sessizce kaybolur.
+        """
+        base = {"type": "node", "id": 2003, "lat": 41.0, "lon": 29.0}
+        await upsert_places(
+            db,
+            [
+                place_row_values(
+                    {**base, "tags": {"name": "A", "man_made": "works", "phone": "111"}},
+                    "factory",
+                    60,
+                    None,
+                )
+            ],
+        )
+        await upsert_places(
+            db,
+            [
+                place_row_values(
+                    {**base, "tags": {"name": "A", "man_made": "works"}},
+                    "factory",
+                    60,
+                    None,
+                )
+            ],
+        )
+        result = await db.execute(select(PlaceRow).where(PlaceRow.id == "osm:node:2003"))
+        row = result.scalar_one()
+        assert row.phone == "111"
+        assert row.has_contact is True
+
 
 @pytest.mark.asyncio
 class TestReplaceMemberships:

@@ -9,7 +9,7 @@ hepsi bu tanima bagli.
 import json
 from datetime import datetime, timezone
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -124,8 +124,9 @@ async def upsert_places(db: AsyncSession, rows: list[dict]) -> int:
         return 0
 
     statement = sqlite_insert(PlaceRow).values(rows)
+    excluded = statement.excluded
     updatable = {
-        column: getattr(statement.excluded, column)
+        column: getattr(excluded, column)
         for column in (
             "lat",
             "lon",
@@ -133,15 +134,19 @@ async def upsert_places(db: AsyncSession, rows: list[dict]) -> int:
             "place_type",
             "subtype",
             "confidence",
-            "has_contact",
-            "phone",
-            "email",
-            "website",
-            "address",
             "tags_json",
             "fetched_at",
         )
     }
+    # Iletisim alanlari: yeni deger bossa eskisi kalir. Overture enrich
+    # OSM'de bos olan telefonu dolduruyor; sonraki tam OSM cekimi ayni
+    # kaydi telefonsuz getirince bu koruma olmadan zenginlestirme
+    # sessizce silinirdi.
+    for column in ("phone", "email", "website", "address"):
+        updatable[column] = func.coalesce(
+            func.nullif(getattr(excluded, column), ""), getattr(PlaceRow, column)
+        )
+    updatable["has_contact"] = or_(excluded.has_contact, PlaceRow.has_contact)
     await db.execute(
         statement.on_conflict_do_update(index_elements=["id"], set_=updatable)
     )
