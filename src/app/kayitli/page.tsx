@@ -8,6 +8,9 @@ import AppHeader from "../../components/AppHeader";
 import SavedPlaceRow from "../../components/SavedPlaceRow";
 import SettingsModal from "../../components/SettingsModal";
 import ExportHistory from "../../components/ExportHistory";
+import CategoryFilter from "../../components/CategoryFilter";
+import { PLACE_TYPE_LABELS } from "../../lib/labels";
+import type { PlaceType } from "../../lib/types";
 import { fetchAccount, exportLeads } from "../../lib/api";
 import type { AccountInfo } from "../../lib/api";
 import {
@@ -31,6 +34,7 @@ export default function SavedPage() {
   const [lists, setLists] = useState<PlaceListSummary[]>([]);
   const [places, setPlaces] = useState<SavedPlace[]>([]);
   const [activeList, setActiveList] = useState<string>(ALL);
+  const [typeFilter, setTypeFilter] = useState<PlaceType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [account, setAccount] = useState<AccountInfo | null>(null);
@@ -68,11 +72,31 @@ export default function SavedPage() {
    * her seferinde sunucuya gitmeyi hak etmiyor. Kayit sayisi bir ekibin
    * biriktirebilecegi olcekte (yuzler), binler degil.
    */
-  const visible = useMemo(() => {
+  // Liste filtresi; tur sayaclari bunun uzerinden hesaplaniyor.
+  const inList = useMemo(() => {
     if (activeList === ALL) return places;
     if (activeList === UNFILED) return places.filter((p) => !p.list_id);
     return places.filter((p) => p.list_id === activeList);
   }, [places, activeList]);
+
+  // Listedeki tur envanteri, tur secimden BAGIMSIZ (CategoryFilter'in
+  // harita sayfasindaki kuraliyla ayni). 16 anahtarin hepsi dolu: eksik
+  // anahtar "sayi yok" ile "sifir" ayrimini bozar.
+  const typeCounts = useMemo(() => {
+    const counts = Object.fromEntries(
+      (Object.keys(PLACE_TYPE_LABELS) as PlaceType[]).map((t) => [t, 0])
+    ) as Record<PlaceType, number>;
+    for (const p of inList) {
+      if (p.place_type && p.place_type in counts) counts[p.place_type as PlaceType] += 1;
+    }
+    return counts;
+  }, [inList]);
+
+  const visible = useMemo(() => {
+    if (typeFilter.length === 0) return inList;
+    const wanted = new Set<string>(typeFilter);
+    return inList.filter((p) => p.place_type && wanted.has(p.place_type));
+  }, [inList, typeFilter]);
 
   const unfiledCount = useMemo(
     () => places.filter((p) => !p.list_id).length,
@@ -347,6 +371,8 @@ export default function SavedPage() {
               {exporting ? "Hazırlanıyor…" : "CSV indir"}
             </button>
           </div>
+
+          <CategoryFilter value={typeFilter} onChange={setTypeFilter} counts={typeCounts} />
 
           <div className="flex-1 overflow-y-auto">
             {dueFollowUps.length > 0 && (
