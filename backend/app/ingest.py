@@ -33,7 +33,12 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.classify import classify_b2b_type, classify_school_level, classify_service_type
+from app.classify import (
+    classify_b2b_type,
+    classify_school_level,
+    classify_service_type,
+    tr_fold,
+)
 from app.database import AsyncSessionLocal, init_db
 from app.districts import (
     DEFAULT_BUFFER_M,
@@ -165,6 +170,48 @@ def split_bbox(
         (mid_lat, west, north, mid_lon),
         (mid_lat, mid_lon, north, east),
     ]
+
+
+# Ayni kurumun node ve way cizimi icin eslesme yaricapi (~150 m);
+# overture_ingest.MATCH_RADIUS_DEG ile ayni gerekce.
+NODE_WAY_RADIUS_DEG = 0.0015
+
+
+def _contact_score(row: dict) -> int:
+    return sum(1 for k in ("phone", "email", "website", "address") if row.get(k))
+
+
+def dedupe_node_way(rows: list[dict]) -> list[dict]:
+    """
+    OSM ayni kurumu hem nokta (node) hem alan (way/relation) olarak
+    cizebiliyor; ikisi de ayni adla, ayni yerde gelir ve gonullu icin
+    "ayni muzeyi iki kez aramak" demektir (olculdu: 118 cift). Ayni ad
+    + ayni tur + 150 m icindeki node/alan ciftinden iletisimi fazla
+    olan kalir; esitlikte alan (way/relation).
+    """
+    by_key: dict[tuple[str, str | None], list[dict]] = {}
+    for row in rows:
+        name = tr_fold(row.get("name") or "").replace(" ", "")
+        if not name:
+            continue
+        by_key.setdefault((name, row.get("place_type")), []).append(row)
+
+    dropped: set[str] = set()
+    for group in by_key.values():
+        nodes = [r for r in group if r["id"].startswith("osm:node:")]
+        areas = [r for r in group if not r["id"].startswith("osm:node:")]
+        for node in nodes:
+            for area in areas:
+                if area["id"] in dropped:
+                    continue
+                if (
+                    abs(node["lat"] - area["lat"]) < NODE_WAY_RADIUS_DEG
+                    and abs(node["lon"] - area["lon"]) < NODE_WAY_RADIUS_DEG
+                ):
+                    loser = node if _contact_score(node) <= _contact_score(area) else area
+                    dropped.add(loser["id"])
+                    break
+    return [r for r in rows if r["id"] not in dropped]
 
 
 def classify_element(tags: dict, element_type: str) -> str | None:
@@ -321,7 +368,7 @@ async def ingest_district(
                 if values is not None:
                     rows_by_id[values["id"]] = values
 
-    rows = list(rows_by_id.values())
+    rows = dedupe_node_way(list(rows_by_id.values()))
 
     # Bos ama "basarili" yanit, onceden kaydi olan bir ilce icin veri
     # degil ayna sorunudur: yalnizca Isvicre verisi tasiyan bir ayna

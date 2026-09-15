@@ -449,6 +449,40 @@ class TestIngestDistrict:
         )
         assert len(memberships) == 1, "bos yanit dolu ilcenin uyeligini silmemeli"
 
+    async def test_ayni_kurumun_node_ve_way_cizimi_tek_kayit_olur(self, db):
+        """
+        OSM ayni kurumu hem nokta (node) hem alan (way) olarak cizebiliyor;
+        ikisi de ayni adi tasiyor ve ayni yerde. Iki satir gonullu icin
+        "ayni muzeyi iki kez aramak" demek (olculdu: 118 cift). Iletisimi
+        olan taraf kalir; esitlikte way.
+        """
+        lat, lon = await self._kadikoy_merkez()
+        elements = [
+            {"type": "node", "id": 9201, "lat": lat, "lon": lon,
+             "tags": {"name": "Masumiyet Müzesi", "tourism": "museum", "phone": "111"}},
+            {"type": "way", "id": 9202, "center": {"lat": lat + 0.0002, "lon": lon},
+             "tags": {"name": "Masumiyet Müzesi", "tourism": "museum", "building": "yes"}},
+            {"type": "node", "id": 9203, "lat": lat, "lon": lon + 0.0001,
+             "tags": {"name": "Pera Müzesi", "tourism": "museum"}},
+            {"type": "way", "id": 9204, "center": {"lat": lat, "lon": lon + 0.0002},
+             "tags": {"name": "Pera Müzesi", "tourism": "museum"}},
+        ]
+        with patch(
+            "app.ingest.overpass_client.query",
+            new=AsyncMock(side_effect=_overpass_stub({1: elements})),
+        ):
+            result = await ingest_district(db, "tr-34-kadikoy", 2000, force=True)
+
+        assert result.place_count == 2
+        ids = {
+            r.id
+            for r in (
+                await db.execute(select(PlaceRow).where(PlaceRow.name.in_(["Masumiyet Müzesi", "Pera Müzesi"])))
+            ).scalars().all()
+        }
+        # Masumiyet: telefonlu node kalir. Pera: esitlik, way kalir.
+        assert ids == {"osm:node:9201", "osm:way:9204"}
+
     async def test_isimsiz_atolye_stage2_de_korunur(self, db):
         """
         Regresyon: is_valid_unnamed ikinci argumani TUR olarak

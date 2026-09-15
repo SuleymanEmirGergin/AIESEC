@@ -120,6 +120,49 @@ class TestZenginlestirme:
 
         assert after == before, "Overture ingest'i OSM uyeliklerini sildi"
 
+    async def test_uyeligi_olmayan_osm_kaydi_yine_eslesir(self):
+        """
+        Eslestirme place_districts join'ine bagliydi. Basarisiz bir OSM
+        cekimi ilcenin uyeligini silince (yasandi: 48 ilce) `existing`
+        bos geliyor ve ayni kurum Overture'dan ikinci kez ekleniyordu
+        (Fatih'te 326 cift). Uyelik turetilmis durum; eslestirme
+        koordinata bakmali.
+        """
+        await init_db()
+        async with AsyncSessionLocal() as db:
+            await self._osm_kaydi(db, "osm:node:9990004", "Uyeliksiz Okul")
+            # Bilerek uyelik YAZILMIYOR.
+            with patch(
+                "app.overture_ingest.fetch_places",
+                return_value=[
+                    {
+                        "id": "ov-4",
+                        "name": "Uyeliksiz Okul",
+                        "category": "elementary_school",
+                        "place_type": "primary_school",
+                        "lat": LAT,
+                        "lon": LON,
+                        "confidence": 90,
+                        "phone": "+902841234567",
+                        "website": None,
+                        "email": None,
+                        "address": None,
+                    }
+                ],
+            ):
+                result = await ingest_overture_district(db, DISTRICT)
+
+            n_ov = (
+                await db.execute(text("SELECT COUNT(*) FROM places WHERE id='overture:ov-4'"))
+            ).scalar()
+            phone = (
+                await db.execute(text("SELECT phone FROM places WHERE id='osm:node:9990004'"))
+            ).scalar()
+
+        assert n_ov == 0, "ayni kurum ikinci kez eklendi"
+        assert phone == "+902841234567", "mevcut kayit zenginlestirilmedi"
+        assert result.enriched == 1 and result.inserted == 0
+
     async def test_bos_alan_dolduruluyor_dolu_alan_korunuyor(self):
         """
         Yerel katki uzak kaynakla EZILMEMELI: gonullunun elle duzelttigi

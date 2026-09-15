@@ -111,6 +111,11 @@ class TestOvertureClassification:
     def test_category_maps(self, category, expected):
         assert classify_overture(category, "Ornek") == expected
 
+    def test_province_named_rows_are_dropped(self):
+        """Overture'da "Antalya Province" gibi idari alanlar muze diye geldi."""
+        assert classify_overture("museum", "Antalya Province") is None
+        assert classify_overture("museum", "Suçatı province") is None
+
     def test_holding_name_wins_over_category(self):
         assert classify_overture("corporate_office", "Doğan Holding") == "holding"
         assert classify_overture("cafe", "Bir Holding") == "holding"

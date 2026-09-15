@@ -85,6 +85,12 @@ async def ingest_overture_district(
         if point_membership(district_id, c["lat"], c["lon"], buffer_m) is not None
     ]
 
+    # Mevcut kayitlar KOORDINATLA seciliyor, place_districts join'iyle
+    # degil. Uyelik turetilmis durum: basarisiz bir OSM cekimi ilcenin
+    # uyeligini silince join bos donuyor ve ayni kurum Overture'dan
+    # ikinci kez ekleniyordu (Fatih'te 326 cift). Bbox tampon dahil
+    # ilceyi kapsiyor; eslesme zaten ad + 150 m ile daraliyor.
+    south, west, north, east = bbox
     existing = (
         await db.execute(
             text(
@@ -92,11 +98,10 @@ async def ingest_overture_district(
                 SELECT p.id, p.name, p.lat, p.lon, p.phone, p.email,
                        p.website, p.address
                 FROM places p
-                JOIN place_districts pd ON pd.place_id = p.id
-                WHERE pd.district_id = :d
+                WHERE p.lat BETWEEN :s AND :n AND p.lon BETWEEN :w AND :e
                 """
             ),
-            {"d": district_id},
+            {"s": south, "n": north, "w": west, "e": east},
         )
     ).all()
 

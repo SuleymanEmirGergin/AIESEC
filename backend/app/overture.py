@@ -104,6 +104,10 @@ def classify_overture(category: str | None, name: str | None) -> str | None:
 
     if is_holding_name(name or ""):
         return "holding"
+    # Idari alanlar ("Antalya Province") kategori hatasiyla muze/park
+    # olarak geliyor; kurum degil, atla.
+    if (name or "").strip().lower().endswith(" province"):
+        return None
     mapped = CATEGORY_MAP.get(category or "")
     if mapped:
         return mapped
