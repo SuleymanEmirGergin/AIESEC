@@ -372,7 +372,7 @@ class TestCountByType:
         # Arayuz chip'leri bu sozlukten besleniyor; eksik anahtar
         # "sayi yok" ile "sifir" ayrimini bozar.
         counts = await count_by_type(db, D, include_buffer=True)
-        assert len(counts) == 16
+        assert len(counts) == 21
         assert counts["high_school"] == 0
         assert counts["college_university"] == 0
 

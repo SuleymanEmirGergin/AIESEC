@@ -298,7 +298,7 @@ class TestDistrictSummary:
         assert response.status_code == 200
         body = response.json()
 
-        assert len(body["counts"]) == 16
+        assert len(body["counts"]) == 21
         assert body["counts"]["factory"] == 3
         assert body["counts"]["office"] == 1
         assert body["counts"]["workshop"] == 0

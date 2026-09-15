@@ -82,6 +82,19 @@ CATEGORY_MAP: dict[str, str] = {
     "travel_company": "travel_agency",
     "tours": "travel_agency",
     "sightseeing_tour_agency": "travel_agency",
+    # Gezi & eglence. `*_museum` soneki classify_overture'da toptan.
+    "aquarium": "zoo_aquarium",
+    "zoo": "zoo_aquarium",
+    "petting_zoo": "zoo_aquarium",
+    "wildlife_sanctuary": "zoo_aquarium",
+    "amusement_park": "theme_park",
+    "theme_park": "theme_park",
+    "water_park": "theme_park",
+    "museum": "museum",
+    "planetarium": "museum",
+    "botanical_garden": "botanical_garden",
+    "national_park": "nature_park",
+    "nature_reserve": "nature_park",
 }
 
 
@@ -96,6 +109,8 @@ def classify_overture(category: str | None, name: str | None) -> str | None:
         return mapped
     if category and category.endswith("_company"):
         return "company"
+    if category and category.endswith("_museum"):
+        return "museum"
     return None
 
 
@@ -154,6 +169,7 @@ def fetch_places(
         where.append(
             f"(categories.primary IN ({keys})"
             " OR categories.primary LIKE '%\\_company' ESCAPE '\\'"
+            " OR categories.primary LIKE '%\\_museum' ESCAPE '\\'"
             " OR lower(names.primary) LIKE '%holding%')"
         )
 

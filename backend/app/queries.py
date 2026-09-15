@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import PlaceDistrict, PlaceRow
 
-# 16 tur. count_by_type her zaman bu anahtarlarin hepsini donuyor:
+# 21 tur. count_by_type her zaman bu anahtarlarin hepsini donuyor:
 # arayuz chip'leri bu sozlukten besleniyor ve eksik anahtar "sayi yok"
 # ile "sifir" ayrimini bozar.
 ALL_TYPES: tuple[str, ...] = (
@@ -33,6 +33,11 @@ ALL_TYPES: tuple[str, ...] = (
     "real_estate",
     "language_school",
     "travel_agency",
+    "zoo_aquarium",
+    "theme_park",
+    "museum",
+    "botanical_garden",
+    "nature_park",
 )
 
 # SQL'de siralanabilenler.

@@ -56,6 +56,11 @@ TYPE_LABELS = {
     "real_estate": "Emlak Ofisi",
     "language_school": "Dil Kursu",
     "travel_agency": "Seyahat Acentesi",
+    "zoo_aquarium": "Hayvanat Bahçesi & Akvaryum",
+    "theme_park": "Tema & Su Parkı",
+    "museum": "Müze",
+    "botanical_garden": "Botanik Bahçesi",
+    "nature_park": "Milli Park & Doğa Alanı",
 }
 
 # Arayuzde bos adres bu metinle gosteriliyor; CSV'ye tasinmamali.

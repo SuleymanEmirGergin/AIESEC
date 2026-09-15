@@ -14,6 +14,11 @@ import {
   KeyRound,
   Languages,
   Plane,
+  PawPrint,
+  FerrisWheel,
+  Palette,
+  Flower2,
+  TreePine,
 } from "lucide-react";
 import type { PlaceType } from "../lib/types";
 import { PLACE_TYPE_LABELS } from "../lib/labels";
@@ -59,6 +64,11 @@ const CATEGORY_ICONS: Record<PlaceType, typeof Factory> = {
   real_estate: KeyRound,
   language_school: Languages,
   travel_agency: Plane,
+  zoo_aquarium: PawPrint,
+  theme_park: FerrisWheel,
+  museum: Palette,
+  botanical_garden: Flower2,
+  nature_park: TreePine,
 };
 
 /** Isletmeler once, egitim kurumlari sonra - arama niyetiyle ayni sira. */
@@ -79,6 +89,11 @@ const CATEGORY_ORDER: PlaceType[] = [
   "hotel",
   "real_estate",
   "travel_agency",
+  "zoo_aquarium",
+  "theme_park",
+  "museum",
+  "botanical_garden",
+  "nature_park",
 ];
 
 export default function Filters({ selectedCategory, onCategoryChange }: FiltersProps) {

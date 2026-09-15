@@ -25,6 +25,12 @@ RADIUS_PRESETS = {
     "real_estate": 2000,
     "language_school": 2000,
     "travel_agency": 2000,
+    # Gezi & eglence seyrek; genis yaricap.
+    "zoo_aquarium": 5000,
+    "theme_park": 5000,
+    "museum": 3000,
+    "botanical_garden": 5000,
+    "nature_park": 5000,
 }
 
 # Tag whitelist for result cleanup

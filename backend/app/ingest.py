@@ -55,8 +55,8 @@ from app.store import (
 
 logger = logging.getLogger(__name__)
 
-# 16 turun secicilerinin birlesimi, iki aileye bolunmus.
-# Toplam 21; bu sayi degisirse ingest sorgu maliyeti de degisir.
+# 21 turun secicilerinin birlesimi, iki aileye bolunmus.
+# Toplam 24; bu sayi degisirse ingest sorgu maliyeti de degisir.
 SELECTOR_FAMILIES: dict[str, tuple[str, ...]] = {
     "b2b": (
         '["man_made"="works"]',
@@ -71,9 +71,13 @@ SELECTOR_FAMILIES: dict[str, tuple[str, ...]] = {
         # Otel, dil kursu, seyahat acentesi de bu ailede: ucuncu bir aile
         # Overpass sorgu sayisini %50 artirirdi. Sirket ve emlak ofisi
         # zaten `["office"]` secicisinden geliyor.
-        '["tourism"~"^(hotel|hostel|motel|guest_house|resort)$"]',
+        '["tourism"~"^(hotel|hostel|motel|guest_house|resort|zoo|aquarium|theme_park|museum)$"]',
         '["amenity"="language_school"]',
         '["shop"="travel_agency"]',
+        # Gezi & eglence
+        '["leisure"~"^(water_park|nature_reserve)$"]',
+        '["leisure"="garden"]["garden:type"="botanical"]',
+        '["boundary"="national_park"]',
     ),
     "education": (
         '["amenity"="kindergarten"]',

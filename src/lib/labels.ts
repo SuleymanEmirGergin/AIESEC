@@ -22,6 +22,11 @@ export const PLACE_TYPE_LABELS: Record<PlaceType, string> = {
   real_estate: "Emlak Ofisi",
   language_school: "Dil Kursu",
   travel_agency: "Seyahat Acentesi",
+  zoo_aquarium: "Hayvanat Bahçesi & Akvaryum",
+  theme_park: "Tema & Su Parkı",
+  museum: "Müze",
+  botanical_garden: "Botanik Bahçesi",
+  nature_park: "Milli Park & Doğa Alanı",
 };
 
 export const PLACE_TYPE_GROUPS: Record<string, PlaceType[]> = {
@@ -37,4 +42,11 @@ export const PLACE_TYPE_GROUPS: Record<string, PlaceType[]> = {
     "language_school",
   ],
   "Konaklama & Hizmet": ["hotel", "real_estate", "travel_agency"],
+  "Gezi & Eğlence": [
+    "zoo_aquarium",
+    "theme_park",
+    "museum",
+    "botanical_garden",
+    "nature_park",
+  ],
 };

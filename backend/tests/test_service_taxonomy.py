@@ -20,6 +20,14 @@ from app.queries import ALL_TYPES
 from app.routers.export import TYPE_LABELS
 from app.routers.presets import get_search_presets
 
+LEISURE_TYPES = {
+    "zoo_aquarium",
+    "theme_park",
+    "museum",
+    "botanical_garden",
+    "nature_park",
+}
+
 SERVICE_TYPES = {
     "hotel",
     "company",
@@ -43,6 +51,14 @@ class TestOsmServiceClassification:
             ({"amenity": "language_school"}, "language_school"),
             ({"office": "travel_agent"}, "travel_agency"),
             ({"shop": "travel_agency"}, "travel_agency"),
+            ({"tourism": "zoo"}, "zoo_aquarium"),
+            ({"tourism": "aquarium"}, "zoo_aquarium"),
+            ({"tourism": "theme_park"}, "theme_park"),
+            ({"leisure": "water_park"}, "theme_park"),
+            ({"tourism": "museum"}, "museum"),
+            ({"leisure": "garden", "garden:type": "botanical"}, "botanical_garden"),
+            ({"boundary": "national_park"}, "nature_park"),
+            ({"leisure": "nature_reserve"}, "nature_park"),
         ],
     )
     def test_tag_maps_to_service_type(self, tags, expected):
@@ -81,6 +97,14 @@ class TestOvertureClassification:
             ("language_school", "language_school"),
             ("travel_services", "travel_agency"),
             ("factory", "factory"),
+            ("aquarium", "zoo_aquarium"),
+            ("wildlife_sanctuary", "zoo_aquarium"),
+            ("amusement_park", "theme_park"),
+            ("water_park", "theme_park"),
+            ("museum", "museum"),
+            ("history_museum", "museum"),
+            ("botanical_garden", "botanical_garden"),
+            ("national_park", "nature_park"),
             ("cafe", None),
         ],
     )
@@ -95,9 +119,10 @@ class TestOvertureClassification:
 class TestTaxonomyLists:
     """Tur listeleri ayrisirsa arayuz chip'i "sayi yok" gosterir."""
 
-    def test_all_types_has_16(self):
-        assert len(ALL_TYPES) == 16
+    def test_all_types_has_21(self):
+        assert len(ALL_TYPES) == 21
         assert SERVICE_TYPES <= set(ALL_TYPES)
+        assert LEISURE_TYPES <= set(ALL_TYPES)
 
     def test_every_type_has_radius_label_and_group(self):
         presets = asyncio.run(get_search_presets())

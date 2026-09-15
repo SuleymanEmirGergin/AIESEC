@@ -184,7 +184,20 @@ HOTEL_TOURISM = {"hotel", "hostel", "motel", "guest_house", "resort"}
 COMPANY_OFFICE = {"company", "it", "telecommunication", "energy_supplier"}
 TRAVEL_OFFICE = {"travel_agent", "travel_agency"}
 SERVICE_TYPES = frozenset(
-    {"hotel", "company", "holding", "real_estate", "language_school", "travel_agency"}
+    {
+        "hotel",
+        "company",
+        "holding",
+        "real_estate",
+        "language_school",
+        "travel_agency",
+        # Gezi & eglence: kultur ve doga kurumlari da degisim ortagi.
+        "zoo_aquarium",
+        "theme_park",
+        "museum",
+        "botanical_garden",
+        "nature_park",
+    }
 )
 
 
@@ -213,6 +226,18 @@ def classify_service_type(tags: dict, name: str) -> Optional[str]:
         return "company"
     if tags.get("amenity") == "language_school":
         return "language_school"
+    tourism = tags.get("tourism")
+    leisure = tags.get("leisure")
+    if tourism in ("zoo", "aquarium"):
+        return "zoo_aquarium"
+    if tourism == "theme_park" or leisure == "water_park":
+        return "theme_park"
+    if tourism == "museum":
+        return "museum"
+    if leisure == "garden" and tags.get("garden:type") == "botanical":
+        return "botanical_garden"
+    if tags.get("boundary") == "national_park" or leisure == "nature_reserve":
+        return "nature_park"
     return None
 
 

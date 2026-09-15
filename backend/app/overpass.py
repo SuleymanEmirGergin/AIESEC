@@ -335,6 +335,11 @@ def build_overpass_query(
         "real_estate": ['["office"="estate_agent"]'],
         "language_school": ['["amenity"="language_school"]'],
         "travel_agency": ['["office"="travel_agent"]', '["shop"="travel_agency"]'],
+        "zoo_aquarium": ['["tourism"~"^(zoo|aquarium)$"]'],
+        "theme_park": ['["tourism"="theme_park"]', '["leisure"="water_park"]'],
+        "museum": ['["tourism"="museum"]'],
+        "botanical_garden": ['["leisure"="garden"]["garden:type"="botanical"]'],
+        "nature_park": ['["boundary"="national_park"]', '["leisure"="nature_reserve"]'],
     }
 
     # Specialized type map

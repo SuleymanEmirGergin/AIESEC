@@ -63,7 +63,7 @@ class TestSelectorFamilies:
         # 16 turun secicilerinin birlesimi. Sayi degisirse ingest sorgu
         # maliyeti de degisir; bu test o degisikligi gorunur kiliyor.
         total = sum(len(v) for v in SELECTOR_FAMILIES.values())
-        assert total == 21
+        assert total == 24
 
     def test_universite_secicileri_var(self):
         # T1'de duzeltilen hatanin ikinci yarisi: universite hic
