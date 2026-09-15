@@ -318,6 +318,27 @@ async def ingest_district(
                     rows_by_id[values["id"]] = values
 
     rows = list(rows_by_id.values())
+
+    # Bos ama "basarili" yanit, onceden kaydi olan bir ilce icin veri
+    # degil ayna sorunudur: yalnizca Isvicre verisi tasiyan bir ayna
+    # Turkiye bbox'ina 2 saniyede bos yanit verdi ve asagidaki
+    # replace_memberships 48 ilcenin uyeligini sildi. Uyelige dokunma,
+    # failed isaretle; --all bir sonraki turda yeniden ceker.
+    previous = await get_ingest_state(db, district_id)
+    if not rows and previous is not None and (previous.place_count or 0) > 0:
+        logger.error(
+            "%s: onceki cekimde %s kayit vardi, simdi 0 geldi; ayna suphesi, uyelik korunuyor",
+            district_id,
+            previous.place_count,
+        )
+        await mark_ingest(db, district_id, previous.place_count, total_queries, "failed")
+        return IngestResult(
+            district_id=district_id,
+            place_count=previous.place_count,
+            query_count=total_queries,
+            status="failed",
+        )
+
     await upsert_places(db, rows)
 
     # Uyelik: yalnizca ISLENEN ilceye karsi test ediliyor. Kaydin

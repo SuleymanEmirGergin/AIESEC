@@ -403,6 +403,52 @@ class TestIngestDistrict:
         assert result.status == "failed"
         assert result.place_count == 0
 
+    async def test_bos_sonuc_dolu_ilcenin_uyeligini_silmez(self, db):
+        """
+        Yalnizca Isvicre verisi tasiyan bir ayna (overpass.osm.ch) Turkiye
+        bbox'ina 2 saniyede bos ama gecerli yanit verdi; ingest bunu "ok"
+        sayip replace_memberships ile 48 ilcenin uyeligini sildi. Onceden
+        kaydi olan bir ilce sifir kayitla donerse bu veri degil aynadir:
+        uyelik korunur, durum failed olur ki --all yeniden ceksin.
+        """
+        lat, lon = await self._kadikoy_merkez()
+        elements = [
+            {
+                "type": "node",
+                "id": 9101,
+                "lat": lat,
+                "lon": lon,
+                "tags": {"name": "Onceki Fabrika", "man_made": "works"},
+            }
+        ]
+        with patch(
+            "app.ingest.overpass_client.query",
+            new=AsyncMock(side_effect=_overpass_stub({1: elements})),
+        ):
+            first = await ingest_district(db, "tr-34-kadikoy", 2000, force=True)
+        assert first.status == "ok" and first.place_count == 1
+
+        with patch(
+            "app.ingest.overpass_client.query",
+            new=AsyncMock(side_effect=_overpass_stub({1: []})),
+        ):
+            second = await ingest_district(db, "tr-34-kadikoy", 2000, force=True)
+
+        assert second.status == "failed"
+        memberships = (
+            (
+                await db.execute(
+                    select(PlaceDistrict).where(
+                        PlaceDistrict.place_id == "osm:node:9101",
+                        PlaceDistrict.district_id == "tr-34-kadikoy",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(memberships) == 1, "bos yanit dolu ilcenin uyeligini silmemeli"
+
     async def test_isimsiz_atolye_stage2_de_korunur(self, db):
         """
         Regresyon: is_valid_unnamed ikinci argumani TUR olarak
