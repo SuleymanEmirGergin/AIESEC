@@ -1,9 +1,17 @@
 # POI Finder
 
 AIESEC gönüllülerinin staj ve değişim programları için **ortak kurum**
-bulmasına yarayan harita aracı: bir bölgedeki okulları, fabrikaları,
-ofisleri ve atölyeleri iletişim bilgileriyle birlikte bulur, adlandırılmış
-listelere kaydeder, CSV olarak dışa aktarır.
+bulmasına yarayan harita aracı: bir ilçedeki okulları, şirketleri,
+otelleri, müzeleri ve benzeri kurumları iletişim bilgileriyle birlikte
+bulur, adlandırılmış listelere kaydeder, CSV olarak dışa aktarır.
+
+**21 tür, dört grup:** İşletmeler (Fabrika, Şirket, Holding, Ofis, Atölye),
+Eğitim Kurumları (Anaokulu, İlkokul, Ortaokul, Lise, Özel Okul, Kolej,
+Üniversite, Dil Kursu), Konaklama & Hizmet (Otel, Emlak Ofisi, Seyahat
+Acentesi), Gezi & Eğlence (Hayvanat Bahçesi & Akvaryum, Tema & Su Parkı,
+Müze, Botanik Bahçesi, Milli Park & Doğa Alanı). Tek kaynak
+`src/lib/labels.ts` ve backend `queries.ALL_TYPES`; ikisi testle aynı
+tutulur.
 
 Kimin için tasarlandığı ve hangi kısıtların neden konduğu
 [`PRODUCT.md`](PRODUCT.md) içinde; görsel sistem [`design.md`](design.md)
@@ -28,9 +36,11 @@ tarayıcı → Next.js (proxy + önbellek) → FastAPI → ┬ Overpass API   (h
 | **İlçe sorgusu** | İlçe seçilince | Yerel SQLite (önceden çekilmiş) | Hızlı — ağ beklemesi yok |
 
 Yerel veritabanı **iki kaynaktan** besleniyor. OSM'de iletişim bilgisi
-seyrek (telefon %9,2); Overture Maps aynı bölgelerde çok daha dolu
-(%78,5) ve places teması OSM materyalini dışladığı için çakışmıyor.
-Kaynak seçimi lisansa göre yapıldı — ayrıntısı aşağıda "İlçe verisi".
+seyrek (telefon %19,7); Overture Maps aynı bölgelerde çok daha dolu
+(%75,1). Overture'ın places teması OSM materyalini dışlıyor ama aynı
+kurum iki kaynakta ayrı kayıt olabiliyor; enrich bunları ad + 150 m ile
+eşleştirip tek kayıtta birleştirir. Kaynak seçimi lisansa göre yapıldı —
+ayrıntısı aşağıda "İlçe verisi".
 
 Tarayıcı backend'e doğrudan gitmez. Tüm istekler Next.js route'larından
 geçer; API anahtarı orada eklenir ve istemciye hiç ulaşmaz.
@@ -40,7 +50,7 @@ geçer; API anahtarı orada eklenir ve istemciye hiç ulaşmaz.
 | Route | Ne yapar |
 |---|---|
 | `/` | Harita + il/ilçe seçimi, kategori filtresi (çoklu seçim, sayılı), filtre paneli, sayfalanan sonuç listesi, kaydetme |
-| `/kayitli` | Kaydedilen yerler, adlandırılmış listeler, not alanı, CSV indirme, indirme geçmişi |
+| `/kayitli` | Kaydedilen yerler, adlandırılmış listeler, tür filtresi, not ve temas geçmişi, CSV indirme, indirme geçmişi |
 | `/admin` | Yönetici paneli: hata raporları, özet sayılar |
 | `/admin/overrides` | OSM sınıflandırma düzeltmeleri |
 
@@ -90,7 +100,7 @@ Backend (`backend/.env`):
 |---|---|
 | `ADMIN_API_KEY` | `/admin` uçlarının anahtarı |
 | `DATABASE_URL` | Varsayılan SQLite. Docker'da `/app/data/storage.db` (volume) |
-| `OVERPASS_URLS` | Virgülle ayrılmış ayna listesi; failover buna göre. **Cevap vermeyen aynayı listede tutmayın**: yedeklilik sağlamaz, yalnızca deneme başına 20-40 sn yer |
+| `OVERPASS_URLS` | Virgülle ayrılmış ayna listesi; failover buna göre. **Cevap vermeyen aynayı listede tutmayın**: yedeklilik sağlamaz, yalnızca deneme başına 20-40 sn yer. **Bölgesel aynayı da tutmayın:** `overpass.osm.ch` yalnızca İsviçre verisi taşıyor ve Türkiye sorgusuna boş ama geçerli yanıt veriyor. Yeni ayna eklemeden önce Türkiye bbox'ında dolu sonuç geldiğini görün. 2026-09 itibarıyla çalışan ikili: `overpass-api.de`, `maps.mail.ru` |
 | `OVERPASS_TIMEOUT` | Hem HTTP zaman aşımı hem sorguya gömülen `[out:json][timeout:N]` |
 | `OVERPASS_COOLDOWN_BASE` | Başarısız aynanın ilk bank süresi (sn, varsayılan 15). Üst üste hatalarda katlanarak uzar |
 | `OVERPASS_COOLDOWN_MAX` | Bank süresi tavanı (sn, varsayılan 300) |
@@ -148,7 +158,14 @@ cd backend && .venv/Scripts/python.exe -m app.ingest --all
 `--province` plaka değil **il adı** alır: `istanbul`, `edirne`, `tekirdag`,
 `kirklareli`, `malatya`. Taze kayıtları yeniden çekmek için `--force`.
 Eşzamanlılık varsayılan 2'dir; Overpass IP başına 2 slot verdiği için
-yükseltmek işe yaramaz.
+yükseltmek işe yaramaz. Sağlıklı aynayla tam tur (`--all --force`)
+yaklaşık 80 dakika sürer; ilçe başına 20 sn - 10 dk.
+
+Yeniden çekim mevcut veriyi bozmaz, üç koruma var: dolu iletişim alanı
+boşla ezilmez (Overture zenginleştirmesi korunur); önceden kaydı olan bir
+ilçe sıfır kayıtla dönerse bu ayna sorunu sayılır, üyelik korunur ve ilçe
+`failed` işaretlenir; ilçe üyeliği yeniden yazılırken yalnızca OSM
+kaynaklı satırlara dokunulur, Overture üyeliği enrich'in işidir.
 
 ### İkinci kaynak: Overture Maps
 
@@ -180,15 +197,26 @@ Uç iki iş yapar: mevcut kayıtların **boş** iletişim alanlarını doldurur
 kötü davranış olurdu) ve taksonomiye uyan yeni kurumları ekler. Kaydın
 nereden geldiği `places.source` kolonunda (`osm` | `overture`) durur.
 
+Eşleştirme koordinata bakar (ilçe bbox'ı), `place_districts` join'ine
+değil: üyelik türetilmiş durumdur ve bir kez silinince aynı kurum ikinci
+kez eklenmişti (677 çift). Ayrıca OSM'nin aynı kurumu hem nokta hem alan
+olarak çizdiği durumlar ingest'te tekilleştirilir; iletişimi fazla olan
+kalır. Adı " Province" ile biten Overture kayıtları idari alandır, atlanır.
+
 ### Şu anki durum
 
-80 ilçenin **tamamı** çekildi ve Overture ile zenginleştirildi:
+80 ilçenin **tamamı** çekildi ve Overture ile zenginleştirildi
+(2026-09-16; 77 ilçe `ok`, 3 `partial`):
 
 | Kaynak | Kayıt | Telefon | Website | Adres |
 |---|---:|---:|---:|---:|
-| OSM | 30 878 | %16,7 | %13,0 | %31,1 |
-| Overture | 23 379 | %78,5 | %63,4 | %85,5 |
-| **Toplam** | **54 257** | **%43,3** | %34,7 | %54,5 |
+| OSM | 34 659 | %19,7 | %15,6 | %34,1 |
+| Overture | 61 236 | %75,1 | %58,8 | %83,8 |
+| **Toplam** | **95 895** | **%55,1** | %43,2 | %65,9 |
+
+En kalabalık türler Fabrika (19,6k), Emlak Ofisi (16,0k), Ofis (15,5k),
+Otel (12,2k). 2 082 kayıt sınıflandırılamadı (`place_type` NULL); filtre
+panelinde "Sınıflandırılamayanları göster" ile görülür.
 
 Veri Docker volume'ünde (`backend_data`) durur, repoda değil. Yeni bir
 kurulumda bu tablo boştur ve yukarıdaki komutların çalıştırılması gerekir.
@@ -202,6 +230,11 @@ bilgisayardan girseniz de kayıtlar durur.
 Sahiplik API anahtarı üzerindendir. Uygulama kişisel anahtar yokken
 sunucunun anahtarına düştüğü için varsayılan davranış **"tüm ekip aynı
 listeleri paylaşır"** olur.
+
+CSV dışa aktarımı Excel'in Türkçe yereli için biçimlendirilir: ayıraç `;`,
+başlıklar Türkçe, telefonlar boşluklu metin (`+90 542 470 34 86`), konum
+tek hücre + Google Maps bağlantısı, dosya BOM'lu. Virgüllü ve ham hali
+Excel'de tek sütuna yığılıyor ve telefonları `9,05E+11` yapıyordu.
 
 İki kural bilinçlidir:
 
@@ -270,23 +303,31 @@ pnpm test
 pnpm type-check
 ```
 
-Frontend testleri Vitest ile koşuyor (`vitest.config.ts`). Kapsam şu an
-dar: ağırlıklı olarak ilçe veri istemcisi (`src/lib/districts.test.ts`).
-Bilinen üç kırık test var; hepsi dosyanın içinde **BULGU** olarak
-gerekçesiyle birlikte belgelendi — kırık bırakılmaları bilinçli, davranışı
-gizlemek yerine kayda geçirmek tercih edildi.
+Frontend testleri Vitest ile koşuyor (`vitest.config.ts`); 27 test,
+ağırlıklı olarak ilçe ve kayıtlı yer istemcileri. Backend 374 test.
+Backend testlerini yerel venv yerine imajın içinde de koşabilirsiniz;
+çalışan konteynere dokunmaz:
+
+```bash
+docker run --rm -v "$PWD/backend:/src" -w /src aiesec-backend python -m pytest -q -p no:cacheprovider
+```
 
 ## Bilinen sınırlar
 
 - **İletişim kapsaması hâlâ kısmi.** İki kaynağa rağmen kayıtların
-  %43,3'ünde telefon var. Kalanı için üçüncü bir kaynak gerekir; OSM ve
+  %55,1'inde telefon var. Kalanı için üçüncü bir kaynak gerekir; OSM ve
   Overture'da o bilgi yok.
+- **Kalan çiftler.** Overture'ın kendi içinde aynı adlı iki kayıt
+  (ör. 350 m arayla iki "Hagia Sophia Museum") ve OSM'de relation + way
+  olarak çizilmiş kurumlar hâlâ iki satır. Nadir; birleştirme yalnızca
+  kaynaklar arası ve node/way için yapılıyor.
 - **Harita taraması yavaş.** Soğuk önbellekte İstanbul viewport'unda bir
   arama dakikayı aşabilir; sebep Overpass'in yanıt süresi. İstemci zaman
   aşımı bu yüzden yüksek tutulmuştur.
-- **Overpass ingest'i ayna sağlığına bağımlı.** Toplu çekimde ilçe başına
-  3-20 dk sürdü ve ilk turda 74 ilçenin 14'ü düştü; tekrar turu 12'sini
-  kurtardı. Overture tarafında bu sorun yok (S3, ~20 sn, kotasız).
+- **Overpass ingest'i ayna sağlığına bağımlı.** Ölü aynayla 80 ilçenin
+  9'u, sağlıklı aynayla 76'sı ilk turda geçti; geçici DNS hataları
+  birkaç ilçeyi düşürüyor, `--district` ile tekrar yeter. Overture
+  tarafında bu sorun yok (S3, ~20 sn, kotasız).
 - **DuckDB'de seyrek bir iç hata.** 79 ilçenin birinde
   `INTERNAL Error: Information loss on integer cast` alındı; deterministik
   değil, tekrar denemede geçti. Toplu koşularda tekrar denemeyi zorunlu
