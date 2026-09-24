@@ -84,18 +84,27 @@ class TestOsmServiceClassification:
 
 
 class TestOvertureClassification:
+    # Kategoriler Overture'in `taxonomy.primary` adlari. 2026-09-23.0'da eski
+    # `categories` sutunu kalkti; yeniden adlandirilanlar asagida ayrica var.
     @pytest.mark.parametrize(
         "category, expected",
         [
             ("hotel", "hotel"),
-            ("accommodation", "hotel"),
-            ("corporate_office", "company"),
+            ("lodging", "hotel"),
+            ("corporate_or_business_office", "company"),
             ("information_technology_company", "company"),
             ("ferry_boat_company", "company"),
-            ("professional_services", "office"),
+            ("plastics_company", "company"),
+            ("public_utility", "company"),
+            ("b2b_service", "company"),
+            ("manufacturer", "factory"),
+            ("professional_service", "office"),
             ("real_estate_agent", "real_estate"),
             ("language_school", "language_school"),
-            ("travel_services", "travel_agency"),
+            ("tutoring_service", "language_school"),
+            ("travel_service", "travel_agency"),
+            ("travel_agent", "travel_agency"),
+            ("tour_operator", "travel_agency"),
             ("factory", "factory"),
             ("aquarium", "zoo_aquarium"),
             ("wildlife_sanctuary", "zoo_aquarium"),
@@ -117,7 +126,7 @@ class TestOvertureClassification:
         assert classify_overture("museum", "Suçatı province") is None
 
     def test_holding_name_wins_over_category(self):
-        assert classify_overture("corporate_office", "Doğan Holding") == "holding"
+        assert classify_overture("corporate_or_business_office", "Doğan Holding") == "holding"
         assert classify_overture("cafe", "Bir Holding") == "holding"
 
 

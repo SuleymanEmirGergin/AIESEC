@@ -30,18 +30,22 @@ logger = logging.getLogger(__name__)
 # kaliyor). Silinen surumde her enrich "No files found" ile 500 donuyor;
 # 2026-07-22.0 boyle dustu. Mevcut surumler:
 #   https://overturemaps-us-west-2.s3.amazonaws.com/?list-type=2&prefix=release/&delimiter=/
-# 2026-09-23.0 semayi degistirdi (`categories` sutunu yok), bu kodla calismiyor;
-# 2026-08-19.0 kalkmadan once sorgu yeni semaya uyarlanmali.
-OVERTURE_RELEASE = os.getenv("OVERTURE_RELEASE", "2026-08-19.0")
+#
+# Kategori `taxonomy.primary`'den okunuyor. Eski `categories` sutunu
+# 2026-09-23.0'da kalkti; 2026-08-19.0 ikisini birlikte tasiyordu ve
+# oradan cikarilan eslemeyle asagidaki adlar yeni taksonomiye tasindi.
+OVERTURE_RELEASE = os.getenv("OVERTURE_RELEASE", "2026-09-23.0")
 OVERTURE_S3 = (
     f"s3://overturemaps-us-west-2/release/{OVERTURE_RELEASE}/theme=places/type=place/*"
 )
 
-# Overture kategorisi -> bizim PlaceType.
+# Overture `taxonomy.primary` -> bizim PlaceType.
 #
 # Overture'da ~2300 kategori var; yalnizca taksonomimize karsilik
 # gelenler aliniyor. Eslesmeyen kategoriler bilincli olarak disarida:
 # amac genel bir POI veritabani degil, staj/degisim icin kurum listesi.
+#
+# Eski `categories` adindan yeniden adlandirilanlarin eski adi yorumda.
 CATEGORY_MAP: dict[str, str] = {
     # Egitim
     "preschool": "kindergarten",
@@ -55,23 +59,25 @@ CATEGORY_MAP: dict[str, str] = {
     "university": "college_university",
     "community_college": "college_university",
     # Isletme
-    "business_manufacturing_and_supply": "factory",
+    "manufacturer": "factory",  # business_manufacturing_and_supply
     "manufacturing": "factory",
     "factory": "factory",
     "industrial_company": "factory",
     "office": "office",
-    "professional_services": "office",
+    "professional_service": "office",  # professional_services
     "workshop": "workshop",
     "repair_shop": "workshop",
     # Sirket: kurumsal ofis. `*_company` soneki classify_overture'da
     # toptan yakalaniyor (information_technology_company vb.).
-    "corporate_office": "company",
+    "corporate_or_business_office": "company",  # corporate_office
     "business": "company",
-    "business_to_business": "company",
+    "b2b_service": "company",  # business_to_business
     "business_to_business_services": "company",
+    # public_utility_company'den `_company` eki dustu; sonek kurali artik tutmuyor.
+    "public_utility": "company",
     # Hizmet
     "hotel": "hotel",
-    "accommodation": "hotel",
+    "lodging": "hotel",  # accommodation
     "hostel": "hotel",
     "motel": "hotel",
     "resort": "hotel",
@@ -83,11 +89,11 @@ CATEGORY_MAP: dict[str, str] = {
     "property_management": "real_estate",
     "commercial_real_estate": "real_estate",
     "language_school": "language_school",
-    "tutoring_center": "language_school",
-    "travel_services": "travel_agency",
-    "travel_agents": "travel_agency",
+    "tutoring_service": "language_school",  # tutoring_center
+    "travel_service": "travel_agency",  # travel_services
+    "travel_agent": "travel_agency",  # travel_agents
     "travel_company": "travel_agency",
-    "tours": "travel_agency",
+    "tour_operator": "travel_agency",  # tours
     "sightseeing_tour_agency": "travel_agency",
     # Gezi & eglence. `*_museum` soneki classify_overture'da toptan.
     "aquarium": "zoo_aquarium",
@@ -178,16 +184,16 @@ def fetch_places(
     if only_mapped:
         keys = ",".join(f"'{k}'" for k in CATEGORY_MAP)
         where.append(
-            f"(categories.primary IN ({keys})"
-            " OR categories.primary LIKE '%\\_company' ESCAPE '\\'"
-            " OR categories.primary LIKE '%\\_museum' ESCAPE '\\'"
+            f"(taxonomy.primary IN ({keys})"
+            " OR taxonomy.primary LIKE '%\\_company' ESCAPE '\\'"
+            " OR taxonomy.primary LIKE '%\\_museum' ESCAPE '\\'"
             " OR lower(names.primary) LIKE '%holding%')"
         )
 
     query = f"""
         SELECT id,
                names.primary            AS name,
-               categories.primary       AS category,
+               taxonomy.primary         AS category,
                bbox.xmin                AS lon,
                bbox.ymin                AS lat,
                confidence,
