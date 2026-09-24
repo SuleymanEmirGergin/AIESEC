@@ -56,8 +56,8 @@ pip install -r requirements.txt
 # Copy environment file
 cp .env.example .env
 
-# Run server
-uvicorn app.main:app --reload
+# Run server (--env-file is required: most settings are read from os.environ, which never loads .env itself)
+uvicorn app.main:app --reload --env-file .env
 
 # API available at http://localhost:8000
 # Docs at http://localhost:8000/docs
