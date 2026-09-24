@@ -1,4 +1,8 @@
 import type { Metadata } from "next";
+// Kume varsayilanlari globals.css'ten ONCE: oradaki .marker-cluster-*
+// renkleri bunlari ezmeli. react-leaflet-cluster v4 CSS'i kendisi yuklemiyor.
+import "react-leaflet-cluster/dist/assets/MarkerCluster.css";
+import "react-leaflet-cluster/dist/assets/MarkerCluster.Default.css";
 import "./globals.css";
 import "leaflet/dist/leaflet.css";
 
