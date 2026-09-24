@@ -1,162 +1,206 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Key, Shield, Database, Save, CheckCircle2 } from "lucide-react";
+import { Check } from "lucide-react";
+import type { AccountInfo } from "../lib/api";
+import ModalShell from "./ModalShell";
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaved: () => void;
+  /**
+   * Bu oturumda gecerli olan hesap (kisisel anahtar ya da sunucu anahtari).
+   * null ise durum okunamamis demektir.
+   */
+  account?: AccountInfo | null;
 }
 
-export default function SettingsModal({ isOpen, onClose, onSaved }: SettingsModalProps) {
+const PLAN_LABELS: Record<string, string> = {
+  free: "Ücretsiz",
+  pro: "Pro",
+  enterprise: "Enterprise",
+};
+
+export default function SettingsModal({
+  isOpen,
+  onClose,
+  onSaved,
+  account,
+}: SettingsModalProps) {
   const [apiKey, setApiKey] = useState("");
+  const [volunteerName, setVolunteerName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setApiKey(localStorage.getItem("api_key") || "");
+      setVolunteerName(localStorage.getItem("volunteer_name") || "");
+      setShowSuccess(false);
     }
   }, [isOpen]);
+
+  const plan = account?.plan;
+  const isPaidPlan = plan === "pro" || plan === "enterprise";
+  const planLabel = plan ? PLAN_LABELS[plan] ?? plan : "Bilinmiyor";
+  const quotaRemaining = account
+    ? Math.max(0, account.daily_limit - account.used_today)
+    : null;
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
-    localStorage.setItem("api_key", apiKey);
-    
-    setTimeout(() => {
-      setIsSaving(false);
-      setShowSuccess(true);
-      onSaved();
-      setTimeout(() => {
-        setShowSuccess(false);
-        onClose();
-      }, 1500);
-    }, 500);
+
+    // Bos deger anahtari kaldirmak demek; bos string saklamak
+    // "anahtar var ama gecersiz" durumu yaratip her istegi 401'e dusururdu.
+    if (apiKey.trim()) {
+      localStorage.setItem("api_key", apiKey.trim());
+    } else {
+      localStorage.removeItem("api_key");
+    }
+
+    if (volunteerName.trim()) {
+      localStorage.setItem("volunteer_name", volunteerName.trim());
+    } else {
+      localStorage.removeItem("volunteer_name");
+    }
+
+    setIsSaving(false);
+    setShowSuccess(true);
+    onSaved();
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md animate-in fade-in" onClick={onClose} />
-      
-      <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 border border-white/10">
-        <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center">
-              <Key className="w-6 h-6 text-primary" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-heading font-bold text-slate-900 dark:text-white">Ayarlar</h2>
-              <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">API & Erişim Kontrolü</p>
-            </div>
+    <ModalShell
+      isOpen={isOpen}
+      onClose={onClose}
+      eyebrow="Erişim"
+      title="API anahtarı ve plan"
+    >
+      <div className="space-y-6">
+        {/*
+          Durum tablosu. Onceden buradaki plan rozeti sahteydi: yalnizca
+          "kutuda metin var mi" diye bakiyor, herhangi bir sey yazilinca
+          "PRO PLAN" gosteriyordu. Kota da sabit "SINIRSIZ" yaziyordu.
+          Ucu de artik /api/me'den geliyor.
+        */}
+        <dl className="rounded-input border border-rule divide-y divide-rule">
+          <div className="flex items-center gap-3 px-3 py-2.5">
+            <dt className="mono-label shrink-0 w-24">Plan</dt>
+            <dd
+              className={`text-sm font-medium ${isPaidPlan ? "text-accent" : "text-ink"}`}
+            >
+              {planLabel}
+            </dd>
           </div>
-          <button onClick={onClose} className="p-3 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-2xl transition-all">
-            <X className="w-6 h-6 text-slate-400" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSave} className="p-10 space-y-8">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between px-1">
-              <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Mevcut Plan</label>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${apiKey ? "bg-primary/20 text-primary" : "bg-slate-100 dark:bg-slate-800 text-slate-400"} uppercase tracking-widest`}>
-                {apiKey ? "PRO PLAN" : "ÜCRETSİZ PLAN"}
-              </span>
-            </div>
-            
-            <div className="p-6 rounded-3xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 space-y-4">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-500">
-                <span>ÖZELLİKLER</span>
-                <div className="flex gap-4">
-                  <span>FREE</span>
-                  <span className="text-primary">PRO</span>
-                </div>
-              </div>
-              <div className="space-y-2">
-                {[
-                   { n: "Sınırsız Arama", f: true, p: true },
-                   { n: "CSV Aktarımı", f: false, p: true },
-                   { n: "Hassasiyet Filtresi", f: false, p: true },
-                   { n: "Öncelikli Veri", f: false, p: true }
-                ].map((item, i) => (
-                  <div key={i} className="flex items-center justify-between py-1 border-b border-white/5 last:border-0">
-                    <span className="text-xs text-slate-600 dark:text-slate-400">{item.n}</span>
-                    <div className="flex gap-8">
-                      {item.f ? <CheckCircle2 className="w-3 h-3 text-emerald-500" /> : <X className="w-3 h-3 text-slate-300" />}
-                      <CheckCircle2 className="w-3 h-3 text-primary" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {!apiKey && (
-                <button 
-                  type="button"
-                  onClick={() => { onClose(); /* Handle upgrade trigger in parent */ }}
-                  className="w-full py-3 mt-2 bg-primary/10 text-primary text-xs font-bold rounded-xl hover:bg-primary hover:text-white transition-all"
-                >
-                  PRO'ya Yükselt
-                </button>
-              )}
-            </div>
+          <div className="flex items-center gap-3 px-3 py-2.5">
+            <dt className="mono-label shrink-0 w-24">Kimlik</dt>
+            <dd className="text-sm text-ink">
+              {account
+                ? account.scope === "personal"
+                  ? "Kişisel anahtarınız"
+                  : "Paylaşılan sunucu anahtarı"
+                : "Okunamadı"}
+            </dd>
           </div>
+          <div className="flex items-center gap-3 px-3 py-2.5">
+            <dt className="mono-label shrink-0 w-24">Günlük kota</dt>
+            <dd className="tabular text-sm text-ink">
+              {account && quotaRemaining !== null
+                ? `${quotaRemaining} / ${account.daily_limit}`
+                : "—"}
+            </dd>
+          </div>
+        </dl>
 
-          <div className="space-y-4">
-            <div className="flex items-center justify-between px-1">
-              <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Kişisel API Anahtarı</label>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">İsteğe Bağlı</span>
-            </div>
-            <div className="relative group">
-              <div className="absolute inset-0 bg-primary/20 rounded-2xl blur-xl opacity-0 group-focus-within:opacity-100 transition-opacity" />
-              <input 
-                type="text" 
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="sk_..."
-                className="relative w-full px-6 py-5 bg-slate-50 dark:bg-slate-800/50 border-2 border-transparent focus:border-primary rounded-2xl outline-none transition-all dark:text-white font-mono text-sm shadow-inner"
-              />
-            </div>
-            <p className="text-[10px] text-slate-500 font-body leading-relaxed px-1">
-              Veri indirme ve yüksek frekanslı aramalar için kişisel anahtarınızı kullanabilirsiniz. Anahtarınız tarayıcınızda güvenle saklanır.
+        {account?.scope === "server" && (
+          <p className="text-xs leading-relaxed text-ink-3">
+            Şu an uygulamanın paylaşılan sunucu anahtarı kullanılıyor; arama ve
+            CSV indirme kişisel anahtar olmadan çalışır. Kendi kotanızı ayırmak
+            isterseniz aşağıya kişisel anahtarınızı girin.
+          </p>
+        )}
+
+        <form onSubmit={handleSave} className="space-y-3">
+          <div className="space-y-2">
+            <label
+              htmlFor="settings-volunteer-name"
+              className="block text-xs font-medium text-ink"
+            >
+              Gönüllü adı{" "}
+              <span className="font-normal text-ink-4">· kayıtlar için gerekli</span>
+            </label>
+
+            <input
+              id="settings-volunteer-name"
+              type="text"
+              value={volunteerName}
+              onChange={(e) => {
+                setVolunteerName(e.target.value);
+                setShowSuccess(false);
+              }}
+              placeholder="Örn. Ece"
+              autoComplete="name"
+              maxLength={120}
+              className="w-full rounded-input border border-rule-2 bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-4 transition-colors duration-fast ease-out hover:border-ink-4 focus:border-accent"
+            />
+
+            <p className="text-2xs leading-relaxed text-ink-4">
+              Ekip içi kayıtların kim tarafından eklendiğini gösterir; yalnızca bu
+              tarayıcıda saklanır.
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="p-5 rounded-3xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700">
-              <Shield className="w-5 h-5 text-emerald-500 mb-3" />
-              <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase mb-1">Erişim Tipi</h4>
-              <p className="text-[10px] text-slate-500 font-bold">{apiKey ? "PREMIUM KEY" : "ÜCRETSİZ LİMİT"}</p>
-            </div>
-            <div className="p-5 rounded-3xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700">
-              <Database className="w-5 h-5 text-primary mb-3" />
-              <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase mb-1">Kota Durumu</h4>
-              <p className="text-[10px] text-slate-500 font-bold">{apiKey ? "SINIRSIZ" : "50 ARAMA/GÜN"}</p>
-            </div>
-          </div>
+          <label htmlFor="settings-api-key" className="block text-xs font-medium text-ink">
+            Kişisel API anahtarı{" "}
+            <span className="font-normal text-ink-4">· isteğe bağlı</span>
+          </label>
 
-          <button 
-            type="submit"
-            disabled={isSaving || showSuccess}
-            className={`w-full py-5 rounded-[1.5rem] font-bold text-white transition-all flex items-center justify-center gap-3 shadow-xl ${
-              showSuccess ? "bg-emerald-500 shadow-emerald-500/20" : "bg-primary shadow-primary/20 hover:scale-105 active:scale-95"
-            }`}
-          >
-            {showSuccess ? (
-              <>
-                <CheckCircle2 className="w-6 h-6 animate-in zoom-in" />
-                Kaydedildi!
-              </>
-            ) : (
-              <>
-                <Save className="w-5 h-5" />
-                {isSaving ? "Kaydediliyor..." : "Değişiklikleri Kaydet"}
-              </>
+          <input
+            id="settings-api-key"
+            type="text"
+            value={apiKey}
+            onChange={(e) => {
+              setApiKey(e.target.value);
+              setShowSuccess(false);
+            }}
+            // Anahtarlar `ak_` onekiyle uretiliyor; onceki placeholder
+            // `sk_...` diyordu ve yanlis bir bicim ogretiyordu.
+            placeholder="ak_…"
+            autoComplete="off"
+            spellCheck={false}
+            className="tabular w-full rounded-input border border-rule-2 bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-4 transition-colors duration-fast ease-out hover:border-ink-4 focus:border-accent"
+          />
+
+          <p className="text-2xs leading-relaxed text-ink-4">
+            Anahtar yalnızca bu tarayıcıda saklanır. Boş bırakıp kaydederseniz
+            kaldırılır ve paylaşılan sunucu anahtarına dönülür.
+          </p>
+
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="btn btn--primary px-4 py-2.5"
+            >
+              {isSaving ? "Kaydediliyor…" : "Kaydet"}
+            </button>
+
+            {/* Sessiz basari: kutlama toast'i yok, sonuc butonun yaninda
+                tek satirda bildiriliyor. */}
+            {showSuccess && (
+              <span
+                role="status"
+                className="inline-flex items-center gap-1.5 text-xs text-positive"
+              >
+                <Check size={13} />
+                Kaydedildi
+              </span>
             )}
-          </button>
+          </div>
         </form>
       </div>
-    </div>
+    </ModalShell>
   );
 }

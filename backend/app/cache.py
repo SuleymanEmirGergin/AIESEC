@@ -1,6 +1,6 @@
+import json
 import os
 import time
-import json
 from typing import Any, Optional
 
 from app.middleware import CACHE_HITS_TOTAL, CACHE_MISSES_TOTAL
@@ -15,13 +15,14 @@ class TtlCache:
         self._hits: int = 0
         self._misses: int = 0
         self._start_time: float = time.time()
-        
+
         # Optional Redis L2
         self.redis_client = None
         redis_url = os.getenv("REDIS_URL")
         if redis_url:
             try:
                 import redis
+
                 self.redis_client = redis.from_url(redis_url)
             except ImportError:
                 print("[CACHE] redis-py not installed. L2 cache disabled.")
@@ -45,7 +46,7 @@ class TtlCache:
                 if data:
                     val = json.loads(data)
                     # Backfill L1
-                    self.set(key, val, 300, l2_only=False) 
+                    self.set(key, val, 300, l2_only=False)
                     self._hits += 1
                     CACHE_HITS_TOTAL.inc()
                     return val
@@ -56,12 +57,14 @@ class TtlCache:
         CACHE_MISSES_TOTAL.inc()
         return None
 
-    def set(self, key: str, value: Any, ttl_seconds: int, l2_only: bool = False) -> None:
+    def set(
+        self, key: str, value: Any, ttl_seconds: int, l2_only: bool = False
+    ) -> None:
         """Set value in cache (L1 and L2)."""
         if not l2_only:
             expiry_time = time.time() + ttl_seconds
             self._cache[key] = (value, expiry_time)
-            
+
         if self.redis_client:
             try:
                 self.redis_client.setex(key, ttl_seconds, json.dumps(value))
@@ -96,8 +99,13 @@ def get_ttl_for_type(place_type: str) -> int:
     B2B types: 43200s (12 hours)
     """
     school_types = {
-        "kindergarten", "primary_school", "middle_school",
-        "high_school", "private_school", "college_keyword",
+        "kindergarten",
+        "primary_school",
+        "middle_school",
+        "high_school",
+        "private_school",
+        "college_keyword",
+        "college_university",
     }
     if place_type in school_types:
         return 86400  # 24h
@@ -126,8 +134,7 @@ def build_cache_key(
     """Build grid-quantized cache key."""
     q_lat, q_lon = quantize_location(lat, lon)
     key = (
-        f"grid:{q_lat},{q_lon};r:{radius};t:{place_type};"
-        f"l:{limit};m:{mode};v:{ov_ver}"
+        f"grid:{q_lat},{q_lon};r:{radius};t:{place_type};l:{limit};m:{mode};v:{ov_ver}"
     )
 
     # Acik bbox anahtarin parcasi olmali: ayni merkez ve yaricapla

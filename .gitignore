@@ -55,3 +55,15 @@ venv/
 build_log.txt
 backend_response.json
 factory_search.json
+
+# Claude Code yerel artiklari. worktrees/ her biri ayri bir calisma kopyasi
+# olan gecici dizinler; launch.json ise dev sunucusunu nasil baslatacagini
+# tarifleyen kisisel yapilandirma. Ikisi de repoya girmemeli.
+.claude/worktrees/
+.claude/launch.json
+
+# Superpowers plan execution scratchpad and review ledger.
+.superpowers/
+
+# Git worktree copies used for isolated feature implementation.
+.worktrees/

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { apiUrl, proxyToBackend } from "../../../server/backend";
+import { apiUrl, proxyToBackend, resolveApiKey } from "../../../server/backend";
 import type { Place } from "../../../lib/types";
 
 /**
@@ -11,6 +11,13 @@ import type { Place } from "../../../lib/types";
  *
  * Place -> backend item cevrimi burada yapiliyor: backend duz lat/lon ve
  * ham OSM etiketleri bekliyor, istemci ise coordinates.lat/lng tutuyor.
+ *
+ * Kimlik /api/search ile ayni kurala tabi: kullanicinin kendi anahtari
+ * varsa o, yoksa sunucunun anahtari. Onceden yalnizca istemcinin anahtari
+ * gecirildigi icin, anahtar girmemis bir kullanici ekranda gordugu
+ * sonuclari indiremiyor, backend'den 401 aliyordu. Arama anahtarsiz
+ * calisirken indirmenin calismamasi icin bir sebep yok - iki uc da ayni
+ * veriye dokunuyor.
  */
 
 export const dynamic = "force-dynamic";
@@ -25,6 +32,7 @@ function toBackendItem(place: Place) {
     subtype: null,
     lat: place.coordinates?.lat,
     lon: place.coordinates?.lng,
+    address: place.address,
     tags: place.tags ?? {},
   };
 }
@@ -54,10 +62,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const { key } = resolveApiKey(req);
+  if (!key) {
+    return NextResponse.json(
+      {
+        message:
+          "Disa aktarim icin sunucu anahtari yapilandirilmamis (SEARCH_API_KEY).",
+      },
+      { status: 503 }
+    );
+  }
+
   return proxyToBackend(req, {
     url: apiUrl("/export"),
     method: "POST",
     label: "export",
+    apiKey: key,
     body: {
       type: body.type,
       radius: body.radius ?? 0,

@@ -2,6 +2,10 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
+import AppHeader from "../components/AppHeader";
+import DistrictPicker from "../components/DistrictPicker";
+import FilterPanel from "../components/FilterPanel";
 import Filters from "../components/Filters";
 import PlaceList from "../components/PlaceList";
 import ExportToolbar from "../components/ExportToolbar";
@@ -10,13 +14,31 @@ import SettingsModal from "../components/SettingsModal";
 import UpgradeModal from "../components/UpgradeModal";
 import { searchPlaces, exportLeads, fetchAccount } from "../lib/api";
 import type { AccountInfo } from "../lib/api";
+import CategoryFilter from "../components/CategoryFilter";
+import {
+  districtPlaceToPlace,
+  fetchDistrictPlaces,
+  fetchDistrictSummary,
+  type DistrictMeta,
+  type PlaceQuery,
+} from "../lib/districts";
+import { fetchSavedPlaces, savePlace, removeSavedPlace } from "../lib/savedApi";
 import type { Place, PlaceType } from "../lib/types";
-import { Search, KeyRound } from "lucide-react";
+import { X, Database } from "lucide-react";
+
+/**
+ * Bir sayfada cekilen kayit sayisi.
+ *
+ * Ilce sorgusu yerel SQLite'a gittigi icin ucuz; sinir aginin degil
+ * tarayicinin sinirlarindan geliyor. Yogun ilcelerde (Eyupsultan 7139)
+ * tum satirlari birden DOM'a basmak sayfayi kilitliyordu.
+ */
+const PAGE_SIZE = 250;
 
 // Client-side only map import
-const MapView = dynamic(() => import("../components/MapView"), { 
+const MapView = dynamic(() => import("../components/MapView"), {
   ssr: false,
-  loading: () => <div className="w-full h-full bg-slate-100 animate-pulse rounded-2xl" />
+  loading: () => <div className="w-full h-full bg-paper-3" />,
 });
 
 export default function Home() {
@@ -28,195 +50,306 @@ export default function Home() {
   const abortControllerRef = useRef<AbortController | null>(null);
 
   /**
-   * Disa aktarim sepeti. Sadece id degil Place nesnesinin kendisi
-   * tutuluyor: kullanici haritada gezinirken onceki sonuclar listeden
-   * dusuyor, ama sepete aldiklari korunuyor ve export'a dahil oluyor.
+   * Ilce bazli arama. Secili ilce varsa sorgu yerel veritabanina gidiyor
+   * (Overpass beklemesi yok); yoksa haritanin gordugu alan taraniyor.
+   * Iki yol da ayni `places` dizisini dolduruyor.
    */
-  const [basket, setBasket] = useState<Map<string, Place>>(new Map());
+  const [district, setDistrict] = useState<DistrictMeta | null>(null);
+  const [query, setQuery] = useState<PlaceQuery>({ sort: "contact_first", limit: PAGE_SIZE });
+  const [districtEmpty, setDistrictEmpty] = useState(false);
+
+  /**
+   * Filtreye uyan TOPLAM kayit sayisi (sayfadaki degil).
+   *
+   * Ekranda "250 / 7139 gosteriliyor" diyebilmek icin gerekli: eskiden
+   * yalnizca yuklenen sayi gosteriliyordu ve kullanici 250'yi ilcenin
+   * tamami saniyordu.
+   */
+  const [total, setTotal] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  /**
+   * Ilcenin tur bazli envanteri (`/summary`). Kategori ciplerindeki
+   * sayilar buradan; secimden bagimsiz, cunku bunlar "ilcede ne var"
+   * sorusunun cevabi.
+   */
+  const [typeCounts, setTypeCounts] = useState<Record<PlaceType, number>>();
+
+  /**
+   * Kaydedilmis yerlerin place_id kumesi.
+   *
+   * Sepet artik React state'inde yasamiyor: kaydetme dogrudan sunucuya
+   * gidiyor ve sayfa yenilense de duruyor. Burada tutulan sey yalnizca
+   * "hangileri kayitli" gostergesi.
+   */
+  const [savedIds, setSavedIds] = useState<Map<string, string>>(new Map());
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [savingAll, setSavingAll] = useState(false);
+
   const [reportTarget, setReportTarget] = useState<Place | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
-  /** Arama uzun surunce gosterilen bilgi; spinner tek basina yeterli degil. */
   const [slowSearch, setSlowSearch] = useState(false);
-  /** Kullanicinin anahtar durumu; null ise anahtar yok veya gecersiz. */
   const [account, setAccount] = useState<AccountInfo | null>(null);
 
   const reloadAccount = useCallback(() => {
     fetchAccount().then(setAccount);
   }, []);
 
+  const reloadSaved = useCallback(async () => {
+    try {
+      const saved = await fetchSavedPlaces();
+      setSavedIds(new Map(saved.map((s) => [s.place_id, s.id])));
+    } catch {
+      // Kayitlar okunamadiysa arama yine calismali; yalnizca kaydetme
+      // gostergesi eksik kalir.
+    }
+  }, []);
+
   useEffect(() => {
     reloadAccount();
-  }, [reloadAccount]);
+    reloadSaved();
+  }, [reloadAccount, reloadSaved]);
 
-  /**
-   * Export'un neden yapilamayacagini onceden belirle. Backend 'free'
-   * planda 403, kota dolunca 429 donuyordu; kullanici bunu ancak butona
-   * bastiktan sonra ogreniyordu.
-   * Export 2 kota birimi harciyor, kontrol de ona gore.
-   */
   const exportBlockedReason = (() => {
-    if (!account) return "Dışa aktarım için API anahtarı gerekli.";
-    if (!account.is_active) return "API anahtarınız devre dışı.";
-    if (account.plan === "free") {
-      return "CSV dışa aktarım ücretsiz planda kapalı. Pro veya Enterprise gerekir.";
-    }
+    if (!account) return "Hesap durumu okunamadı; dışa aktarım şu an kullanılamıyor.";
+    if (!account.is_active) return "Kullanılan erişim anahtarı devre dışı.";
+    if (account.plan === "free") return "CSV dışa aktarım ücretsiz planda kapalı.";
     if (account.daily_limit - account.used_today < 2) {
-      return "Günlük kotanız dışa aktarım için yetersiz (2 birim gerekir).";
+      return "Bugünkü hak dışa aktarım için yetersiz.";
     }
     return null;
   })();
 
-  const toggleBasket = useCallback((place: Place) => {
-    setBasket((prev) => {
-      const next = new Map(prev);
-      if (next.has(place.id)) next.delete(place.id);
-      else next.set(place.id, place);
-      return next;
-    });
-  }, []);
-
-  const selectAllVisible = useCallback(() => {
-    setBasket((prev) => {
-      const next = new Map(prev);
-      places.forEach((p) => next.set(p.id, p));
-      return next;
-    });
-  }, [places]);
-
-  const clearBasket = useCallback(() => setBasket(new Map()), []);
-
   /**
-   * Hata yonlendirmesi: api.ts 429'da "QUOTA_EXCEEDED" firlatiyor,
-   * anahtar yoksa/gecersizse backend 401 donuyor. Ikisi de kullaniciyi
-   * dogru modala goturmeli, yoksa buton sessizce bir sey yapmiyor gibi olur.
+   * Kaydet / kaydı kaldır.
+   *
+   * Iyimser guncelleme: gonullu tikladiginda isaret hemen degisiyor,
+   * sunucu cevabini beklemiyor. Hata olursa geri aliniyor.
    */
+  const toggleSaved = useCallback(
+    async (place: Place) => {
+      if (savingId === place.id) return;
+      setSavingId(place.id);
+      const existingId = savedIds.get(place.id);
+      const snapshot = new Map(savedIds);
+
+      try {
+        if (existingId) {
+          setSavedIds((prev) => {
+            const next = new Map(prev);
+            next.delete(place.id);
+            return next;
+          });
+          await removeSavedPlace(existingId);
+        } else {
+          const created = await savePlace(place);
+          setSavedIds((prev) => new Map(prev).set(place.id, created.id));
+        }
+      } catch (err: any) {
+        setSavedIds(snapshot);
+        if (err?.message === "Gönüllü adınızı Ayarlar'dan girin.") {
+          setSettingsOpen(true);
+          setNotice("Yer kaydetmek için önce Ayarlar’dan gönüllü adınızı girin.");
+        } else setNotice(err?.message || "Kaydedilemedi.");
+      } finally {
+        setSavingId(null);
+      }
+    },
+    [savedIds, savingId]
+  );
+
+  const saveAllVisible = useCallback(async () => {
+    const unsaved = places.filter((p) => !savedIds.has(p.id));
+    if (unsaved.length === 0 || savingAll) return;
+    setSavingAll(true);
+    setNotice(null);
+    try {
+      // Sirali: toplu POST ucu yok ve es zamanli yuzlerce istek
+      // backend'i bosuna zorlar. Her kayit tamamlandiginda isaret
+      // aniden degil tek tek doluyor - islem suruyor izlenimi veriyor.
+      for (const place of unsaved) {
+        const created = await savePlace(place);
+        setSavedIds((prev) => new Map(prev).set(place.id, created.id));
+      }
+    } catch (err: any) {
+      if (err?.message === "Gönüllü adınızı Ayarlar'dan girin.") {
+        setSettingsOpen(true);
+        setNotice("Yer kaydetmek için önce Ayarlar’dan gönüllü adınızı girin.");
+      } else setNotice(err?.message || "Bazı kayıtlar eklenemedi.");
+    } finally {
+      setSavingAll(false);
+    }
+  }, [places, savedIds, savingAll]);
+
   const handleApiError = useCallback((err: any) => {
     const message = String(err?.message ?? "");
-    if (message === "QUOTA_EXCEEDED") {
-      setUpgradeOpen(true);
-      return;
-    }
+    if (message === "QUOTA_EXCEEDED") return setUpgradeOpen(true);
     if (err?.name === "TimeoutError") {
-      setNotice("Islem zaman asimina ugradi. Lutfen tekrar deneyin.");
-      return;
+      return setNotice("İşlem zaman aşımına uğradı. Lütfen tekrar deneyin.");
     }
-    // Backend 'free' planda 403 donuyor; bu tam olarak UpgradeModal'in konusu.
-    if (/plan|upgrade|disabled for/i.test(message)) {
-      setUpgradeOpen(true);
-      return;
-    }
+    if (/plan|upgrade|disabled for/i.test(message)) return setUpgradeOpen(true);
     if (/API-KEY|api key|401|yetki/i.test(message)) {
-      setNotice("Bu islem icin API anahtari gerekli.");
-      setSettingsOpen(true);
-      return;
+      setNotice("Bu işlem için erişim anahtarı gerekli.");
+      return setSettingsOpen(true);
     }
-    setNotice(message || "Islem basarisiz oldu.");
+    setNotice(message || "İşlem başarısız oldu.");
   }, []);
 
   const handleExport = useCallback(async () => {
-    // Cift tiklamada iki export istegi gitmesin (her biri 2 kota harciyor).
-    if (basket.size === 0 || !category || exporting) return;
+    const chosen = places.filter((p) => savedIds.has(p.id));
+    if (chosen.length === 0 || exporting) return;
 
     setExporting(true);
     setNotice(null);
     try {
-      const blob = await exportLeads(Array.from(basket.values()), {
-        type: category,
+      const blob = await exportLeads(chosen, {
+        type: category ?? chosen[0]?.type ?? "kayitli",
         radius: 0,
         center: bbox
           ? { lat: (bbox[1] + bbox[3]) / 2, lon: (bbox[0] + bbox[2]) / 2 }
           : undefined,
       });
 
-      // Blob'u indirilebilir dosyaya cevir ve objectURL'i geri birak.
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `leads_${category}.csv`;
+      link.download = `leads_${category ?? "kayitli"}.csv`;
       document.body.appendChild(link);
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
-
-      // Export 2 birim harcadi; kalan kota gostergesi guncellensin.
       reloadAccount();
     } catch (err) {
       handleApiError(err);
     } finally {
       setExporting(false);
     }
-  }, [basket, category, bbox, exporting, handleApiError, reloadAccount]);
+  }, [places, savedIds, category, bbox, exporting, handleApiError, reloadAccount]);
 
-  const performSearch = useCallback(async () => {
+  /**
+   * Ilce envanterini cek (tur basina kayit sayisi).
+   *
+   * Sorgudan AYRI tutuluyor: bu sayilar filtreye gore degismemeli,
+   * yoksa bir turu kapatinca digerlerinin sayisi da degisir ve
+   * "ilcede kac tane var" sorusu cevapsiz kalirdi. Yalnizca ilce
+   * degisince yenileniyor.
+   */
+  useEffect(() => {
+    if (!district) {
+      setTypeCounts(undefined);
+      return;
+    }
+    let alive = true;
+    fetchDistrictSummary(district.id, query.includeBuffer !== false)
+      .then((s) => alive && setTypeCounts(s.counts))
+      // Sayilar bir kolaylik; gelmezse cipler sayisiz calisir.
+      .catch(() => alive && setTypeCounts(undefined));
+    return () => {
+      alive = false;
+    };
+  }, [district, query.includeBuffer]);
+
+  /** Ilce secildiginde yerel veritabanindan ILK sayfayi sorgula. */
+  const runDistrictSearch = useCallback(async () => {
+    if (!district) return;
+    setLoading(true);
+    setDistrictEmpty(false);
+    try {
+      const response = await fetchDistrictPlaces(district.id, { ...query, offset: 0 });
+      const mapped = response.results.map(districtPlaceToPlace);
+      setPlaces(mapped);
+      setTotal(response.total);
+      setDistrictEmpty(mapped.length === 0);
+      setNotice(null);
+    } catch (err: any) {
+      setPlaces([]);
+      setTotal(0);
+      setNotice(err?.message || "İlçe sorgusu başarısız oldu.");
+    } finally {
+      setLoading(false);
+    }
+  }, [district, query]);
+
+  /**
+   * Sonraki sayfayi ekle.
+   *
+   * Hepsini tek seferde cekip DOM'a basmak yogun ilcelerde (Eyupsultan
+   * 7139 kayit) tarayiciyi kilitliyordu. Sayfa sayfa ekliyoruz; toplam
+   * sayi hep gorunur oldugu icin kullanici neyin eksik oldugunu biliyor.
+   *
+   * `offset` olarak ekrandaki kayit sayisi kullaniliyor: sunucu ayni
+   * siralamayi uyguladigi icin bu, "kaldigim yerden devam" demek.
+   */
+  const loadMore = useCallback(async () => {
+    if (!district || loadingMore || places.length >= total) return;
+    setLoadingMore(true);
+    try {
+      const response = await fetchDistrictPlaces(district.id, {
+        ...query,
+        offset: places.length,
+      });
+      const mapped = response.results.map(districtPlaceToPlace);
+      // Eszamanli iki cagri ayni sayfayi getirirse tekrar olmasin.
+      setPlaces((prev) => {
+        const seen = new Set(prev.map((p) => p.id));
+        return [...prev, ...mapped.filter((p) => !seen.has(p.id))];
+      });
+      setTotal(response.total);
+    } catch (err: any) {
+      setNotice(err?.message || "Sonraki sayfa yüklenemedi.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [district, query, places.length, total, loadingMore]);
+
+  /** Ilce secili degilken haritanin gordugu alani tara. */
+  const runMapSearch = useCallback(async () => {
     if (!category || !bbox) {
       setPlaces([]);
       return;
     }
 
-    // Cancel previous request
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    // Bu cagriya ait controller yerelde tutuluyor: iptal edilen eski bir
-    // cagri, kendisinden sonra baslayan aramanin state'ini ezmemeli.
+    if (abortControllerRef.current) abortControllerRef.current.abort();
     const controller = new AbortController();
     abortControllerRef.current = controller;
     const isCurrent = () => abortControllerRef.current === controller;
 
     setLoading(true);
     try {
-      const { places: results, meta } = await searchPlaces({
-        bbox,
-        category,
-        limit: 250
-      }, { signal: controller.signal });
-
+      const { places: results, meta } = await searchPlaces(
+        { bbox, category, limit: 250 },
+        { signal: controller.signal }
+      );
       if (!isCurrent()) return;
-
       setPlaces(results);
 
-      // Harita sinirdan genisse kullanici neyin tarandigini bilmeli,
-      // yoksa eksik sonuclari "hic yok" sanir.
       if (meta?.radiusClamped) {
         setNotice(
-          `Harita cok genis. Merkez cevresinde ${Math.round(
+          `Harita çok geniş. Merkez çevresinde ${Math.round(
             (meta.radiusUsed ?? 0) / 1000
-          )} km taraniyor; daha fazlasi icin yakinlasin.`
+          )} km taranıyor; daha fazlası için yakınlaşın.`
         );
       } else {
         setNotice(null);
       }
     } catch (err: any) {
-      // AbortError kullanicinin yeni aramasi demek, hata degil.
-      // TimeoutError ayri bir tip: sessizce yutulmamali.
       if (err?.name === "AbortError" || !isCurrent()) return;
-
-      // Onceden bu hata yalnizca console'a yaziliyordu; kullanici
-      // 502/429 aldiginda "Sonuc bulunamadi" gorup veri yok saniyordu.
       setPlaces([]);
-      if (err?.message === "QUOTA_EXCEEDED") {
-        setUpgradeOpen(true);
-      } else if (err?.name === "TimeoutError") {
+      if (err?.message === "QUOTA_EXCEEDED") setUpgradeOpen(true);
+      else if (err?.name === "TimeoutError") {
         setNotice(
-          "Arama zaman asimina ugradi. Harita servisi su an yavas; " +
-            "daha dar bir alana yakinlasip tekrar deneyin."
+          "Arama zaman aşımına uğradı. Harita servisi şu an yavaş; " +
+            "daha dar bir alana yakınlaşıp tekrar deneyin."
         );
-      } else {
-        setNotice(err?.message || "Arama basarisiz oldu.");
-      }
+      } else setNotice(err?.message || "Arama başarısız oldu.");
     } finally {
-      // catch icindeki `return` bile finally'yi calistirir. Guard olmadan
-      // iptal edilen eski cagri, devam eden yeni aramanin spinner'ini
-      // kapatiyor ve arayuz bosta gorunuyordu.
       if (isCurrent()) setLoading(false);
     }
   }, [category, bbox]);
 
-  // Aramalar soguk cache'te 1 dakikayi asabiliyor. 12 sn sonra kullaniciya
-  // isin surdugunu soyluyoruz, yoksa arayuz donmus gibi gorunuyor.
   useEffect(() => {
     if (!loading) {
       setSlowSearch(false);
@@ -226,125 +359,222 @@ export default function Home() {
     return () => clearTimeout(timer);
   }, [loading]);
 
-  // Debounce search on bbox/category change
   useEffect(() => {
     const timer = setTimeout(() => {
-      performSearch();
-    }, 500);
-
+      if (district) runDistrictSearch();
+      else runMapSearch();
+    }, 400);
     return () => clearTimeout(timer);
-  }, [performSearch]);
+  }, [district, runDistrictSearch, runMapSearch]);
+
+  const mapCenter: [number, number] = district
+    ? [district.center[0], district.center[1]]
+    : [41.0082, 28.9784];
+
+  const savedInView = places.filter((p) => savedIds.has(p.id)).length;
 
   return (
-    <main className="flex flex-col h-screen bg-slate-50 text-slate-900 font-sans">
-      {/* Header */}
-      <header className="h-16 px-6 border-b border-slate-200 bg-white flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
-            <Search size={18} className="text-white" />
-          </div>
-          <h1 className="font-bold text-xl tracking-tight">POI Finder</h1>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setSettingsOpen(true)}
-            className="flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-900 border border-slate-200 rounded-full px-3 py-1.5 transition-colors"
-          >
-            <KeyRound size={14} />
-            API Anahtarı
-          </button>
-          <div className="text-xs text-slate-400 font-medium bg-slate-100 px-3 py-1.5 rounded-full uppercase tracking-widest">
-            v2.0 Beta
-          </div>
-        </div>
-      </header>
+    <main className="flex h-screen flex-col bg-paper text-ink-2">
+      <AppHeader
+        account={account}
+        onOpenSettings={() => setSettingsOpen(true)}
+        savedCount={savedIds.size}
+      />
 
       {notice && (
-        <div className="px-6 py-2 bg-amber-50 border-b border-amber-200 text-xs font-semibold text-amber-800 flex items-center justify-between">
-          <span>{notice}</span>
-          <button onClick={() => setNotice(null)} className="text-amber-600 hover:text-amber-900">
-            kapat
-          </button>
+        <div className="shrink-0 rule-b bg-caution-bg">
+          <div className="flex items-start gap-3 px-4 py-2">
+            <p className="text-xs leading-relaxed text-caution">{notice}</p>
+            <button
+              type="button"
+              onClick={() => setNotice(null)}
+              aria-label="Bildirimi kapat"
+              className="ml-auto shrink-0 text-caution transition-colors duration-fast ease-out hover:text-ink"
+            >
+              <X size={14} aria-hidden="true" />
+            </button>
+          </div>
         </div>
       )}
 
       {slowSearch && loading && (
-        <div className="px-6 py-2 bg-slate-100 border-b border-slate-200 text-xs font-semibold text-slate-600 flex items-center gap-2">
-          <span className="w-3 h-3 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
-          Arama sürüyor. Harita servisi şu an yavaş; geniş alanlarda bu bir dakikayı aşabilir.
+        <div className="shrink-0 rule-b bg-paper-2">
+          <div className="flex items-center gap-2.5 px-4 py-2">
+            <span
+              aria-hidden="true"
+              className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-rule border-t-accent"
+            />
+            <p className="text-xs text-ink-3">
+              Arama sürüyor. Harita servisi şu an yavaş; geniş alanlarda bu bir
+              dakikayı aşabilir.
+            </p>
+          </div>
         </div>
       )}
 
-      {/* Main Content */}
-      <div className="flex flex-1 overflow-hidden p-4 gap-4">
-        {/* Sidebar */}
-        <div className="w-80 flex flex-col bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden shrink-0">
-          <Filters 
-            selectedCategory={category} 
-            onCategoryChange={setCategory} 
-          />
-          <PlaceList
-            places={places}
-            loading={loading}
-            selectedPlaceId={selectedPlaceId}
-            onPlaceClick={setSelectedPlaceId}
-            checkedIds={new Set(basket.keys())}
-            onToggleCheck={toggleBasket}
-            onReport={setReportTarget}
-          />
-          <div className="p-4 bg-slate-50 border-t border-slate-200 text-[10px] text-slate-400 font-medium flex justify-between">
-            <span>{places.length} sonuç bulundu</span>
-            {basket.size > 0 && <span>{basket.size} kayıt seçili</span>}
-          </div>
-        </div>
+      <div className="flex flex-1 flex-col-reverse overflow-hidden lg:flex-row">
+        <aside className="flex w-full shrink-0 flex-col overflow-hidden bg-paper lg:w-[19rem] lg:border-r lg:border-rule">
+          <div className="flex-1 overflow-y-auto">
+            <DistrictPicker
+              selectedId={district?.id ?? null}
+              onSelect={(next) => {
+                setDistrict(next);
+                setPlaces([]);
+                setDistrictEmpty(false);
+              }}
+            />
 
-        {/* Map Area */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <ExportToolbar
-            selectedCount={basket.size}
-            totalResults={places.length}
-            onSelectAll={selectAllVisible}
-            onClearSelection={clearBasket}
-            onExport={handleExport}
-            exportBlockedReason={exportBlockedReason}
-            quotaRemaining={account ? account.daily_limit - account.used_today : null}
-            isExporting={exporting}
-          />
-          <div className="flex-1 overflow-hidden bg-white rounded-2xl shadow-sm border border-slate-200 p-1">
+            {/*
+              Ilce secilince ayrintili filtre paneli, secilmeyince eski
+              kategori cipleri. Ikisi ayni anda gorunmuyor: iki farkli
+              sorgu yolu var ve gonulluye ikisini ayni anda sunmak
+              hangisinin ise yaradigini belirsizlestirirdi.
+            */}
+            {district ? (
+              <>
+                <CategoryFilter
+                  value={query.types ?? []}
+                  onChange={(types) =>
+                    // Bos dizi filtreyi tamamen kaldirmali; `types: []`
+                    // gondermek sunucuda "hicbir tur" anlamina gelebilir.
+                    setQuery({ ...query, types: types.length ? types : undefined })
+                  }
+                  counts={typeCounts}
+                />
+                <FilterPanel value={query} onChange={setQuery} />
+              </>
+            ) : (
+              <Filters selectedCategory={category} onCategoryChange={setCategory} />
+            )}
+
+            {district && districtEmpty && !loading ? (
+              /*
+                Durust bos durum: 80 ilcenin hicbiri henuz ingest
+                edilmedi. "Sonuc yok" demek gonulluye yanlis bir sey
+                ogretirdi - arama bozuk degil, veri henuz cekilmemis.
+              */
+              <div className="px-4 py-8 text-center">
+                <Database
+                  size={22}
+                  aria-hidden="true"
+                  strokeWidth={1.5}
+                  className="mx-auto mb-3 text-ink-4"
+                />
+                <p className="text-xs font-medium text-ink">
+                  {district.name} için veri henüz çekilmemiş
+                </p>
+                <p className="mt-1.5 text-2xs leading-relaxed text-ink-3">
+                  Bu ilçenin kayıtları veritabanına aktarılmadan sonuç
+                  gelmez. İlçe seçimini kaldırıp haritadan tarayabilirsiniz.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setDistrict(null)}
+                  className="btn btn--ghost mt-4 px-3 py-2"
+                >
+                  Haritadan tara
+                </button>
+              </div>
+            ) : (
+              <>
+                <PlaceList
+                  places={places}
+                  loading={loading}
+                  selectedPlaceId={selectedPlaceId}
+                  onPlaceClick={setSelectedPlaceId}
+                  checkedIds={new Set(savedIds.keys())}
+                  onToggleCheck={toggleSaved}
+                  onReport={setReportTarget}
+                />
+
+                {district && places.length < total && (
+                  <div className="px-3 py-3">
+                    <button
+                      type="button"
+                      onClick={loadMore}
+                      disabled={loadingMore}
+                      className="btn btn--ghost w-full py-2 text-xs disabled:opacity-50"
+                    >
+                      {loadingMore
+                        ? "Yükleniyor..."
+                        : `Daha fazla yükle (${total - places.length} kayıt daha)`}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          <div className="flex shrink-0 items-center justify-between rule-t bg-paper-2 px-4 py-2.5">
+            {/*
+              Ilce akisinda toplami da gosteriyoruz: eskiden yalnizca
+              yuklenen sayi vardi ve kullanici 250'yi ilcenin tamami
+              saniyordu.
+            */}
+            <span className="mono-label tabular">
+              {district && total > places.length
+                ? `${places.length} / ${total} sonuç`
+                : `${places.length} sonuç`}
+            </span>
+            {savedInView > 0 && (
+              <Link
+                href="/kayitli"
+                className="mono-label tabular text-accent transition-colors duration-fast ease-out hover:text-accent-hover"
+              >
+                {savedInView} kayıtlı
+              </Link>
+            )}
+          </div>
+        </aside>
+
+        <div className="flex min-h-[45vh] flex-1 flex-col overflow-hidden lg:min-h-0">
+          <div className="relative flex-1 overflow-hidden">
             <MapView
               places={places}
-              center={[41.0082, 28.9784]} // İstanbul default
-              zoom={12}
+              center={mapCenter}
+              zoom={district ? 13 : 12}
               onBoundsChange={setBbox}
               selectedPlaceId={selectedPlaceId}
             />
           </div>
+
+          <ExportToolbar
+            savedCount={savedInView}
+            totalResults={places.length}
+            onSaveAll={saveAllVisible}
+            onExport={handleExport}
+            exportBlockedReason={exportBlockedReason}
+            quotaRemaining={
+              account ? account.daily_limit - account.used_today : null
+            }
+            isExporting={exporting}
+            isSavingAll={savingAll}
+          />
         </div>
       </div>
 
       {reportTarget && (
         <ReportModal
-          // key: farkli bir yer secilince modal state'i (tur, not) sifirlansin
           key={reportTarget.id}
           place={reportTarget}
           isOpen
           onClose={() => setReportTarget(null)}
           onSuccess={() => {
             setReportTarget(null);
-            setNotice("Bildiriminiz alindi, tesekkurler.");
+            setNotice("Bildiriminiz alındı, teşekkürler.");
           }}
         />
       )}
 
       <SettingsModal
         isOpen={settingsOpen}
+        account={account}
         onClose={() => setSettingsOpen(false)}
         onSaved={() => {
           setSettingsOpen(false);
           setNotice(null);
-          // Yeni anahtarin plan/kota durumu hemen yansisin.
           reloadAccount();
+          reloadSaved();
         }}
       />
 

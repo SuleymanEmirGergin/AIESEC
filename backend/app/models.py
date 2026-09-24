@@ -1,9 +1,9 @@
 import os
-from datetime import datetime
+from datetime import date, datetime
+from enum import Enum
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
-
 
 # Radius presets based on type
 RADIUS_PRESETS = {
@@ -13,16 +13,52 @@ RADIUS_PRESETS = {
     "high_school": 2500,
     "private_school": 2500,
     "college_keyword": 2500,
+    # Universiteler seyrek dagildigi icin varsayilan yaricap genis.
+    "college_university": 5000,
     "office": 2000,
     "workshop": 3000,
     "factory": 5000,
+    "hotel": 3000,
+    "company": 3000,
+    # Holdingler seyrek; genis yaricap.
+    "holding": 5000,
+    "real_estate": 2000,
+    "language_school": 2000,
+    "travel_agency": 2000,
+    # Gezi & eglence seyrek; genis yaricap.
+    "zoo_aquarium": 5000,
+    "theme_park": 5000,
+    "museum": 3000,
+    "botanical_garden": 5000,
+    "nature_park": 5000,
 }
 
 # Tag whitelist for result cleanup
+#
+# Iletisim etiketleri OSM'de iki bicimde yasiyor: duz (`phone`, `email`)
+# ve `contact:` onekli (`contact:phone`). Onekli olanlar asagida prefix
+# kuraliyla toptan geciyor, duz olanlarin burada tek tek sayilmasi
+# gerekiyor. `email`, `mobile` ve `fax` listede yoktu; bu yuzden yalnizca
+# duz `email` etiketi tasiyan kayitlarin iletisim bilgisi arayuze
+# hic ulasmiyordu.
 TAG_WHITELIST = {
-    "name", "official_name", "amenity", "office", "craft",
-    "industrial", "man_made", "building", "shop", "website",
-    "phone", "opening_hours", "operator", "brand"
+    "name",
+    "official_name",
+    "amenity",
+    "office",
+    "craft",
+    "industrial",
+    "man_made",
+    "building",
+    "shop",
+    "website",
+    "phone",
+    "email",
+    "mobile",
+    "fax",
+    "opening_hours",
+    "operator",
+    "brand",
 }
 
 
@@ -53,8 +89,10 @@ class SearchParams(BaseModel):
         None, ge=-90, le=90, description="Reference latitude for distance calculation"
     )
     ref_lon: Optional[float] = Field(
-        None, ge=-180, le=180,
-        description="Reference longitude for distance calculation"
+        None,
+        ge=-180,
+        le=180,
+        description="Reference longitude for distance calculation",
     )
     mode: Literal["auto", "around", "bbox"] = Field(
         default="auto", description="Overpass search strategy"
@@ -185,8 +223,10 @@ class Place(BaseModel):
         debug_mode = os.getenv("DEBUG_OVERPASS", "false").lower() == "true"
         if not debug_mode:
             filtered_tags = {
-                k: v for k, v in tags.items()
-                if k in TAG_WHITELIST or k.startswith("addr:")
+                k: v
+                for k, v in tags.items()
+                if k in TAG_WHITELIST
+                or k.startswith("addr:")
                 or k.startswith("contact:")
             }
         else:
@@ -199,15 +239,14 @@ class Place(BaseModel):
         if addr_obj:
             score += 20
         if any(
-            k.startswith("contact:") or k in ["phone", "website", "email"]
-            for k in tags
+            k.startswith("contact:") or k in ["phone", "website", "email"] for k in tags
         ):
             score += 15
         if "operator" in tags or "brand" in tags:
             score += 10
         if is_overridden:
             score += 10
-            
+
         # Bonus for building-level precision
         if tags.get("building"):
             score += 10
@@ -215,7 +254,7 @@ class Place(BaseModel):
         # Penalty for area-only landuse (low precision)
         if tags.get("landuse") == "industrial" and not tags.get("building"):
             score -= 20
-            
+
         score = max(0, min(100, score))
 
         if score >= 70:
@@ -237,7 +276,7 @@ class Place(BaseModel):
             distance_m=distance_m,
             unnamed=unnamed_flag if unnamed_flag else None,
             confidence=score,
-            confidence_level=level
+            confidence_level=level,
         )
 
 
@@ -251,6 +290,7 @@ class SearchResponse(BaseModel):
 
 class ReportRequest(BaseModel):
     """Request schema for reporting incorrect data."""
+
     place_id: str
     correct_type: str
     notes: Optional[str] = None
@@ -264,6 +304,7 @@ class ReportRequest(BaseModel):
 
 class ReportUpdateAdmin(BaseModel):
     """Admin update schema for reports."""
+
     status: Literal["open", "resolved", "ignored"]
     admin_notes: Optional[str] = None
     applied_override: Optional[bool] = None
@@ -272,6 +313,7 @@ class ReportUpdateAdmin(BaseModel):
 
 class ReportDetailedResponse(BaseModel):
     """Detailed report view for admin."""
+
     id: int
     created_at: datetime
     place_id: str
@@ -293,6 +335,7 @@ class ReportDetailedResponse(BaseModel):
 
 class OverrideCreate(BaseModel):
     """Schema for creating a classification override."""
+
     place_id: str
     forced_type: str
     forced_subtype: Optional[str] = None
@@ -302,6 +345,7 @@ class OverrideCreate(BaseModel):
 
 class OverrideUpdate(BaseModel):
     """Schema for patching an existing override."""
+
     forced_type: Optional[str] = None
     forced_subtype: Optional[str] = None
     notes: Optional[str] = None
@@ -310,6 +354,7 @@ class OverrideUpdate(BaseModel):
 
 class OverrideResponse(OverrideCreate):
     """Full override data including metadata."""
+
     id: str
     created_at: datetime
     updated_at: datetime
@@ -318,10 +363,11 @@ class OverrideResponse(OverrideCreate):
 
 class ExportRequest(BaseModel):
     """Lead export request schema."""
+
     type: str
     radius: int
-    center: Dict[str, float] # {"lat": ..., "lon": ...}
-    items: List[Dict[str, Any]] # Full item data for CSV construction
+    center: Dict[str, float]  # {"lat": ..., "lon": ...}
+    items: List[Dict[str, Any]]  # Full item data for CSV construction
 
 
 class ReportListResponse(BaseModel):
@@ -339,6 +385,7 @@ class ReportListResponse(BaseModel):
 
 class APIKeyResponse(BaseModel):
     """API Key details for admin."""
+
     name: str
     is_active: bool
     daily_limit: int
@@ -349,11 +396,155 @@ class APIKeyResponse(BaseModel):
 
 class APIKeyCreateResponse(APIKeyResponse):
     """Response when a new key is created, including the plain key."""
+
     key: str
+
+
+class APIKeyAdminResponse(APIKeyResponse):
+    """
+    Yonetim listesindeki anahtar kaydi.
+
+    `id` yalnizca burada var: PATCH /admin/keys/{id} icin gerekli.
+    Ad (`name`) benzersiz degil - ayni adla birden fazla anahtar
+    uretilebiliyor - dolayisiyla guncelleme adres olarak id kullaniyor.
+    Duz anahtar hicbir kosulda donmuyor; veritabaninda yalnizca SHA256
+    ozeti duruyor.
+    """
+
+    id: int
+
+
+class APIKeyAdminUpdate(BaseModel):
+    """
+    Mevcut bir anahtarin plan/kota/aktiflik durumunu degistirir.
+
+    Neden gerekli: plan yalnizca anahtar uretilirken belirlenebiliyordu.
+    Bir hesabi Pro'ya cikarmanin tek yolu ya yeni anahtar uretmek ya da
+    SQLite dosyasina elle mudahale etmekti; ikisi de mevcut kullanicinin
+    anahtarini gecersiz kiliyor ya da izlenemez bir degisiklik biraliyor.
+    """
+
+    plan: Optional[Literal["free", "pro", "enterprise"]] = None
+    daily_limit: Optional[int] = Field(None, ge=1, le=1_000_000)
+    is_active: Optional[bool] = None
+
+
+# --- Kayitli yerler ve listeler -------------------------------------------
+
+
+class PlaceListCreate(BaseModel):
+    """Yeni liste."""
+
+    name: str = Field(..., min_length=1, max_length=120)
+    note: Optional[str] = Field(None, max_length=500)
+
+
+class PlaceListUpdate(BaseModel):
+    """Liste adi/notu guncelleme. Gonderilmeyen alan degismez."""
+
+    name: Optional[str] = Field(None, min_length=1, max_length=120)
+    note: Optional[str] = Field(None, max_length=500)
+
+
+class PlaceListResponse(BaseModel):
+    id: str
+    name: str
+    note: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    created_by: Optional[str]
+    # Arayuz liste basina sayiyi ayri bir istekle almasin diye burada.
+    place_count: int = 0
+
+
+class SavedPlaceCreate(BaseModel):
+    """
+    Kaydedilecek yer.
+
+    Yerin tamami gonderiliyor, yalnizca id degil: kayit arama
+    onbelleginin hala duruyor olmasina bagimli olmamali.
+    """
+
+    place_id: str = Field(..., min_length=1, max_length=200)
+    name: Optional[str] = Field(None, max_length=300)
+    place_type: Optional[str] = Field(None, max_length=60)
+    lat: float = Field(..., ge=-90, le=90)
+    lon: float = Field(..., ge=-180, le=180)
+    address: Optional[str] = Field(None, max_length=500)
+    tags: Dict[str, Any] = Field(default_factory=dict)
+    note: Optional[str] = Field(None, max_length=1000)
+    list_id: Optional[str] = None
+
+
+class SavedPlaceUpdate(BaseModel):
+    """Not ekleme ya da baska bir listeye tasima."""
+
+    note: Optional[str] = Field(None, max_length=1000)
+    list_id: Optional[str] = None
+    # list_id=None "dosyalanmamisa tasi" demek olabilir; hangi alanin
+    # gercekten gonderildigini ayirmak icin exclude_unset kullaniliyor.
+
+
+class ContactStatus(str, Enum):
+    uncontacted = "uncontacted"
+    preparing = "preparing"
+    contacted = "contacted"
+    follow_up = "follow_up"
+    positive = "positive"
+    not_suitable = "not_suitable"
+
+
+class ContactEventCreate(BaseModel):
+    status: ContactStatus
+    contacted_at: date
+    note: Optional[str] = Field(None, max_length=1000)
+    next_follow_up_at: Optional[date] = None
+
+
+class ContactEventResponse(BaseModel):
+    id: str
+    saved_place_id: str
+    status: ContactStatus
+    contacted_at: date
+    note: Optional[str]
+    next_follow_up_at: Optional[date]
+    volunteer_name: str
+    created_at: datetime
+
+
+class SavedPlaceResponse(BaseModel):
+    id: str
+    list_id: Optional[str]
+    place_id: str
+    name: Optional[str]
+    place_type: Optional[str]
+    lat: float
+    lon: float
+    address: Optional[str]
+    tags: Dict[str, Any]
+    note: Optional[str]
+    saved_by: Optional[str]
+    contact_status: ContactStatus
+    last_contact_at: Optional[date]
+    next_follow_up_at: Optional[date]
+    created_at: datetime
+
+
+class ExportHistoryItem(BaseModel):
+    """Gecmiste alinan bir CSV."""
+
+    id: int
+    created_at: datetime
+    type: str
+    item_count: int
+    center_lat: float
+    center_lon: float
+    radius: int
 
 
 class PresetResponse(BaseModel):
     """Radius presets and UI labels for client UI."""
+
     max_radius: int
     default_by_type: Dict[str, int]
     radius_options: List[int]
@@ -361,3 +552,74 @@ class PresetResponse(BaseModel):
     notes: str
     type_labels_tr: Dict[str, str]
     type_groups_tr: List[Dict[str, Any]]
+
+
+# --- Ilce secimli yerel arama -----------------------------------------
+
+
+class DistrictMeta(BaseModel):
+    """Bir ilcenin geometrisiz metadata'si (secici listesi icin)."""
+
+    id: str
+    name: str
+    province: str
+    province_plate: str
+    bbox: List[float] = Field(..., description="(south, west, north, east)")
+    center: List[float] = Field(..., description="(lat, lon)")
+    # Ingest durumu: hic cekilmemis ilce icin None. Arayuz talep uzerine
+    # ingest'i ve tazelik uyarisini buna bakarak gosteriyor.
+    fetched_at: Optional[datetime] = None
+    place_count: Optional[int] = None
+    status: Optional[str] = None
+
+
+class DistrictPlace(BaseModel):
+    """Yerel veritabanindan donen POI."""
+
+    id: str
+    name: Optional[str] = None
+    place_type: Optional[str] = None
+    subtype: Optional[str] = None
+    lat: float
+    lon: float
+    address: Optional[str] = None
+    confidence: int = 0
+    has_contact: bool = False
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    website: Optional[str] = None
+    # Sadece sort=lead_score istendiginde doluyor; diger siralamalarda
+    # hesaplanmasi bosuna is olurdu.
+    lead_score: Optional[int] = None
+
+    model_config = {"from_attributes": True}
+
+
+class DistrictPlacesResponse(BaseModel):
+    """
+    Sayfalanmis sonuc.
+
+    total sayfa boyutundan bagimsiz: arayuz "412 sonuctan 1-50"
+    gosterebilsin.
+    """
+
+    district_id: str
+    data: List[DistrictPlace]
+    total: int
+    limit: int
+    offset: int
+
+
+class DistrictSummaryResponse(BaseModel):
+    """
+    "Bu ilcede ne var?" sorusunun tek istekli cevabi; tur chip'lerindeki
+    sayilari besliyor.
+    """
+
+    district_id: str
+    name: str
+    counts: Dict[str, int]
+    total: int
+    fetched_at: Optional[datetime] = None
+    place_count: Optional[int] = None
+    status: Optional[str] = None

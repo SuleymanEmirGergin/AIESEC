@@ -1,57 +1,231 @@
-@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;500;600;700&family=Comic+Neue:wght@300;400;700&display=swap');
+/* Hallmark · genre: modern-minimal · macrostructure: Map/Diagram (app-map) + Workbench (app-data)
+ * theme: Cobalt · design-system: design.md · designed-as-app
+ * nav: flush bordered app bar · footer: inline hairline status strip
+ * enrichment: none · pre-emit critique: P5 H4 E4 S5 R5 V5
+ * contrast: pass (40-41) · honest: pass (46) · chrome: pass (47)
+ * tokens: pass (48) · responsive: pass (49) · mobile: pass (34, 50-57)
+ */
+
+@import "./tokens.css";
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* Not: Leaflet CSS'i buradan degil layout.tsx'ten geliyor. Bu dosyada bir
+ * `@import 'leaflet/dist/leaflet.css'` vardi ama kural bloklarindan SONRA
+ * duruyordu; CSS'te @import yalnizca en ustte gecerlidir, dolayisiyla
+ * tarayici onu yok sayiyordu. layout.tsx zaten ayni dosyayi cektigi icin
+ * harita yine de dogru cizilmisti - satir bastan beri olu koddu.
+ *
+ * Fontlar da @import ile degil layout.tsx'te <link> ile yukleniyor:
+ * CSS @import, stil dosyasi indirilip ayristirilana kadar font istegini
+ * baslatmiyor ve zincirleme bir gecikme yaratiyor.
+ */
+
 @layer base {
-  :root {
-    --background: 248 250 252; /* slate-50 */
-    --foreground: 15 23 42; /* slate-900 */
-  }
-
-  .dark {
-    --background: 15 23 42; /* slate-900 */
-    --foreground: 248 250 252; /* slate-50 */
-  }
-
-  * {
-    @apply border-slate-200 dark:border-slate-700;
+  /* overflow-x: clip, hidden degil. `hidden` bir kaydirma baglami
+   * yaratir ve icerideki position:sticky ogeleri sessizce bozar
+   * (harita ustundeki filtre seridi bundan etkileniyor). */
+  html,
+  body {
+    overflow-x: clip;
   }
 
   body {
-    @apply bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-50 font-body;
+    background: var(--color-paper);
+    color: var(--color-ink-2);
+    font-family: var(--font-body);
+    font-size: var(--text-md);
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
   }
 
-  h1,
-  h2,
-  h3,
-  h4,
-  h5,
-  h6 {
-    @apply font-heading;
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    color: var(--color-ink);
+    font-weight: 600;
+    /* Siki tracking Space Grotesk'in karakteri; genis kurulunca
+     * jenerik bir sistem fontuna benziyor. */
+    letter-spacing: -0.02em;
+    /* Uzun Turkce kurum adlari ("Cumhurbaskanligi Devlet Arsivleri
+     * Baskanligi") dar sutunlarda tasiyordu; kelime icinden bolunebilsin. */
+    overflow-wrap: anywhere;
+    min-width: 0;
+  }
+
+  /* Focus ring her yerde gorunur ve ANIMASYONSUZ. Gecisli bir ring,
+   * klavyeyle gezen kullanicinin odagi nerede oldugunu gec ogrenmesi
+   * demek. */
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+    border-radius: var(--radius-chip);
+  }
+
+  ::selection {
+    background: var(--color-accent-wash);
+    color: var(--color-ink);
+  }
+}
+
+@layer components {
+  /* Makine okumasi sesi: kucuk, versal, mono. Eyebrow'lar, durum
+   * etiketleri, kota sayaclari. */
+  .mono-label {
+    font-family: var(--font-mono);
+    font-size: var(--text-2xs);
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-ink-3);
+  }
+
+  /* Rakam tasiyan her yer: telefon, koordinat, kota. `tabular-nums`
+   * rakamlari esit genislige sabitler, boylece alt alta hizalanirlar. */
+  .tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .rule-t { border-top: var(--rule-hair) solid var(--color-rule); }
+  .rule-b { border-bottom: var(--rule-hair) solid var(--color-rule); }
+  .rule-r { border-right: var(--rule-hair) solid var(--color-rule); }
+
+  /* Surface: hairline ile tanimli yuzey. Golge yok - derinlik kenardan. */
+  .surface {
+    background: var(--color-paper);
+    border: var(--rule-hair) solid var(--color-rule);
+    border-radius: var(--radius-card);
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2xs);
+    border-radius: var(--radius-input);
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    /* Butonlar asla iki satira sarmaz - dokunma hedefi bolunur. */
+    white-space: nowrap;
+    transition: background-color var(--dur-fast) var(--ease-out),
+                border-color var(--dur-fast) var(--ease-out),
+                color var(--dur-fast) var(--ease-out);
+  }
+
+  .btn--primary {
+    background: var(--color-accent);
+    color: var(--color-accent-ink);
+    border: var(--rule-hair) solid var(--color-accent);
+  }
+  .btn--primary:hover:not(:disabled),
+  .btn--primary.is-hover:not(:disabled) {
+    background: var(--color-accent-hover);
+    border-color: var(--color-accent-hover);
+  }
+  .btn--primary:active:not(:disabled),
+  .btn--primary.is-active:not(:disabled) { background: var(--color-accent-hover); }
+
+  .btn--ghost {
+    background: transparent;
+    color: var(--color-ink-2);
+    border: var(--rule-hair) solid var(--color-rule-2);
+  }
+  .btn--ghost:hover:not(:disabled),
+  .btn--ghost.is-hover:not(:disabled) {
+    background: var(--color-paper-2);
+    color: var(--color-ink);
+  }
+  .btn--ghost:active:not(:disabled),
+  .btn--ghost.is-active:not(:disabled) {
+    background: var(--color-paper-3);
+    border-color: var(--color-ink-4);
+  }
+
+  .btn:disabled,
+  .btn[aria-disabled="true"] {
+    /* Devre disi uc kanaldan birden bildiriliyor: saydamlik, imlec ve
+     * native `disabled` niteligi. Yalnizca opaklik hem ekran okuyucuya
+     * hicbir sey soylemez hem de tiklanabilir gorunur. */
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  /* Basili durum tum tiklanabilir yuzeylerde var. Onceden yalnizca
+   * birincil butonda vardi; filtre cipleri ve ikon butonlari basildiginda
+   * hicbir geri bildirim vermiyordu. */
+  .pressable:active:not(:disabled) {
+    background: var(--color-paper-3);
+  }
+
+  /* Yardim/hata metni icin ayrilmis yer. Hata belirdiginde altindaki
+   * buton asagi kaymasin diye satir yuksekligi bastan rezerve ediliyor. */
+  .field-note {
+    display: block;
+    min-height: 1lh;
+    font-size: var(--text-2xs);
+    line-height: 1.5;
   }
 }
 
 @layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+  .text-balance { text-wrap: balance; }
 }
 
-/* 🔴 IMPORTANT: Leaflet CSS must be imported for proper map rendering */
-@import 'leaflet/dist/leaflet.css';
-
-/* Custom scrollbar for better UX */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  @apply bg-slate-100 dark:bg-slate-800 rounded-full;
-}
-
+/* Kaydirma cubugu: kural cizgisiyle ayni dilde, ayri bir aksan degil. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--color-paper-2); }
 ::-webkit-scrollbar-thumb {
-  @apply bg-slate-300 dark:bg-slate-600 rounded-full hover:bg-slate-400 dark:hover:bg-slate-500;
+  background: var(--color-rule-2);
+  border: 3px solid var(--color-paper-2);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--color-ink-4); }
+
+/* Leaflet'in kendi kabugu sistemin diline cekiliyor: yuvarlak beyaz
+ * balonlar ve mavi baglantilar Cobalt'in hairline dilinden kopuyordu. */
+.leaflet-popup-content-wrapper {
+  border-radius: var(--radius-card);
+  border: var(--rule-hair) solid var(--color-rule-2);
+  box-shadow: var(--shadow-lift);
+  padding: 0;
+}
+.leaflet-popup-content { margin: var(--space-xs); font-family: var(--font-body); }
+.leaflet-popup-tip { border: var(--rule-hair) solid var(--color-rule-2); }
+.leaflet-container { font-family: var(--font-body); background: var(--color-paper-3); }
+.leaflet-bar a {
+  color: var(--color-ink-2);
+  border-bottom-color: var(--color-rule);
+}
+.leaflet-bar a:hover { background: var(--color-paper-2); }
+.leaflet-container a.leaflet-popup-close-button { color: var(--color-ink-4); }
+
+/* Kume rozetleri de sistemin parcasi: varsayilan Leaflet yesil/sari/mavi
+ * kademeleri uc ayri kromatik aksan demek ve tek-sinyal kuralini bozuyor. */
+.marker-cluster-small,
+.marker-cluster-medium,
+.marker-cluster-large {
+  background: var(--color-accent-wash);
+}
+.marker-cluster-small div,
+.marker-cluster-medium div,
+.marker-cluster-large div {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

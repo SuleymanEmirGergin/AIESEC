@@ -20,11 +20,17 @@ class TestReferenceDistance:
         """
         elements = [
             {
-                "type": "node", "id": 1, "lat": 41.01, "lon": 29.01,
+                "type": "node",
+                "id": 1,
+                "lat": 41.01,
+                "lon": 29.01,
                 "tags": {"amenity": "kindergarten", "name": "Node 1"},
             },
             {
-                "type": "node", "id": 2, "lat": 41.02, "lon": 29.02,
+                "type": "node",
+                "id": 2,
+                "lat": 41.02,
+                "lon": 29.02,
                 "tags": {"amenity": "kindergarten", "name": "Node 2"},
             },
         ]
@@ -50,7 +56,10 @@ class TestReferenceDistance:
         """ref_* verilmezse distance_m dolmamali (geriye donuk uyum)."""
         elements = [
             {
-                "type": "node", "id": 1, "lat": 41.01, "lon": 29.01,
+                "type": "node",
+                "id": 1,
+                "lat": 41.01,
+                "lon": 29.01,
                 "tags": {"amenity": "kindergarten", "name": "Node 1"},
             }
         ]

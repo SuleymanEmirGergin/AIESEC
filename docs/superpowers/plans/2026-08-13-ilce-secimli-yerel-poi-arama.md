@@ -15,7 +15,7 @@
 - **Kapsam:** yalnızca İstanbul (plaka 34), Edirne (22), Tekirdağ (59), Kırklareli (39), Malatya (44) — 80 ilçe. Bu illerin dışında hiçbir koşulda Overpass sorgusu atılmaz.
 - **Tampon:** `DISTRICT_BUFFER_M=2000` (env, varsayılan 2000).
 - **10 tür:** `factory`, `office`, `workshop`, `kindergarten`, `primary_school`, `middle_school`, `high_school`, `private_school`, `college_keyword`, `college_university`.
-- **İlçe kimliği:** `tr-{plaka}-{slug}`. Ad `Merkez` ise il slug'ı kullanılır (`tr-39-kirklareli`).
+- **İlçe kimliği:** `tr-{plaka}-{slug}` — `tr-34-kadikoy`, `tr-22-kesan`. Merkez ilçeler OSM'de bileşik adla etiketli ("Edirne Merkez", "Kırklareli Merkez"), dolayısıyla kimlikleri `tr-22-edirne-merkez` ve `tr-39-kirklareli-merkez`. **Bu gerçek veri esastır.** `district_id`'deki çıplak `"merkez"` dalı bu veri setinde hiç tetiklenmiyor (ölü kod); OSM etiketlemesi değişirse devreye girer diye duruyor. Kimlikler `districts.geojson`'dan okunur, asla elle türetilmez.
 - **Kod yorumları ASCII Türkçe** (mevcut desen: `classify.py`, `models.py`). Kullanıcıya görünen metinler tam Türkçe diakritikle (`Atölye`, `İlkokul`).
 - **Commit formatı:** `<type>: <description>` — `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`. Mesaj gövdesi ASCII.
 - **Dosya boyutu:** 200-400 satır tipik, 800 maksimum. Fonksiyonlar <50 satır.
@@ -23,7 +23,9 @@
 - `console.log` bırakma. Girdi doğrulaması zorunlu (pydantic / açık kontrol).
 - **Test komutu (backend):** `cd backend && python -m pytest tests/ -v`
 - **Test komutu (frontend):** `pnpm test` (Task 10'da kurulur), `pnpm type-check`
-- **Dokunulmayacak:** `GET /api/search` (yarıçap tabanlı, `expo-osm-map` istemcisi buna bağlı), `admin` router, override sistemi, rapor akışı.
+- **Tasarım sistemi (ZORUNLU):** proje kilitli bir tasarım sistemi kullanıyor — `design.md` ve `src/app/tokens.css`. **Bileşenler ham renk/font değeri yazmaz.** `bg-accent`, `text-ink-4`, `border-rule` gibi ham Tailwind renkleri yasak. Kullanılabilir sınıflar: renk `paper/paper-2/paper-3`, `ink/ink-2/ink-3/ink-4`, `rule/rule-2`, `accent/accent-hover/accent-ink/accent-wash/accent-edge`, `graphite/graphite-2/graphite-ink/graphite-ink-2`, `positive`, `caution/caution-bg/caution-on-dark`, `critical`, `scrim`; yazı `font-display/body/mono`, `text-2xs`; köşe `rounded-chip/input/card`; geçiş `duration-fast/short/mid` + `ease-out/in/in-out`; gölge `shadow-lift/modal`; yardımcı sınıf `mono-label`, `surface`, `rule-b/rule-r/rule-t`, `pressable`, `tabular`, `btn`, `btn--primary`, `btn--ghost`, `field-note`, `text-balance`. **Yeni bileşen yazmadan önce `design.md` okunacak** ve en yakın mevcut bileşenin deseni izlenecek: chip'ler `Filters.tsx`, liste satırları `PlaceList.tsx`, modal `ModalShell.tsx`, buton şeridi `ExportToolbar.tsx`.
+- **Dokunulmayacak:** `admin` router, override sistemi, rapor akışı.
+- **`GET /api/search` artık "dokunulmaz" DEĞİL** — bu plan yazıldıktan sonra üç commit onu yeniden yazdı (açık `bbox` parametresi, `geo.py`'ye `snap_bbox_outward`, `test_bbox_search.py`). Yeni ilçe uçları yanına ekleniyor; mevcut davranışı bozmamak yeterli. Plandaki `search.py` / `cache.py` / `route.ts` satır numaralarına güvenilmeyecek, dosya okunup doğrulanacak.
 
 ## Dosya Yapısı
 
@@ -60,7 +62,7 @@
 ## Task Sırası ve Bağımlılıklar
 
 ```
-T1 (taksonomi) ──> T2 (sinir verisi) ──> T3 (districts.py) ──┐
+T1 ✅ TAMAM ─────> T2 (sinir verisi) ──> T3 (districts.py) ──┐
                                                               ├─> T6 (ingest)
                         T4 (tablolar) ──> T5 (store.py) ──────┘
                                               │
@@ -81,7 +83,19 @@ T1 ön koşul: ingest sınıflandırmaya dayandığı için hatalı taksonomiyle
 
 ---
 
-## Task 1: Taksonomi — üniversite sınıflandırması ve 10. tür
+## Task 1: Taksonomi — üniversite sınıflandırması ve 10. tür ✅ TAMAMLANDI
+
+> **Bu task uygulanmıştır — dispatch EDİLMEYECEK.** Commit `290d098`.
+> `classify.py`'deki ulaşılamaz üniversite dalı düzeltildi, `RADIUS_PRESETS`
+> ve `PlaceType` 10 türe çıktı, `college_keyword` etiketi "Kolej"e çevrildi.
+> Test `backend/tests/test_university_taxonomy.py` adıyla duruyor (aşağıda
+> `test_classify_university.py` yazıyor — ad farkı, kapsam aynı).
+> Planın öngörmediği bir boşluk da kapatıldı: `policy.py`'deki `is_edu`
+> listesi `search_service.py`'deki ikiziyle eşitlendi.
+>
+> Aşağıdaki içerik tarihsel kayıt olarak duruyor.
+
+### (uygulanmış) Task 1 içeriği
 
 **Neden:** `classify.py:44` `amenity != "school"` ise `None` dönüyor; üniversiteler oradan çıkıyor ve `classify.py:88`'deki `amenity in ["university","college"]` dalı **ulaşılamaz kod**. `craft`/`workshop` hatasının (`classify.py:149`'daki yorum) ikizi. Ayrıca `college_university` değeri `RADIUS_PRESETS`'te olmadığı için hiç istenemiyordu.
 
@@ -776,9 +790,9 @@ if __name__ == "__main__":
 
 - [ ] **Step 6: Testleri çalıştır, geçtiğini doğrula**
 
-Run: `cd backend && python -m pytest tests/test_fetch_districts.py -v`
+Run: `cd backend && .venv/Scripts/python.exe -m pytest tests/test_fetch_districts.py -v`
 
-Expected: PASS (14 test)
+Expected: PASS (11 test)
 
 - [ ] **Step 7: Scripti gerçekten çalıştır**
 
@@ -916,20 +930,28 @@ class TestBufferDegrees:
         Anizotropi kilidi.
 
         Izotropik buffer(2000/111320) uygulanirsa dogu yonundeki tampon
-        derece cinsinden ayni kalir, ama 41N'de 1 derece boylam ~84 km
-        oldugu icin bu ~2.4 km'ye karsilik gelir. Yani sinirin 2.4 km
-        dogusundaki bir nokta yanlislikla tampon icinde sayilir.
+        derece cinsinden kuzeyle ayni kalir (0.017966 derece), ama 41N'de
+        1 derece boylam ~84 km (1 derece enlemden dusuk) oldugu icin bu
+        derece-tamponu gercekte yalnizca ~1510 m'ye karsilik gelir —
+        istenen 2000 m'nin ~%75'i. Yani sinirin 2000 m dogusuna yakin,
+        gercekte tamponun icinde olmasi gereken bir nokta yanlislikla
+        DISARIDA sayilir.
+
+        Kontrol noktalari 2 km hedefin hemen icinde/disinda (1.9/2.1 km)
+        seciliyor: 1/3 km gibi gevsek bir aralik hem duzeltilmemis
+        (~1510 m) hem de ters olceklenmis (yanlislikla ~1140 m) tamponu
+        da "dogru" gibi gecirir, cunku ikisi de 1-3 km arasinda kalir.
         Bu test dogru olcekleme yapilmadikca gecmez.
         """
         geom = _kare()
         tamponlu = buffer_degrees(geom, 2000, REF_LAT)
         metre_per_derece_lon = 111320.0 * math.cos(math.radians(REF_LAT))
 
-        bir_km_lon = 1000 / metre_per_derece_lon
-        uc_km_lon = 3000 / metre_per_derece_lon
+        hedefin_icinde = 1900 / metre_per_derece_lon
+        hedefin_disinda = 2100 / metre_per_derece_lon
 
-        assert point_in_geometry(tamponlu, 41.05, 29.1 + bir_km_lon) is True
-        assert point_in_geometry(tamponlu, 41.05, 29.1 + uc_km_lon) is False
+        assert point_in_geometry(tamponlu, 41.05, 29.1 + hedefin_icinde) is True
+        assert point_in_geometry(tamponlu, 41.05, 29.1 + hedefin_disinda) is False
 
     def test_tampon_orijinali_kapsar(self):
         geom = _kare()
@@ -1134,18 +1156,22 @@ def buffer_degrees(
 
     Dogrudan buffer(buffer_m / 111320) uygulamak yanlis: 1 derece enlem
     her yerde ~111320 m ama 1 derece boylam 111320*cos(lat) m. Turkiye
-    enlemlerinde cos(lat) 0.74-0.81, yani izotropik tampon dogu-bati
-    yonunde gerektiginden ~%25 genis olur ve komsu ilcelerin kayitlari
-    sonuca sizar.
+    enlemlerinde cos(lat) 0.74-0.81, yani bir boylam derecesi bir enlem
+    derecesinden daha az gercek mesafeye karsilik gelir. Duzeltilmemis
+    (izotropik) bir tampon bu farki gormezden gelir ve dogu-bati
+    yonunde gercekte istenenden ~%19-26 DAR kalir: sinira yakin, tamponun
+    kapsamasi gereken noktalar yanlislikla disarida sayilir.
 
-    Cozum: boylami 1/cos(lat) ile olcekleyip uzayi yerel olarak izotropik
-    yap, tamponu uygula, geri olcekle. Tek bir ilce icinde hata %1'in
-    altinda kalir.
+    Cozum: boylami (x) cos(lat) ile olcekleyip enlemi (y) oldugu gibi
+    birakmak, uzayi yerel olarak izotropik yapar — olcekten sonra hem
+    x hem y ekseninde 1 birim ayni gercek mesafeye (~111320 m) karsilik
+    gelir. Tamponu bu izotropik uzayda uygula, sonra geri olcekle. Tek
+    bir ilce icinde hata %1'in altinda kalir.
     """
     if buffer_m <= 0:
         return geom
 
-    k = 1.0 / cos(radians(ref_lat))
+    k = cos(radians(ref_lat))
     # shapely x=lon, y=lat: xfact boylami olcekliyor.
     scaled = scale(geom, xfact=k, yfact=1.0, origin=(0.0, 0.0))
     buffered = scaled.buffer(buffer_m / METERS_PER_DEGREE_LAT)
@@ -1255,7 +1281,7 @@ Expected: PASS. `districts.geojson` T2'de üretildiyse veri testleri de çalış
 
 - [ ] **Step 5: Anizotropi testinin gerçekten koruduğunu doğrula**
 
-Tamponu geçici olarak izotropik yap (`buffer_degrees` içinde `k = 1.0`), testi çalıştır:
+Tamponu geçici olarak izotropik yap (`buffer_degrees` içinde `k = 1.0`), testi çalıştır. **Kontrol noktalarının 1.9/2.1 km olması şart** — planın ilk hâli 1/3 km kullanıyordu ve o aralık hem düzeltilmemiş (~1510 m) hem de ters ölçeklenmiş (~1140 m) tamponu da geçiriyordu, yani test hiçbir şeyi korumuyordu:
 
 Run: `cd backend && python -m pytest tests/test_districts_geo.py::TestBufferDegrees::test_tampon_doguya_dogru_da_metrik -v`
 
@@ -1518,7 +1544,7 @@ git commit -m "feat: places, place_districts ve district_ingest tablolarini ekle
   - `CONTACT_TAGS: frozenset[str]`
   - `derive_has_contact(tags: dict) -> bool`
   - `extract_contact(tags: dict) -> tuple[str | None, str | None, str | None]` — `(phone, email, website)`
-  - `place_row_values(element: dict, place_type: str | None, confidence: int, address: str | None) -> dict` — `PlaceRow` kolonlarına karşılık gelen sözlük
+  - `place_row_values(element: dict, place_type: str | None, confidence: int, address: str | None) -> dict | None` — `PlaceRow` kolonlarına karşılık gelen sözlük; koordinat bulunamazsa `None`
   - `async upsert_places(db: AsyncSession, rows: list[dict]) -> int`
   - `async replace_memberships(db: AsyncSession, district_id: str, memberships: list[tuple[str, bool]]) -> int`
   - `async mark_ingest(db, district_id: str, place_count: int, query_count: int, status: str) -> None`
@@ -1985,7 +2011,7 @@ git commit -m "feat: POI veri erisim katmani ve has_contact turetimi"
   - `classify_element(tags: dict, element_type: str) -> str | None`
   - `async ingest_district(db, district_id, buffer_m, force) -> IngestResult`
   - `@dataclass(frozen=True) IngestResult`: `district_id: str`, `place_count: int`, `query_count: int`, `status: str`, `skipped: bool`
-  - `async ingest_many(db_factory, district_ids, concurrency, buffer_m, force) -> list[IngestResult]`
+  - `async ingest_many(district_ids, concurrency, buffer_m, force) -> list[IngestResult]` — `db_factory` parametresi YOK; her ilce kendi oturumunu `AsyncSessionLocal` ile aciyor, paylasilan AsyncSession es zamanli kullanimda guvenli degil
   - `main(argv) -> int`
 
 - [ ] **Step 1: Testi yaz**
@@ -4620,6 +4646,27 @@ git commit -m "feat: vitest kurulumu ve ilce veri istemci katmani"
 
 ## Task 11: `components/DistrictPicker.tsx`
 
+> **Tasarım sistemi — bu task için zorunlu.** Aşağıdaki kod bloklarındaki
+> sınıflar tasarım sistemi token'larına çevrilmiştir (`bg-accent`,
+> `text-ink-*`, `rounded-input`, `mono-label`, `surface`, `rule-b`,
+> `duration-fast ease-out`). **Yazmaya başlamadan önce `design.md` ve
+> `src/components/Filters.tsx`'i oku.** Filters.tsx bu projede chip
+> deseninin referansı: `pressable group ... rounded-input`, aktif
+> `bg-accent text-accent-ink`, pasif `text-ink-2 hover:bg-paper-2
+> hover:text-ink`, ikon aktif `text-accent-ink` / pasif `text-ink-4
+> group-hover:text-ink-3`.
+>
+> Üç kural: **(1)** ham renk/font değeri yazma (`bg-slate-*`, `text-gray-*`
+> yasak). **(2)** Özel focus ring ekleme — `globals.css` içindeki global
+> `:focus-visible` bunu hallediyor. **(3)** Gölge ekleme; sistem
+> "derinlik kenardan" diyor, yüzeyler `surface` veya `rule-*` ile
+> tanımlanıyor. Yalnızca haritanın üstünde yüzen katman `shadow-lift`
+> kullanıyor.
+>
+> Sayı gösteren her yerde `tabular` sınıfını kullan (mono + tabular-nums)
+> — sayılar alt alta hizalanmalı.
+
+
 **Neden:** 80 ilçe içinde "Pehlivanköy"ü haritada gözle bulmak zor; yazmak iki saniye. Harita seçici (T14) ile aynı state'e bağlanıyor.
 
 **Files:**
@@ -4930,10 +4977,10 @@ export default function DistrictPicker({
   }, [districts, activePlate, search]);
 
   return (
-    <div className="p-4 border-b border-slate-200 bg-white">
+    <div className="p-4 rule-b bg-paper">
       <div className="flex items-center gap-2 mb-3">
-        <MapPin size={14} className="text-slate-400" />
-        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+        <MapPin size={14} className="text-ink-4" />
+        <span className="mono-label">
           Konum
         </span>
       </div>
@@ -4949,10 +4996,10 @@ export default function DistrictPicker({
                 setActivePlate(province.plate);
                 setSearch("");
               }}
-              className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
+              className={`px-2.5 py-1 rounded-chip text-xs font-semibold transition-colors duration-fast ease-out ${
                 isActive
-                  ? "bg-slate-900 text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  ? "bg-accent text-accent-ink"
+                  : "bg-paper-2 text-ink-2 hover:bg-paper-3"
               }`}
             >
               {province.name}
@@ -4964,7 +5011,7 @@ export default function DistrictPicker({
       <div className="relative mb-2">
         <Search
           size={14}
-          className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
+          className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-4"
         />
         <input
           type="search"
@@ -4972,17 +5019,17 @@ export default function DistrictPicker({
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder="İlçe ara..."
-          className="w-full pl-8 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+          className="w-full pl-8 pr-3 py-2 text-sm border border-rule rounded-input "
         />
       </div>
 
       <ul role="listbox" className="max-h-52 overflow-y-auto -mx-1">
         {loading && (
-          <li className="px-3 py-2 text-xs text-slate-400">Yükleniyor...</li>
+          <li className="px-3 py-2 text-xs text-ink-4">Yükleniyor...</li>
         )}
 
         {!loading && visible.length === 0 && (
-          <li className="px-3 py-2 text-xs text-slate-400">İlçe bulunamadı.</li>
+          <li className="px-3 py-2 text-xs text-ink-4">İlçe bulunamadı.</li>
         )}
 
         {visible.map((district) => {
@@ -4996,16 +5043,16 @@ export default function DistrictPicker({
                 role="option"
                 aria-selected={isSelected}
                 onClick={() => onSelect(district.id)}
-                className={`w-full flex items-baseline justify-between gap-2 px-3 py-1.5 rounded-md text-left text-sm transition-colors ${
+                className={`w-full flex items-baseline justify-between gap-2 px-3 py-1.5 rounded-input text-left text-sm transition-colors duration-fast ease-out ${
                   isSelected
-                    ? "bg-slate-900 text-white font-semibold"
-                    : "text-slate-700 hover:bg-slate-100"
+                    ? "bg-accent text-accent-ink font-semibold"
+                    : "text-ink-2 hover:bg-paper-2"
                 }`}
               >
                 <span className="truncate">{district.name}</span>
                 <span
-                  className={`shrink-0 text-[10px] font-medium ${
-                    isSelected ? "text-slate-300" : "text-slate-400"
+                  className={`shrink-0 text-2xs font-medium ${
+                    isSelected ? "text-ink-4" : "text-ink-4"
                   }`}
                 >
                   {!ingest && "veri yok"}
@@ -5038,6 +5085,27 @@ git commit -m "feat: il ve ilce secici komponenti"
 ---
 
 ## Task 12: `components/FilterPanel.tsx`
+
+> **Tasarım sistemi — bu task için zorunlu.** Aşağıdaki kod bloklarındaki
+> sınıflar tasarım sistemi token'larına çevrilmiştir (`bg-accent`,
+> `text-ink-*`, `rounded-input`, `mono-label`, `surface`, `rule-b`,
+> `duration-fast ease-out`). **Yazmaya başlamadan önce `design.md` ve
+> `src/components/Filters.tsx`'i oku.** Filters.tsx bu projede chip
+> deseninin referansı: `pressable group ... rounded-input`, aktif
+> `bg-accent text-accent-ink`, pasif `text-ink-2 hover:bg-paper-2
+> hover:text-ink`, ikon aktif `text-accent-ink` / pasif `text-ink-4
+> group-hover:text-ink-3`.
+>
+> Üç kural: **(1)** ham renk/font değeri yazma (`bg-slate-*`, `text-gray-*`
+> yasak). **(2)** Özel focus ring ekleme — `globals.css` içindeki global
+> `:focus-visible` bunu hallediyor. **(3)** Gölge ekleme; sistem
+> "derinlik kenardan" diyor, yüzeyler `surface` veya `rule-*` ile
+> tanımlanıyor. Yalnızca haritanın üstünde yüzen katman `shadow-lift`
+> kullanıyor.
+>
+> Sayı gösteren her yerde `tabular` sınıfını kullan (mono + tabular-nums)
+> — sayılar alt alta hizalanmalı.
+
 
 **Neden:** Tür çoklu seçimi ve sıralama/filtre kontrolleri. Sayıları `summary` endpoint'i besliyor — sayısı 0 olan tür soluk görünür ama tıklanabilir kalır (kullanıcı "gerçekten 0 mı" diye kontrol edebilsin).
 
@@ -5117,27 +5185,29 @@ describe("varsayilanlar", () => {
 describe("tur chip'leri", () => {
   it("on tur gosterir", () => {
     setup();
-    expect(screen.getAllByRole("checkbox", { name: /Fabrika|Ofis|Atölye|Anaokulu|İlkokul|Ortaokul|Lise|Özel Okul|Kolej|Üniversite/ }))
+    // Tur chip'leri aria-pressed'li buton (Filters.tsx deseni), gercek
+    // checkbox degil. Gercek checkbox'lar asagidaki filtre anahtarlari.
+    expect(screen.getAllByRole("button", { name: /Fabrika|Ofis|Atölye|Anaokulu|İlkokul|Ortaokul|Lise|Özel Okul|Kolej|Üniversite/ }))
       .toHaveLength(10);
   });
 
   it("sayilari gosterir", () => {
     setup();
-    expect(screen.getByRole("checkbox", { name: /Fabrika/ })).toHaveTextContent("34");
-    expect(screen.getByRole("checkbox", { name: /Ofis/ })).toHaveTextContent("121");
+    expect(screen.getByRole("button", { name: /Fabrika/ })).toHaveTextContent("34");
+    expect(screen.getByRole("button", { name: /Ofis/ })).toHaveTextContent("121");
   });
 
   it("sifir sayili tur tiklanabilir kalir", () => {
     setup();
     // Kullanici "gerçekten 0 mi" diye kontrol edebilmeli.
-    expect(screen.getByRole("checkbox", { name: /Üniversite/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Üniversite/ })).toBeEnabled();
   });
 
   it("tur secince listeye eklenir", async () => {
     const user = userEvent.setup();
     const { onChange } = setup();
 
-    await user.click(screen.getByRole("checkbox", { name: /Fabrika/ }));
+    await user.click(screen.getByRole("button", { name: /Fabrika/ }));
 
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ types: ["factory"] })
@@ -5148,7 +5218,7 @@ describe("tur chip'leri", () => {
     const user = userEvent.setup();
     const { onChange } = setup({ types: ["factory", "office"] });
 
-    await user.click(screen.getByRole("checkbox", { name: /Fabrika/ }));
+    await user.click(screen.getByRole("button", { name: /Fabrika/ }));
 
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ types: ["office"] })
@@ -5159,7 +5229,7 @@ describe("tur chip'leri", () => {
     const user = userEvent.setup();
     const { onChange } = setup({ types: ["factory"] });
 
-    await user.click(screen.getByRole("checkbox", { name: /Ofis/ }));
+    await user.click(screen.getByRole("button", { name: /Ofis/ }));
 
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ types: ["factory", "office"] })
@@ -5168,8 +5238,8 @@ describe("tur chip'leri", () => {
 
   it("secili tur aria-checked tasir", () => {
     setup({ types: ["factory"] });
-    expect(screen.getByRole("checkbox", { name: /Fabrika/ }))
-      .toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("button", { name: /Fabrika/ }))
+      .toHaveAttribute("aria-pressed", "true");
   });
 
   it("Tumu butonu secimi temizler", async () => {
@@ -5288,7 +5358,7 @@ describe("sayim yoklugu", () => {
     setup({}, null as never);
     // Ilce secilmemis veya ozet yukleniyor: chip'ler gorunur ama
     // sayi yerine bos. "0" gostermek yanlis bilgi olurdu.
-    expect(screen.getByRole("checkbox", { name: /Fabrika/ })).not.toHaveTextContent("0");
+    expect(screen.getByRole("button", { name: /Fabrika/ })).not.toHaveTextContent("0");
   });
 });
 ```
@@ -5378,18 +5448,18 @@ export default function FilterPanel({
     });
 
   return (
-    <div className="border-b border-slate-200 bg-white">
+    <div className="rule-b bg-paper">
       {/* Tur secimi */}
-      <div className="p-4 border-b border-slate-100">
+      <div className="p-4 rule-b">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+          <span className="mono-label">
             Tür
           </span>
           <button
             type="button"
             onClick={() => patch({ types: [] })}
             disabled={disabled || filters.types.length === 0}
-            className="text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-900 disabled:opacity-40"
+            className="mono-label hover:text-ink disabled:opacity-40"
           >
             Tümü
           </button>
@@ -5397,10 +5467,14 @@ export default function FilterPanel({
 
         {Object.entries(PLACE_TYPE_GROUPS).map(([groupLabel, types]) => (
           <div key={groupLabel} className="mb-2 last:mb-0">
-            <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-300 mb-1">
+            <div className="mono-label mb-1">
               {groupLabel}
             </div>
-            <div className="flex flex-wrap gap-1.5">
+            <div
+              role="group"
+              aria-label={`${groupLabel} tür seçimi`}
+              className="grid grid-cols-2 gap-1"
+            >
               {types.map((type) => {
                 const isActive = filters.types.includes(type);
                 const count = counts?.[type];
@@ -5412,23 +5486,27 @@ export default function FilterPanel({
                   <button
                     key={type}
                     type="button"
-                    role="checkbox"
-                    aria-checked={isActive}
+                    // aria-pressed, role="checkbox" DEGIL. Mevcut
+                    // Filters.tsx ayni deseni kullaniyor: buton uzerinde
+                    // "basili" durumu semantik olarak dogru olan, ve
+                    // ekran okuyucu bunu tek bir tur secici grubu
+                    // icinde duyuruyor.
+                    aria-pressed={isActive}
                     disabled={disabled}
                     onClick={() => toggleType(type)}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all disabled:opacity-40 ${
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-chip text-xs font-medium transition-colors duration-fast ease-out disabled:opacity-40 ${
                       isActive
-                        ? "bg-slate-900 text-white"
+                        ? "bg-accent text-accent-ink"
                         : isEmpty
-                          ? "bg-slate-50 text-slate-400 hover:bg-slate-100"
-                          : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                          ? "bg-paper-2 text-ink-4 hover:bg-paper-2"
+                          : "bg-paper-2 text-ink-2 hover:bg-paper-3"
                     }`}
                   >
                     {PLACE_TYPE_LABELS[type]}
                     {count !== undefined && (
                       <span
-                        className={`text-[10px] font-bold ${
-                          isActive ? "text-slate-300" : "text-slate-400"
+                        className={`text-2xs font-bold ${
+                          isActive ? "text-ink-4" : "text-ink-4"
                         }`}
                       >
                         {count}
@@ -5445,8 +5523,8 @@ export default function FilterPanel({
       {/* Filtre ve siralama */}
       <div className="p-4 space-y-3">
         <div className="flex items-center gap-2">
-          <SlidersHorizontal size={14} className="text-slate-400" />
-          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+          <SlidersHorizontal size={14} className="text-ink-4" />
+          <span className="mono-label">
             Filtre & Sıralama
           </span>
         </div>
@@ -5458,7 +5536,7 @@ export default function FilterPanel({
             value={filters.sort}
             disabled={disabled}
             onChange={(event) => patch({ sort: event.target.value as SortKey })}
-            className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white disabled:opacity-40"
+            className="w-full px-3 py-2 text-sm border border-rule rounded-input bg-paper disabled:opacity-40"
           >
             {(Object.entries(SORT_LABELS) as [SortKey, string][]).map(
               ([key, label]) => (
@@ -5477,7 +5555,7 @@ export default function FilterPanel({
           disabled={disabled}
           onChange={(event) => patch({ q: event.target.value })}
           placeholder="İsimde ara..."
-          className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg disabled:opacity-40"
+          className="w-full px-3 py-2 text-sm border border-rule rounded-input disabled:opacity-40"
         />
 
         <div className="space-y-1.5">
@@ -5490,14 +5568,14 @@ export default function FilterPanel({
           ).map(([key, label]) => (
             <label
               key={key}
-              className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer"
+              className="flex items-center gap-2 text-xs text-ink-2 cursor-pointer"
             >
               <input
                 type="checkbox"
                 checked={filters[key]}
                 disabled={disabled}
                 onChange={(event) => patch({ [key]: event.target.checked })}
-                className="rounded border-slate-300"
+                className="rounded border-rule-2"
               />
               {label}
             </label>
@@ -5505,7 +5583,7 @@ export default function FilterPanel({
         </div>
 
         <label className="block">
-          <span className="text-xs text-slate-600">
+          <span className="text-xs text-ink-2">
             En az güven skoru: {filters.minConfidence}
           </span>
           <input
@@ -5971,6 +6049,27 @@ git commit -m "feat: ilce proxy route'u ve yerel arama hook'u"
 
 ## Task 14: `DistrictLayer` ve `MapView` — `onBoundsChange`'i kaldır
 
+> **Tasarım sistemi — bu task için zorunlu.** Aşağıdaki kod bloklarındaki
+> sınıflar tasarım sistemi token'larına çevrilmiştir (`bg-accent`,
+> `text-ink-*`, `rounded-input`, `mono-label`, `surface`, `rule-b`,
+> `duration-fast ease-out`). **Yazmaya başlamadan önce `design.md` ve
+> `src/components/Filters.tsx`'i oku.** Filters.tsx bu projede chip
+> deseninin referansı: `pressable group ... rounded-input`, aktif
+> `bg-accent text-accent-ink`, pasif `text-ink-2 hover:bg-paper-2
+> hover:text-ink`, ikon aktif `text-accent-ink` / pasif `text-ink-4
+> group-hover:text-ink-3`.
+>
+> Üç kural: **(1)** ham renk/font değeri yazma (`bg-slate-*`, `text-gray-*`
+> yasak). **(2)** Özel focus ring ekleme — `globals.css` içindeki global
+> `:focus-visible` bunu hallediyor. **(3)** Gölge ekleme; sistem
+> "derinlik kenardan" diyor, yüzeyler `surface` veya `rule-*` ile
+> tanımlanıyor. Yalnızca haritanın üstünde yüzen katman `shadow-lift`
+> kullanıyor.
+>
+> Sayı gösteren her yerde `tabular` sınıfını kullan (mono + tabular-nums)
+> — sayılar alt alta hizalanmalı.
+
+
 **Neden:** Maliyetin kaynağı `MapView.tsx:54`'teki `moveend` dinleyicisi. Kaldırılıyor. Yerine tıklanabilir ilçe poligonları geliyor; tür çoklu seçim olduğu için marker renkleri de türe göre ayrılıyor.
 
 **Files:**
@@ -6364,7 +6463,7 @@ export default function MapView({
   );
 
   return (
-    <div className="w-full h-full relative rounded-2xl overflow-hidden shadow-inner bg-slate-100">
+    <div className="w-full h-full relative rounded-card overflow-hidden bg-paper-2">
       <MapContainer
         center={SCOPE_CENTER}
         zoom={SCOPE_ZOOM}
@@ -6402,11 +6501,11 @@ export default function MapView({
             >
               <Popup>
                 <div className="p-1 min-w-[180px]">
-                  <h3 className="font-bold text-slate-900">
+                  <h3 className="font-bold text-ink">
                     {place.name ?? "İsimsiz Yer"}
                   </h3>
                   {place.address && (
-                    <p className="text-xs text-slate-500 mt-1">{place.address}</p>
+                    <p className="text-xs text-ink-3 mt-1">{place.address}</p>
                   )}
                   {place.phone && (
                     <a
@@ -6416,7 +6515,7 @@ export default function MapView({
                       {place.phone}
                     </a>
                   )}
-                  <div className="mt-2 text-[10px] uppercase tracking-wider font-semibold text-slate-400">
+                  <div className="mt-2 text-2xs uppercase tracking-wider font-semibold text-ink-4">
                     {place.type ? PLACE_TYPE_LABELS[place.type] : "Sınıflandırılamadı"}
                   </div>
                 </div>
@@ -6430,15 +6529,15 @@ export default function MapView({
 
       {/* Tur lejantı: coklu secimde marker'lari ayirt etmek icin */}
       {visibleTypes.length > 0 && (
-        <div className="absolute bottom-3 left-3 z-[400] bg-white/95 backdrop-blur-sm rounded-lg shadow-md border border-slate-200 px-3 py-2 max-w-[220px]">
-          <div className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">
+        <div className="absolute bottom-3 left-3 z-[400] bg-paper/95 backdrop-blur-sm rounded-input shadow-lift rule-b px-3 py-2 max-w-[220px]">
+          <div className="mono-label mb-1.5">
             Tür
           </div>
           <div className="flex flex-col gap-1">
             {visibleTypes.map((type) => (
-              <div key={type} className="flex items-center gap-1.5 text-[11px] text-slate-600">
+              <div key={type} className="flex items-center gap-1.5 text-2xs text-ink-2">
                 <span
-                  className="w-2.5 h-2.5 rounded-full shrink-0"
+                  className="w-2.5 h-2.5 rounded-chip shrink-0"
                   style={{ backgroundColor: TYPE_COLORS[type] }}
                 />
                 {PLACE_TYPE_LABELS[type]}
@@ -6450,7 +6549,7 @@ export default function MapView({
 
       {/* Kapsam bilgisi: kapsam disinda sorgu atilmadigi acik olsun */}
       {!selectedDistrictId && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[400] bg-white/95 backdrop-blur-sm rounded-full shadow-md border border-slate-200 px-4 py-1.5 text-xs font-semibold text-slate-600">
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[400] bg-paper/95 backdrop-blur-sm rounded-chip shadow-lift px-4 py-1.5 text-xs font-semibold text-ink-2">
           Bir ilçe seçin · Kapsam: {scopeNames} il, {districts.length} ilçe
         </div>
       )}
@@ -6477,6 +6576,27 @@ git commit -m "feat: tiklanabilir ilce katmani ekle, viewport tabanli aramayi ka
 ---
 
 ## Task 15: `page.tsx` — parçaları birleştir
+
+> **Tasarım sistemi — bu task için zorunlu.** Aşağıdaki kod bloklarındaki
+> sınıflar tasarım sistemi token'larına çevrilmiştir (`bg-accent`,
+> `text-ink-*`, `rounded-input`, `mono-label`, `surface`, `rule-b`,
+> `duration-fast ease-out`). **Yazmaya başlamadan önce `design.md` ve
+> `src/components/Filters.tsx`'i oku.** Filters.tsx bu projede chip
+> deseninin referansı: `pressable group ... rounded-input`, aktif
+> `bg-accent text-accent-ink`, pasif `text-ink-2 hover:bg-paper-2
+> hover:text-ink`, ikon aktif `text-accent-ink` / pasif `text-ink-4
+> group-hover:text-ink-3`.
+>
+> Üç kural: **(1)** ham renk/font değeri yazma (`bg-slate-*`, `text-gray-*`
+> yasak). **(2)** Özel focus ring ekleme — `globals.css` içindeki global
+> `:focus-visible` bunu hallediyor. **(3)** Gölge ekleme; sistem
+> "derinlik kenardan" diyor, yüzeyler `surface` veya `rule-*` ile
+> tanımlanıyor. Yalnızca haritanın üstünde yüzen katman `shadow-lift`
+> kullanıyor.
+>
+> Sayı gösteren her yerde `tabular` sınıfını kullan (mono + tabular-nums)
+> — sayılar alt alta hizalanmalı.
+
 
 **Neden:** `page.tsx` şu an 355 satır ve viewport arama mantığını taşıyor. Arama `useDistrictPlaces`'e, seçim `DistrictPicker`'a, filtreler `FilterPanel`'e taşındı; burada kalan iş bunları bağlamak.
 
@@ -6521,7 +6641,7 @@ import {
 
 const MapView = dynamic(() => import("../components/MapView"), {
   ssr: false,
-  loading: () => <div className="w-full h-full bg-slate-100 animate-pulse rounded-2xl" />,
+  loading: () => <div className="w-full h-full bg-paper-2 animate-pulse rounded-card" />,
 });
 
 const IS_LOCAL = process.env.NEXT_PUBLIC_LOCAL_MODE === "true";
@@ -6707,15 +6827,15 @@ export default function Home() {
   const needsIngest = Boolean(selectedDistrictId) && ingestInfo === null;
 
   return (
-    <main className="flex flex-col h-screen bg-slate-50 text-slate-900 font-sans">
-      <header className="h-16 px-6 border-b border-slate-200 bg-white flex items-center justify-between shrink-0">
+    <main className="flex flex-col h-screen bg-paper-2 text-ink font-sans">
+      <header className="h-16 px-6 rule-b bg-paper flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
-            <Search size={18} className="text-white" />
+          <div className="w-8 h-8 bg-ink rounded-input flex items-center justify-center">
+            <Search size={18} className="text-accent-ink" />
           </div>
           <h1 className="font-bold text-xl tracking-tight">POI Finder</h1>
           {selectedDistrict && (
-            <span className="ml-2 text-sm font-semibold text-slate-500">
+            <span className="ml-2 text-sm font-semibold text-ink-3">
               {selectedDistrict.name}
             </span>
           )}
@@ -6725,13 +6845,13 @@ export default function Home() {
             <button
               type="button"
               onClick={() => setSettingsOpen(true)}
-              className="flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-900 border border-slate-200 rounded-full px-3 py-1.5 transition-colors"
+              className="flex items-center gap-2 text-xs font-bold text-ink-3 hover:text-ink border border-rule rounded-chip px-3 py-1.5 transition-colors duration-fast ease-out"
             >
               <KeyRound size={14} />
               API Anahtarı
             </button>
           )}
-          <div className="text-xs text-slate-400 font-medium bg-slate-100 px-3 py-1.5 rounded-full uppercase tracking-widest">
+          <div className="mono-label bg-paper-2 px-3 py-1.5 rounded-chip uppercase tracking-widest">
             {IS_LOCAL ? "Yerel" : "v2.0 Beta"}
           </div>
         </div>
@@ -6748,7 +6868,7 @@ export default function Home() {
 
       {/* Veri yok veya bayat: otomatik cekim YOK, karar kullanicida */}
       {(needsIngest || ingestInfo?.stale) && (
-        <div className="px-6 py-2 bg-slate-100 border-b border-slate-200 text-xs font-semibold text-slate-600 flex items-center justify-between">
+        <div className="px-6 py-2 bg-paper-2 rule-b text-xs font-semibold text-ink-2 flex items-center justify-between">
           <span>
             {needsIngest
               ? `${selectedDistrict?.name} için henüz veri çekilmemiş.`
@@ -6758,7 +6878,7 @@ export default function Home() {
             type="button"
             onClick={() => handleIngest(!needsIngest)}
             disabled={ingesting}
-            className="flex items-center gap-1.5 text-slate-900 hover:underline disabled:opacity-50"
+            className="flex items-center gap-1.5 text-ink hover:underline disabled:opacity-50"
           >
             <RefreshCw size={12} className={ingesting ? "animate-spin" : ""} />
             {needsIngest ? "Veriyi çek" : "Yenile"}
@@ -6767,7 +6887,7 @@ export default function Home() {
       )}
 
       <div className="flex flex-1 overflow-hidden p-4 gap-4">
-        <div className="w-80 flex flex-col bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden shrink-0">
+        <div className="w-80 flex flex-col surface overflow-hidden shrink-0">
           <div className="overflow-y-auto shrink-0">
             <DistrictPicker
               districts={districts}
@@ -6793,7 +6913,7 @@ export default function Home() {
             onReport={setReportTarget}
           />
 
-          <div className="p-4 bg-slate-50 border-t border-slate-200 text-[10px] text-slate-400 font-medium flex justify-between">
+          <div className="p-4 bg-paper-2 rule-t text-2xs text-ink-4 font-medium flex justify-between">
             <span>
               {selectedDistrictId
                 ? `${places.length} / ${total} sonuç`
@@ -6816,7 +6936,7 @@ export default function Home() {
             }
             isExporting={exporting}
           />
-          <div className="flex-1 overflow-hidden bg-white rounded-2xl shadow-sm border border-slate-200 p-1">
+          <div className="flex-1 overflow-hidden surface p-1">
             <MapView
               places={places}
               districts={districts}

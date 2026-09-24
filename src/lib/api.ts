@@ -72,6 +72,11 @@ export interface SearchMeta {
   viewportRadius: number;
   /** true ise harita sinirdan genis; kenarlardaki yerler sonuca girmedi. */
   radiusClamped: boolean;
+  /**
+   * Gercekte taranan dikdortgen (minLon,minLat,maxLon,maxLat).
+   * Arama artik daire degil viewport dikdortgeni uzerinden yapiliyor.
+   */
+  bboxUsed?: string;
 }
 
 export interface SearchResult {
@@ -127,17 +132,26 @@ export interface AccountInfo {
   plan: "free" | "pro" | "enterprise" | string;
   daily_limit: number;
   used_today: number;
+  /**
+   * "personal": kullanicinin Ayarlar'a girdigi kendi anahtari.
+   * "server": kimse anahtar girmediginde devreye giren paylasilan
+   * sunucu anahtari (SEARCH_API_KEY).
+   */
+  scope: "personal" | "server";
 }
 
 /**
- * Kullanicinin anahtarinin plan/kota durumu.
- * Anahtar yoksa veya gecersizse null doner; cagiran taraf bunu
- * "durum bilinmiyor" olarak ele almali, hata olarak degil.
+ * Bu oturumda gecerli olan plan/kota durumu.
+ *
+ * Onceden localStorage'da anahtar yoksa istek hic atilmadan null
+ * donuyordu. Bu yanlisti: uygulama anahtarsizken de sunucunun anahtariyla
+ * calisiyor, yani bir plani ve kotasi var. null donmek arayuze "hesap yok"
+ * dedirtiyor, indirme butonu da bu yuzden kapali kaliyordu.
+ *
+ * Artik uc her durumda soruluyor. null yalnizca gercekten durum
+ * okunamadigini gosterir (backend erisilemez ya da sunucu anahtari da yok).
  */
 export async function fetchAccount(): Promise<AccountInfo | null> {
-  if (typeof window !== "undefined" && !localStorage.getItem("api_key")) {
-    return null;
-  }
   try {
     const response = await fetchWithAuth("/api/me");
     return await response.json();

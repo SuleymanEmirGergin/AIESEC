@@ -31,6 +31,22 @@ Aynı zoom seviyesinde kuzey-güney panlandığında haversine enlemle değişti
 `radius` birkaç metre kayıyor, anahtar değişiyor, 12–24 saatlik TTL işlevsiz
 kalıyor. Her pan = 1 kota birimi + 1–2 Overpass sorgusu.
 
+### Bu teşhisin bir kısmı sonradan giderildi
+
+Bu spec yazıldıktan sonra `190a158 perf(search): onbellek anahtarini izgaraya
+oturt` indi: Next tarafı önbellek anahtarı artık backend'le aynı 0.01°
+ızgaraya oturtulmuş kutudan üretiliyor, aynı hücreye düşen panlar önbelleği
+paylaşıyor. Commit'in doğrulaması: *pan 1 MISS, pan 2 HIT, pan 3 HIT*.
+
+Yani "önbellek hiç isabet etmiyor" artık doğru değil ve bu tasarımın
+gerekçesi daralıyor — ama **ortadan kalkmıyor**, iki sebeple:
+
+1. Izgara isabet oranını iyileştiriyor; ilçe mimarisi sorguyu **sıfırlıyor**.
+   Izgarada yeni bir hücreye her geçiş hâlâ bir Overpass turu; ilçede
+   ingest'ten sonra hiç tur yok.
+2. Izgara "bir ilçedeki bütün fabrika, okul, anaokulu vs." isteğini hiç
+   karşılamıyor — o istek tür başına değil ilçe başına veri gerektiriyor.
+
 ## Çözümün ekseni
 
 Anahtar uzayını *sürekli* (sınırsız bbox × yarıçap) olmaktan çıkarıp *ayrık* ve
@@ -66,6 +82,12 @@ Bu illerin dışında hiçbir koşulda Overpass sorgusu atılmaz.
 İlçe kimliği: `tr-{plaka}-{slug}` — `tr-34-kadikoy`, `tr-22-kesan`,
 `tr-44-battalgazi`. Sayılar `fetch_districts.py` tarafından OSM'den doğrulanır;
 uyuşmazlık olursa script hata verir (sessizce eksik veri üretmez).
+
+Merkez ilçeler OSM'de bileşik adla geçiyor ("Edirne Merkez"), o yüzden
+kimlikleri `tr-22-edirne-merkez` ve `tr-39-kirklareli-merkez`. Bu tasarım
+başta "ad `Merkez` ise il slug'ı kullan" diyordu; gerçek veri o kuralı hiç
+tetiklemedi ve üretilen kimlikler daha bilgilendirici çıktı (merkez ilçeyi
+ilin kendisinden ayırt ediyor). Gerçek veri esas alındı.
 
 ## Ön koşul: taksonomi 10 türe çıkıyor
 
@@ -160,9 +182,15 @@ Overpass'e ilçe bbox'ı + tampon ile gidilir; dönen sonuçlar ilçe poligonunu
 2 km tamponlanmış haline göre filtrelenir. Sınırın 500 m dışındaki fabrika
 geçerli lead olarak kalır.
 
-Tampon anizotropik ölçek hilesiyle: `lon`'u `1/cos(lat)` ile ölçekle →
+Tampon anizotropik ölçek hilesiyle: `lon`'u **`cos(lat)`** ile ölçekle →
 `2000/111320` derece `buffer()` → geri ölçekle. Türkiye enlemlerinde
 (36–42°, `cos` 0.74–0.81) hata %1'in altında.
+
+Ölçek yönü kritik ve bu tasarım başta **ters** yazmıştı (`1/cos(lat)`).
+41°N'de ölçüm: doğru formül tam 2000 m verir, ters formül 1139 m, hiç
+düzeltme yapmamak 1509 m — yani ters ölçekleme düzeltmesizden de kötü.
+Düzeltilmemiş tampon doğu-batı yönünde gerektiğinden **dar** kalır (geniş
+değil): sınıra yakın, kapsanması gereken kayıtlar dışarıda sayılır.
 
 `DISTRICT_BUFFER_M=2000` env değişkeni. Tamponlanmış geometri ilçe başına
 bellekte memoize edilir.
@@ -434,7 +462,7 @@ kendi başına doğrulanabiliyor:
 
 | # | Aşama | Bitince neyi doğrulayabiliriz |
 |---|---|---|
-| 1 | Taksonomi düzeltmesi (10 tür, `classify.py` ulaşılamayan dal) | `test_classify_university.py` yeşil; ingest doğru tür atayabilir |
+| 1 | ✅ **TAMAMLANDI** (`290d098`) — taksonomi düzeltmesi (10 tür) | `test_university_taxonomy.py` yeşil; ingest doğru tür atayabilir |
 | 2 | `fetch_districts.py` + `districts.geojson` + `app/districts.py` | 80 ilçe geldi mi, nokta→ilçe testi doğru mu |
 | 3 | Tablolar + `app/store.py` + `app/ingest.py` | Tek ilçe CLI ile çekilebiliyor, idempotent |
 | 4 | `app/queries.py` + `app/routers/districts.py` | Filtreler curl ile doğrulanabiliyor, Overpass'e gidilmiyor |

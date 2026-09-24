@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { adminApi } from "@/lib/adminApi";
 import type { AdminReport, ReportStatus } from "@/lib/types";
 import { PLACE_TYPE_LABELS } from "@/lib/labels";
-import { X, ExternalLink, MapPin, CheckCircle, Slash, MessageSquare, Tag, Plus, PlusCircle } from "lucide-react";
+import { X, ExternalLink, Plus, AlertCircle } from "lucide-react";
 
 interface AdminReportDetailProps {
   report: AdminReport;
@@ -13,184 +13,265 @@ interface AdminReportDetailProps {
   onCreateOverride?: (placeId: string, correctedType: any) => void;
 }
 
-export default function AdminReportDetail({ report, onClose, onUpdate, onCreateOverride }: AdminReportDetailProps) {
+const STATUS_OPTIONS: { value: ReportStatus; label: string }[] = [
+  { value: "open", label: "Açık" },
+  { value: "resolved", label: "Çözüldü" },
+  { value: "ignored", label: "Yoksay" },
+];
+
+/**
+ * Rapor detayi saga acilan bir cekmece (drawer).
+ *
+ * Ortadaki ModalShell yerine kendi kabugunu tasiyor: bu panel bir karar
+ * formu ve arkasindaki tablo baglami acikken gorunur kalmali. Escape ve
+ * kaydirma kilidi yine de gerekli - onceden ikisi de yoktu.
+ */
+export default function AdminReportDetail({
+  report,
+  onClose,
+  onUpdate,
+  onCreateOverride,
+}: AdminReportDetailProps) {
   const [status, setStatus] = useState<ReportStatus>(report.status);
   const [adminNotes, setAdminNotes] = useState(report.admin_notes || "");
-  const [tags, setTags] = useState(report.tags || []);
+  const [tags, setTags] = useState<string[]>(report.tags || []);
   const [newTag, setNewTag] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [onClose]);
 
   const handleSave = async () => {
     setIsSaving(true);
+    setError(null);
     try {
-      await adminApi.updateReport(report.id, {
-        status,
-        admin_notes: adminNotes,
-        tags,
-      });
+      await adminApi.updateReport(report.id, { status, admin_notes: adminNotes, tags });
       onUpdate();
       onClose();
-    } catch (error) {
-      alert("Hata: " + (error instanceof Error ? error.message : "Rapor güncellenemedi"));
+    } catch (err) {
+      // alert() yerine satir ici hata: tarayici diyalogu formun disinda
+      // duruyor ve kullaniciyi girdiginin baglamindan koparıyordu.
+      setError(err instanceof Error ? err.message : "Rapor güncellenemedi.");
     } finally {
       setIsSaving(false);
     }
   };
 
   const addTag = () => {
-    if (newTag && !tags.includes(newTag)) {
-      setTags([...tags, newTag]);
+    const value = newTag.trim();
+    if (value && !tags.includes(value)) {
+      setTags([...tags, value]);
       setNewTag("");
     }
   };
 
-  const openInOSM = () => {
-    window.open(`https://www.openstreetmap.org/?mlat=${report.coordinates.lat}&mlon=${report.coordinates.lng}#map=18/${report.coordinates.lat}/${report.coordinates.lng}`, "_blank");
-  };
+  const osmUrl = `https://www.openstreetmap.org/?mlat=${report.coordinates.lat}&mlon=${report.coordinates.lng}#map=18/${report.coordinates.lat}/${report.coordinates.lng}`;
+
+  const fieldClass =
+    "w-full rounded-input border border-rule-2 bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-4 transition-colors duration-fast ease-out hover:border-ink-4 focus:border-accent";
 
   return (
     <div className="fixed inset-0 z-[100] flex justify-end">
-      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in" onClick={onClose} />
-      
-      <div className="relative w-full max-w-xl h-full bg-white dark:bg-slate-900 shadow-2xl animate-in slide-in-from-right flex flex-col">
-        {/* Header */}
-        <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-heading font-bold text-slate-900 dark:text-white">Rapor Detayı</h2>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{report.id}</p>
+      <div
+        aria-hidden="true"
+        onClick={onClose}
+        className="absolute inset-0 bg-scrim backdrop-blur-[2px]"
+      />
+
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Rapor detayı"
+        className="relative flex h-full w-full max-w-xl flex-col border-l border-rule-2 bg-paper shadow-modal"
+      >
+        <div className="flex items-start gap-4 rule-b px-5 py-4">
+          <div className="min-w-0">
+            <p className="mono-label mb-1">Rapor · {report.id}</p>
+            <h2 className="font-display text-lg font-semibold text-ink leading-tight break-words">
+              {report.placeName || "İsimsiz"}
+            </h2>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
-            <X className="w-5 h-5 text-slate-400" />
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Kapat"
+            className="ml-auto shrink-0 rounded-input p-1.5 text-ink-4 hover:bg-paper-2 hover:text-ink transition-colors duration-fast ease-out"
+          >
+            <X size={16} />
           </button>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
-          {/* Info Section */}
-          <section className="space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                <MapPin className="w-5 h-5 text-primary" />
-              </div>
-              <div>
-                <h3 className="text-lg font-heading font-bold dark:text-white">{report.placeName}</h3>
-                <button 
-                  onClick={openInOSM}
-                  className="text-xs text-primary hover:underline flex items-center gap-1 font-bold"
+        <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
+          <dl className="rounded-input border border-rule divide-y divide-rule">
+            <div className="flex items-baseline gap-3 px-3 py-2.5">
+              <dt className="mono-label w-24 shrink-0">Sistemdeki</dt>
+              <dd className="text-sm text-ink">
+                {PLACE_TYPE_LABELS[report.currentType] ?? report.currentType}
+              </dd>
+            </div>
+            <div className="flex items-baseline gap-3 px-3 py-2.5">
+              <dt className="mono-label w-24 shrink-0">Önerilen</dt>
+              <dd className="text-sm font-medium text-accent">
+                {PLACE_TYPE_LABELS[report.correctedType] ?? report.correctedType}
+              </dd>
+            </div>
+            <div className="flex items-baseline gap-3 px-3 py-2.5">
+              <dt className="mono-label w-24 shrink-0">Konum</dt>
+              <dd className="tabular text-sm text-ink">
+                {report.coordinates.lat.toFixed(5)}, {report.coordinates.lng.toFixed(5)}
+              </dd>
+            </div>
+          </dl>
+
+          <a
+            href={osmUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-accent underline decoration-accent-edge underline-offset-4 transition-colors duration-fast ease-out hover:decoration-accent"
+          >
+            OpenStreetMap&apos;te aç <ExternalLink size={12} />
+          </a>
+
+          {report.notes && (
+            <blockquote className="rounded-input border-l-2 border-rule-2 bg-paper-2 px-3 py-2.5 text-xs leading-relaxed text-ink-2">
+              {report.notes}
+            </blockquote>
+          )}
+
+          <fieldset className="space-y-2">
+            <legend className="mb-2 text-xs font-medium text-ink">Durum</legend>
+            <div className="flex gap-1.5">
+              {STATUS_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  aria-pressed={status === option.value}
+                  onClick={() => setStatus(option.value)}
+                  className={`flex-1 rounded-input border px-3 py-2 text-xs font-medium transition-colors duration-fast ease-out ${
+                    status === option.value
+                      ? "border-accent bg-accent text-accent-ink"
+                      : "border-rule-2 text-ink-2 hover:bg-paper-2 hover:text-ink"
+                  }`}
                 >
-                  OSM'de Görüntüle <ExternalLink className="w-3 h-3" />
+                  {option.label}
                 </button>
-              </div>
+              ))}
             </div>
+          </fieldset>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50">
-                <p className="text-[10px] text-slate-500 font-bold mb-1 uppercase">Sistemdeki Tip</p>
-                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{PLACE_TYPE_LABELS[report.currentType]}</p>
-              </div>
-              <div className="p-4 rounded-xl bg-primary/5 border border-primary/10">
-                <p className="text-[10px] text-primary font-bold mb-1 uppercase">Önerilen Tip</p>
-                <p className="text-sm font-bold text-primary">{PLACE_TYPE_LABELS[report.correctedType]}</p>
-              </div>
-            </div>
+          <div className="space-y-2">
+            <label htmlFor="admin-notes" className="block text-xs font-medium text-ink">
+              Yönetici notu
+            </label>
+            <textarea
+              id="admin-notes"
+              value={adminNotes}
+              onChange={(e) => setAdminNotes(e.target.value)}
+              rows={4}
+              placeholder="Bu rapor hakkında not"
+              className={`resize-none ${fieldClass}`}
+            />
+          </div>
 
-            {report.notes && (
-              <div className="p-4 rounded-xl border-2 border-slate-100 dark:border-slate-800 italic text-sm text-slate-600 dark:text-slate-400 font-body">
-                "{report.notes}"
-              </div>
-            )}
-          </section>
+          <div className="space-y-2">
+            <label htmlFor="new-tag" className="block text-xs font-medium text-ink">
+              Etiketler
+            </label>
 
-          {/* Action Section */}
-          <section className="space-y-6 pt-6 border-t border-slate-100 dark:border-slate-800">
-            <div>
-              <label className="block text-sm font-heading font-bold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
-                <CheckCircle className="w-4 h-4 text-slate-400" /> Durum
-              </label>
-              <div className="flex gap-2">
-                {(["open", "resolved", "ignored"] as ReportStatus[]).map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => setStatus(s)}
-                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all border-2 ${
-                      status === s 
-                        ? "bg-primary border-primary text-white shadow-lg" 
-                        : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400"
-                    }`}
-                  >
-                    {s === "open" ? "Açık" : s === "resolved" ? "Çözüldü" : "Yoksay"}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-heading font-bold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
-                <MessageSquare className="w-4 h-4 text-slate-400" /> Admin Notları
-              </label>
-              <textarea
-                value={adminNotes}
-                onChange={(e) => setAdminNotes(e.target.value)}
-                placeholder="Bu rapor hakkında not bırakın..."
-                className="w-full h-32 p-4 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm font-body outline-none focus:ring-2 focus:ring-primary/20 transition-all dark:text-white"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-heading font-bold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
-                <Tag className="w-4 h-4 text-slate-400" /> Etiketler
-              </label>
-              <div className="flex flex-wrap gap-2 mb-3">
+            {tags.length > 0 && (
+              <ul className="flex flex-wrap gap-1.5">
                 {tags.map((tag) => (
-                  <span key={tag} className="flex items-center gap-1 px-2 py-1 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-bold text-slate-600">
+                  <li
+                    key={tag}
+                    className="inline-flex items-center gap-1 rounded-chip border border-rule bg-paper-2 py-1 pl-2 pr-1 text-2xs text-ink-2"
+                  >
                     {tag}
-                    <button onClick={() => setTags(tags.filter(t => t !== tag))} className="hover:text-rose-500">
-                      <X className="w-3 h-3" />
+                    <button
+                      type="button"
+                      onClick={() => setTags(tags.filter((t) => t !== tag))}
+                      aria-label={`${tag} etiketini kaldır`}
+                      className="rounded-chip p-0.5 text-ink-4 hover:text-critical transition-colors duration-fast ease-out"
+                    >
+                      <X size={11} />
                     </button>
-                  </span>
+                  </li>
                 ))}
-              </div>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newTag}
-                  onChange={(e) => setNewTag(e.target.value)}
-                  onKeyPress={(e) => e.key === "Enter" && addTag()}
-                  placeholder="Yeni etiket..."
-                  className="flex-1 bg-slate-50 dark:bg-slate-800 px-4 py-2 rounded-lg text-xs outline-none focus:ring-1 focus:ring-primary/30"
-                />
-                <button onClick={addTag} className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200">
-                  <Plus className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {onCreateOverride && (
-              <button 
-                onClick={() => onCreateOverride(report.placeId, report.correctedType)}
-                className="w-full flex items-center justify-center gap-2 py-4 px-6 rounded-xl bg-primary/10 text-primary font-bold text-sm hover:bg-primary hover:text-white transition-all border-2 border-primary/20 border-dashed"
-              >
-                <PlusCircle className="w-5 h-5" />
-                Bu Rapor İçin Override Oluştur
-              </button>
+              </ul>
             )}
-          </section>
+
+            <div className="flex gap-1.5">
+              <input
+                id="new-tag"
+                type="text"
+                value={newTag}
+                onChange={(e) => setNewTag(e.target.value)}
+                // onKeyPress kullanimdan kalkti; onKeyDown hem daha genis
+                // destekleniyor hem de Enter'in formu gondermesini
+                // engellemek icin dogru yer.
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addTag();
+                  }
+                }}
+                placeholder="Yeni etiket"
+                className={`flex-1 ${fieldClass}`}
+              />
+              <button
+                type="button"
+                onClick={addTag}
+                disabled={!newTag.trim()}
+                aria-label="Etiket ekle"
+                className="btn btn--ghost px-3 py-2.5"
+              >
+                <Plus size={14} />
+              </button>
+            </div>
+          </div>
+
+          {onCreateOverride && (
+            <button
+              type="button"
+              onClick={() => onCreateOverride(report.placeId, report.correctedType)}
+              className="btn btn--ghost w-full px-4 py-2.5"
+            >
+              Bu rapordan override oluştur
+            </button>
+          )}
+
+          {error && (
+            <p
+              role="alert"
+              className="flex items-start gap-2 rounded-input border border-rule bg-paper-2 px-3 py-2.5 text-xs text-critical"
+            >
+              <AlertCircle size={14} className="mt-px shrink-0" />
+              <span>{error}</span>
+            </p>
+          )}
         </div>
 
-        {/* Footer */}
-        <div className="p-6 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-800"
-          >
+        <div className="flex gap-2 rule-t bg-paper-2 px-5 py-4">
+          <button type="button" onClick={onClose} className="btn btn--ghost flex-1 px-4 py-2.5">
             Vazgeç
           </button>
           <button
+            type="button"
             onClick={handleSave}
             disabled={isSaving}
-            className="flex-[2] py-3 rounded-xl bg-primary text-white text-sm font-bold shadow-lg hover:shadow-xl transition-all disabled:opacity-50"
+            className="btn btn--primary flex-[2] px-4 py-2.5"
           >
-            {isSaving ? "Kaydediliyor..." : "Raporu Güncelle"}
+            {isSaving ? "Kaydediliyor…" : "Raporu güncelle"}
           </button>
         </div>
       </div>

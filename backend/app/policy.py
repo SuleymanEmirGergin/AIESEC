@@ -2,12 +2,14 @@
 
 from dataclasses import dataclass
 from typing import Literal, Optional
+
 from app.models import RADIUS_PRESETS
 
 
 @dataclass
 class SearchPolicyInput:
     """Input parameters for policy decision."""
+
     type: str
     lat: float
     lon: float
@@ -18,6 +20,7 @@ class SearchPolicyInput:
 @dataclass
 class SearchPolicyDecision:
     """Decision output from the policy engine."""
+
     effective_radius: int
     requested_mode: str
     effective_mode: Literal["around", "bbox"]
@@ -28,7 +31,7 @@ class SearchPolicyDecision:
 def decide_policy(params: SearchPolicyInput) -> SearchPolicyDecision:
     """
     Apply business rules to determine search strategy.
-    
+
     Rules:
     1. Default radius by type if missing/invalid.
     2. Max radius 5000m.
@@ -41,7 +44,7 @@ def decide_policy(params: SearchPolicyInput) -> SearchPolicyDecision:
     eff_radius = params.radius
     if eff_radius is None or eff_radius <= 0:
         eff_radius = RADIUS_PRESETS.get(params.type, 1500)
-    
+
     # Enforce global bounds
     eff_radius = min(5000, max(100, eff_radius))
 
@@ -57,11 +60,21 @@ def decide_policy(params: SearchPolicyInput) -> SearchPolicyDecision:
     else:
         # Default to 'auto' logic
         req_mode = "auto"
+        # Bu liste search_service.py'deki ikiziyle ayni kalmak zorunda.
+        # college_university eklenmediginde tur B2B sayilip 'around'
+        # yerine 'bbox' moduna dusuyordu; varsayilan yaricap 5000 oldugu
+        # icin (>3000 dali once donuyor) su an gorunur bir etkisi yok,
+        # ama iki listenin ayrismasi tam olarak boyle basliyor.
         is_edu = params.type in [
-            "kindergarten", "primary_school", "middle_school",
-            "high_school", "private_school", "college_keyword"
+            "kindergarten",
+            "primary_school",
+            "middle_school",
+            "high_school",
+            "private_school",
+            "college_keyword",
+            "college_university",
         ]
-        
+
         if eff_radius > 3000:
             eff_mode = "bbox"
             reason = "radius"
@@ -74,12 +87,14 @@ def decide_policy(params: SearchPolicyInput) -> SearchPolicyDecision:
 
     # 3. Determine Fallback
     # Fallback to the other mode to maximize reliability
-    fallback_mode: Literal["around", "bbox"] = "bbox" if eff_mode == "around" else "around"
+    fallback_mode: Literal["around", "bbox"] = (
+        "bbox" if eff_mode == "around" else "around"
+    )
 
     return SearchPolicyDecision(
         effective_radius=eff_radius,
         requested_mode=req_mode,
         effective_mode=eff_mode,
         fallback_mode=fallback_mode,
-        reason=reason
+        reason=reason,
     )

@@ -40,6 +40,14 @@ def classify_school_level(tags: dict, name: str) -> Optional[str]:
     if tags.get("amenity") == "kindergarten":
         return "kindergarten"
 
+    # Yuksekogretim de ayri bir amenity tasiyor ve bu kontrol asagidaki
+    # erken cikistan ONCE gelmeli. Onceden universite dali fonksiyonun
+    # ilerisindeydi, ama amenity != "school" kontrolu oraya varmadan
+    # None donduruyordu: dal ulasilamaz koddu ve universiteler hicbir
+    # zaman siniflandirilamiyordu. (craft/workshop hatasinin ayni sekli.)
+    if tags.get("amenity") in ("university", "college"):
+        return "college_university"
+
     # Not a school amenity
     if tags.get("amenity") != "school":
         return None
@@ -84,9 +92,8 @@ def classify_school_level(tags: dict, name: str) -> Optional[str]:
     official_name_lower = tr_fold(tags.get("official_name", ""))
     combined_name = f"{name_lower} {official_name_lower}"
 
-    # Gercek yuksekogretim kurumu: etiketten anlasiliyor.
-    if tags.get("amenity") in ["university", "college"]:
-        return "college_university"
+    # Not: amenity=university|college kontrolu yukari, erken cikistan
+    # once tasindi. Burada tekrarlamak olu kod olurdu.
 
     # Adinda "kolej" gecen okullar. Turkiye'de kolej cogunlukla ozel bir
     # K-12 okulu demek, universite degil; bu yuzden ayri bir tur.
@@ -154,19 +161,88 @@ def classify_b2b_type(tags: dict, element_type: str) -> Optional[str]:
     if craft_tag or industrial_tag == "workshop":
         return "workshop"
 
+    # building=warehouse ve building=office ingest'in b2b ailesinde
+    # cekiliyor (ingest.py SELECTOR_FAMILIES) ama burada karsiligi yoktu;
+    # o kayitlar place_type=NULL ile saklanip filtrelerde gizleniyordu.
+    # Depo bir sanayi/lojistik tesisi oldugu icin fabrika tarafinda.
     if (
         industrial_tag
         or man_made_tag == "works"
-        or building_tag == "industrial"
+        or building_tag in ("industrial", "warehouse")
         or landuse_tag == "industrial"
     ):
         return "factory"
 
     # Office indicators
+    # building=office icin de ayni bosluk vardi; bkz. yukaridaki not.
     office_tag = tags.get("office")
-    if office_tag or building_tag == "commercial":
+    if office_tag or building_tag in ("commercial", "office"):
         return "office"
 
+    return None
+
+
+# Hizmet turleri. Holding disindakiler etiketten okunuyor; holding icin
+# ne OSM'de ne Overture'da kategori var, adiyla taninir (Kolej'deki
+# isim-anahtar kelime kalibi).
+HOTEL_TOURISM = {"hotel", "hostel", "motel", "guest_house", "resort"}
+COMPANY_OFFICE = {"company", "it", "telecommunication", "energy_supplier"}
+TRAVEL_OFFICE = {"travel_agent", "travel_agency"}
+SERVICE_TYPES = frozenset(
+    {
+        "hotel",
+        "company",
+        "holding",
+        "real_estate",
+        "language_school",
+        "travel_agency",
+        # Gezi & eglence: kultur ve doga kurumlari da degisim ortagi.
+        "zoo_aquarium",
+        "theme_park",
+        "museum",
+        "botanical_garden",
+        "nature_park",
+    }
+)
+
+
+def is_holding_name(name: str) -> bool:
+    return "holding" in tr_fold(name or "")
+
+
+def classify_service_type(tags: dict, name: str) -> Optional[str]:
+    """
+    hotel | company | holding | real_estate | language_school |
+    travel_agency | None.
+
+    B2B siniflandirmasindan ONCE cagrilmali: office=estate_agent gibi
+    etiketler aksi halde genel `office` dalina dusuyor.
+    """
+    if is_holding_name(name):
+        return "holding"
+    if tags.get("tourism") in HOTEL_TOURISM:
+        return "hotel"
+    office = tags.get("office")
+    if office == "estate_agent":
+        return "real_estate"
+    if office in TRAVEL_OFFICE or tags.get("shop") == "travel_agency":
+        return "travel_agency"
+    if office in COMPANY_OFFICE:
+        return "company"
+    if tags.get("amenity") == "language_school":
+        return "language_school"
+    tourism = tags.get("tourism")
+    leisure = tags.get("leisure")
+    if tourism in ("zoo", "aquarium"):
+        return "zoo_aquarium"
+    if tourism == "theme_park" or leisure == "water_park":
+        return "theme_park"
+    if tourism == "museum":
+        return "museum"
+    if leisure == "garden" and tags.get("garden:type") == "botanical":
+        return "botanical_garden"
+    if tags.get("boundary") == "national_park" or leisure == "nature_reserve":
+        return "nature_park"
     return None
 
 

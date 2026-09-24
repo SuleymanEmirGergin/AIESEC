@@ -1,0 +1,137 @@
+/* Hallmark · tokens · theme: Cobalt · genre: modern-minimal
+ *
+ * Tek kaynak. Bilesenlerde ham renk/font degeri yazilmaz; her deger
+ * buradan adiyla cagrilir. Paleti degistirmek = bu dosyayi degistirmek.
+ *
+ * Renkler OKLCH: acikliK (L) dogrudan algilanan parlaklikla orantili,
+ * bu yuzden bir rampayi esit araliklarla uretmek ve kontrast hesaplamak
+ * hex'e gore cok daha guvenilir.
+ */
+
+:root {
+  /* ---- Zemin --------------------------------------------------------
+   * Saf beyaz degil: hafif soguk, "muhendislik kagidi" tonu. Saf beyaz
+   * zemin, uzerindeki harita ve tablo yuzeyleriyle ayni degerde kalip
+   * hiyerarsiyi duzlestiriyor.
+   */
+  --color-paper:        oklch(98.5% 0.004 250);
+  --color-paper-2:      oklch(96.6% 0.005 252);
+  --color-paper-3:      oklch(94.0% 0.006 252);
+
+  /* ---- Murekkep ------------------------------------------------------
+   * Saf siyah degil: soguk koyu gri. Saf siyah, soguk zeminde sert bir
+   * kenar birakiyor ve uzun okuma seanslarinda yoruyor.
+   */
+  --color-ink:          oklch(24% 0.020 258);
+  --color-ink-2:        oklch(34% 0.018 257);
+  --color-ink-3:        oklch(52.5% 0.014 256);
+  --color-ink-4:        oklch(62% 0.012 254);
+
+  /* ---- Kural cizgileri ----------------------------------------------
+   * Derinlik golgeden degil hairline'dan geliyor. Harita gibi zaten
+   * yogun bir yuzeyin yaninda golgeli kartlar gurultu yapiyor.
+   */
+  --color-rule:         oklch(90% 0.006 252);
+  --color-rule-2:       oklch(84% 0.008 254);
+
+  /* ---- Tek sinyal ----------------------------------------------------
+   * Elektrik kobalt. Viewport'un %5'inden azinda kullanilir: aktif
+   * filtre, birincil buton, focus ring, kota gostergesi. Genis alan
+   * dolgusu olarak asla.
+   */
+  --color-accent:       oklch(52.5% 0.20 256);
+  --color-accent-hover: oklch(46.5% 0.20 256);
+  --color-accent-ink:   oklch(99% 0.002 250);
+  --color-accent-wash:  oklch(52.5% 0.20 256 / 0.10);
+  --color-accent-edge:  oklch(52.5% 0.20 256 / 0.35);
+  --color-focus:        oklch(52.5% 0.20 256);
+
+  /* ---- Grafit bant ---------------------------------------------------
+   * Sayfa basina tek koyu bolge. Acik -> koyu -> acik ritmi veriyor.
+   */
+  --color-graphite:     oklch(22% 0.016 260);
+  --color-graphite-2:   oklch(28% 0.018 260);
+  --color-graphite-ink: oklch(93% 0.006 252);
+  --color-graphite-ink-2: oklch(70% 0.012 256);
+
+  /* ---- Durum renkleri ------------------------------------------------
+   * Islevsel, dekoratif degil. Yalnizca ikon ve kucuk metinde; hicbiri
+   * yuzey dolgusu olarak kullanilmaz. Tek sinyal kurali dekoratif renge
+   * dairdir, durum bildirimine degil.
+   */
+  --color-positive:     oklch(52.5% 0.13 155);
+  --color-caution:      oklch(54.5% 0.12 75);
+  --color-caution-bg:   oklch(96% 0.03 85);
+  --color-critical:     oklch(54.5% 0.19 22);
+
+  /* Grafit bant uzerindeki uyari. Acik zeminler icin koyultulan
+   * --color-caution burada ters yone gidiyor: koyu zemin uzerinde
+   * koyu bir uyari rengi okunmuyor (olculen oran 3.64, esik 4.5).
+   * Bu token grafit bandin uzerinde 6.39 veriyor. */
+  --color-caution-on-dark: oklch(70% 0.10 75);
+
+  /* Modal arka perdesi. Tailwind v3'te `bg-graphite/50` gibi opaklik
+   * modifikatorleri `var(--...)` ile tanimli renklerde calismiyor -
+   * Tailwind kanal degerlerini bilemedigi icin gecersiz CSS uretiyor.
+   * Bu yuzden perde ayri bir token olarak duruyor. */
+  --color-scrim:        oklch(22% 0.016 260 / 0.55);
+
+  /* ---- Tipografi -----------------------------------------------------
+   * Space Grotesk: hafif mekanik grotesk, siki tracking - baslik.
+   * Inter: uzun okumada notr - govde.
+   * JetBrains Mono: telefon, koordinat, kota, API anahtari. Tabular
+   * rakamlar dikey hizalandigi icin tarama hizini gercekten degistiriyor.
+   */
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-body:    "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono:    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* ---- Aralik (4pt) --------------------------------------------------- */
+  --space-3xs: 0.25rem;
+  --space-2xs: 0.5rem;
+  --space-xs:  0.75rem;
+  --space-sm:  1rem;
+  --space-md:  1.5rem;
+  --space-lg:  2rem;
+  --space-xl:  3rem;
+  --space-2xl: 4.5rem;
+  --space-3xl: 7rem;
+
+  /* ---- Tip olcegi ----------------------------------------------------- */
+  --text-2xs: 0.6875rem;
+  --text-xs:  0.75rem;
+  --text-sm:  0.8125rem;
+  --text-md:  0.9375rem;
+  --text-lg:  1.125rem;
+  --text-xl:  1.375rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.25rem;
+  --text-display: clamp(1.75rem, 3vw + 0.75rem, 2.75rem);
+
+  /* ---- Yaricap -------------------------------------------------------
+   * "Cetvelle cizilmis": ne yumusak hap ne de sifir. 6px kontrol, 10px
+   * yuzey.
+   */
+  --radius-chip:  5px;
+  --radius-input: 6px;
+  --radius-card:  10px;
+
+  /* ---- Hareket -------------------------------------------------------
+   * Tarayici varsayilani `ease` kullanilmiyor; ucu de adlandirilmis.
+   * Ziplama/asma yok - arayuz durumu enerjik degil, kesin olmali.
+   */
+  --ease-out:    cubic-bezier(0.16, 1, 0.30, 1);
+  --ease-in:     cubic-bezier(0.70, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast:  120ms;
+  --dur-short: 220ms;
+  --dur-mid:   400ms;
+
+  /* ---- Cizgi kalinligi ------------------------------------------------ */
+  --rule-hair: 1px;
+
+  /* Golge butcesi: tum sistemde iki deger. Grafit bant ve modal disinda
+   * hicbir yuzey golge tasimaz. */
+  --shadow-lift:  0 1px 2px oklch(24% 0.02 258 / 0.06);
+  --shadow-modal: 0 24px 48px -12px oklch(24% 0.02 258 / 0.28);
+}

@@ -1,9 +1,12 @@
-from fastapi.testclient import TestClient
 from unittest.mock import patch
-from app.main import app
+
+from fastapi.testclient import TestClient
+
 from app.cache import cache
+from app.main import app
 
 client = TestClient(app)
+
 
 def verify():
     cache.clear()
@@ -36,18 +39,19 @@ def verify():
         assert response.status_code == 200
         data = response.json()
         results = data["results"]
-        
+
         assert len(results) == 2
         print(f"Results sorted by distance_m: {[r['name'] for r in results]}")
         assert results[0]["name"] == "Node 2"
         assert results[1]["name"] == "Node 1"
-        
+
         # Check distance_m presence
         assert results[0]["distance_m"] is not None
         assert results[0]["distance_m"] < results[1]["distance_m"]
         print("Distance calculations verified.")
 
     print("Verification successful!")
+
 
 if __name__ == "__main__":
     verify()

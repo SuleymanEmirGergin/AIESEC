@@ -3,6 +3,9 @@ node_modules
 .pnp
 .pnp.js
 
+# Docker imaji kaynak koddan uretilir; Git gecmisi build baglamina gerekmez.
+.git
+
 # Testing
 coverage
 
@@ -38,6 +41,19 @@ next-env.d.ts
 # IDE
 .vscode
 .idea
+
+# Yerel agent/artifact ve izole worktree dosyalari Docker imajina girmemeli.
+.claude
+.claude-flow
+.superpowers
+.worktrees
+agentdb.rvf
+agentdb.rvf.lock
+
+# Yerel agent veritabanlari calisirken kilitli olabilir; frontend imajinda kullanilmaz.
+*.db
+*.db-shm
+*.db-wal
 
 # OS
 Thumbs.db

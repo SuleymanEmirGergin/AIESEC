@@ -13,8 +13,8 @@ import os
 # once ayarlanmali. Testler gercek storage.db'ye dokunmamali.
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_storage.db")
 os.environ.setdefault("ADMIN_API_KEY", "test-admin-key")
-# Aksi halde her test oturumu acilista 20 es zamanli Overpass sorgusu atar.
-os.environ.setdefault("WARMUP_ENABLED", "false")
+# Ingest artik startup'ta calismiyor (app/ingest.py elle tetikleniyor),
+# bu yuzden eski WARMUP_ENABLED bayragina gerek kalmadi.
 
 from datetime import datetime, timezone  # noqa: E402
 
@@ -29,8 +29,21 @@ from app.main import app  # noqa: E402
 
 @pytest.fixture
 def api_key():
-    """Kota ve plan kisitina takilmayan bir test anahtari."""
+    """
+    Kota ve plan kisitina takilmayan bir test anahtari.
+
+    `id` bilerek veriliyor. Uretimde kimligi dogrulanmis her anahtar
+    veritabanindan gelir ve bir id'si vardir; kayitli yerler sahipligi
+    (`saved_places.api_key_id`) bu id uzerinden kuruluyor. Id'siz bir
+    cift, gercekte olmayan bir durumu taklit edip NOT NULL ihlaline
+    dusuyordu.
+
+    Satirin kendisi api_keys tablosuna yazilmiyor: SQLite yabanci anahtar
+    kontrolunu varsayilan olarak uygulamiyor, dolayisiyla ilgili
+    ForeignKey burada belgeleme gorevi goruyor.
+    """
     return APIKey(
+        id=1,
         name="test",
         key_hash="test-hash",
         daily_limit=10_000,

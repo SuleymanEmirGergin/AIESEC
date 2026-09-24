@@ -13,6 +13,11 @@ tenacity==9.1.4
 # Geo distance calculations (app/geo.py)
 geopy==2.5.0
 
+# Ilce poligonlari: MultiPolygon + hole destegi ve prepared geometri ile
+# hizli nokta testi (app/districts.py). El yazimi ray-casting Adalar gibi
+# cok parcali ilcelerde ve delikli poligonlarda gereksiz karmasikti.
+shapely==2.0.6
+
 # Data Validation
 pydantic==2.10.5
 pydantic-settings==2.7.1
@@ -37,3 +42,6 @@ pytest-cov==6.0.0
 
 # Code Quality
 ruff==0.9.1
+
+# Overture Maps places temasini S3 uzerinden sorgulamak icin (indirme yok).
+duckdb==1.5.5

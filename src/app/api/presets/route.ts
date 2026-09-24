@@ -35,6 +35,11 @@ export async function GET() {
       headers: {
         "X-API-KEY": apiKey || "",
       },
+      // Route "force-dynamic" olsa bile Next.js fetch sonucunu kendi
+      // Data Cache'inde tutuyor: backend'e eklenen yeni bir tur arayuze
+      // sunucu yeniden baslatilana kadar hic ulasmiyordu. Ayni kural
+      // diger proxy'lerde de var (server/backend.ts, api/search).
+      cache: "no-store",
     });
 
     if (!response.ok) {

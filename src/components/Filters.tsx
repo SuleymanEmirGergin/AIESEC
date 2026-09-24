@@ -1,55 +1,160 @@
 "use client";
 
 import React from "react";
-import { 
-  Factory, 
-  School, 
-  Baby, 
-  GraduationCap, 
-  Briefcase 
+import {
+  Factory,
+  School,
+  Baby,
+  GraduationCap,
+  Briefcase,
+  Wrench,
+  Hotel,
+  Building2,
+  Landmark,
+  KeyRound,
+  Languages,
+  Plane,
+  PawPrint,
+  FerrisWheel,
+  Palette,
+  Flower2,
+  TreePine,
 } from "lucide-react";
 import type { PlaceType } from "../lib/types";
+import { PLACE_TYPE_LABELS } from "../lib/labels";
 
 interface FiltersProps {
   selectedCategory: PlaceType | null;
   onCategoryChange: (category: PlaceType | null) => void;
 }
 
-const CATEGORIES: { id: PlaceType; label: string; icon: any }[] = [
-  { id: "factory", label: "Fabrika", icon: Factory },
-  { id: "office", label: "Ofis", icon: Briefcase },
-  { id: "workshop", label: "Atölye", icon: Factory },
-  { id: "kindergarten", label: "Anaokulu", icon: Baby },
-  { id: "primary_school", label: "İlkokul", icon: School },
-  { id: "middle_school", label: "Ortaokul", icon: School },
-  { id: "high_school", label: "Lise", icon: GraduationCap },
-  { id: "private_school", label: "Özel Okul", icon: School },
-  { id: "college_keyword", label: "Üniversite", icon: GraduationCap },
+/**
+ * Map / Diagram macrostructure'inda kenar cubugu haritanin *lejanti*.
+ * Kategoriler bu yuzden sayfa basligi gibi degil, bir lejant gibi
+ * davraniyor: kucuk, yogun, tek sutunda taranabilir.
+ *
+ * Onceden dokuz kategori genis "hap" butonlar halinde sariyordu ve 320px
+ * kenar cubugunda dort satir kapliyordu. Iki sutunlu siki bir izgara ayni
+ * bilgiyi yarim yerde veriyor, geri kalani sonuc listesine kaliyor.
+ */
+/**
+ * Etiketler burada tekrar yazilmiyor: PLACE_TYPE_LABELS tek kaynak.
+ * Onceden ayni dokuz Turkce ad hem burada hem lib/labels.ts icinde
+ * duruyordu ve birini duzeltmek digerini sessizce eskitiyordu.
+ * Burada yalnizca siralama ve ikon esleme tutuluyor.
+ */
+const CATEGORY_ICONS: Record<PlaceType, typeof Factory> = {
+  factory: Factory,
+  office: Briefcase,
+  // Onceden atolye de Factory ikonunu kullaniyordu; iki farkli kategori
+  // ayni sembolle gosterilince birbirinden ayirt edilemiyordu.
+  workshop: Wrench,
+  kindergarten: Baby,
+  primary_school: School,
+  middle_school: School,
+  high_school: GraduationCap,
+  private_school: School,
+  // Kolej (ozel K-12) ile universite ayri turler; ikisi de mezuniyet
+  // sembolu tasiyor ama kategori listesinde adlariyla ayrisiyorlar.
+  college_keyword: GraduationCap,
+  college_university: GraduationCap,
+  hotel: Hotel,
+  company: Building2,
+  holding: Landmark,
+  real_estate: KeyRound,
+  language_school: Languages,
+  travel_agency: Plane,
+  zoo_aquarium: PawPrint,
+  theme_park: FerrisWheel,
+  museum: Palette,
+  botanical_garden: Flower2,
+  nature_park: TreePine,
+};
+
+/** Isletmeler once, egitim kurumlari sonra - arama niyetiyle ayni sira. */
+const CATEGORY_ORDER: PlaceType[] = [
+  "factory",
+  "company",
+  "holding",
+  "office",
+  "workshop",
+  "kindergarten",
+  "primary_school",
+  "middle_school",
+  "high_school",
+  "private_school",
+  "college_keyword",
+  "college_university",
+  "language_school",
+  "hotel",
+  "real_estate",
+  "travel_agency",
+  "zoo_aquarium",
+  "theme_park",
+  "museum",
+  "botanical_garden",
+  "nature_park",
 ];
 
 export default function Filters({ selectedCategory, onCategoryChange }: FiltersProps) {
   return (
-    <div className="flex flex-wrap gap-2 p-4 bg-white/50 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-10">
-      {CATEGORIES.map((cat) => {
-        const Icon = cat.icon;
-        const isActive = selectedCategory === cat.id;
-        
-        return (
+    <div className="rule-b bg-paper">
+      <div className="flex items-baseline justify-between px-4 pt-4 pb-2">
+        <h2 className="mono-label">Kategori</h2>
+        {selectedCategory && (
           <button
-            key={cat.id}
-            onClick={() => onCategoryChange(isActive ? null : cat.id)}
-            className={`
-              flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all
-              ${isActive 
-                ? "bg-slate-900 text-white shadow-lg shadow-slate-200 scale-105" 
-                : "bg-white text-slate-600 hover:bg-slate-50 border border-slate-200"}
-            `}
+            type="button"
+            onClick={() => onCategoryChange(null)}
+            className="mono-label hover:text-ink transition-colors duration-fast ease-out"
           >
-            <Icon size={16} />
-            {cat.label}
+            Temizle
           </button>
-        );
-      })}
+        )}
+      </div>
+
+      {/*
+        role="group" + aria-label: ekran okuyucu bunu dokuz bagimsiz buton
+        yerine tek bir kategori secici olarak duyuruyor.
+      */}
+      <div
+        role="group"
+        aria-label="Yer kategorisi seçimi"
+        className="grid grid-cols-2 gap-1 px-3 pb-3"
+      >
+        {CATEGORY_ORDER.map((id) => {
+          const Icon = CATEGORY_ICONS[id];
+          const isActive = selectedCategory === id;
+
+          return (
+            <button
+              key={id}
+              type="button"
+              // aria-pressed: secim durumu gorsel olarak renkle anlatiliyor,
+              // ekran okuyucunun da ayni bilgiye erismesi gerek.
+              aria-pressed={isActive}
+              onClick={() => onCategoryChange(isActive ? null : id)}
+              className={`
+                pressable group flex items-center gap-2 rounded-input px-2.5 py-2 text-left
+                text-xs font-medium
+                transition-colors duration-fast ease-out
+                ${
+                  isActive
+                    ? "bg-accent text-accent-ink"
+                    : "text-ink-2 hover:bg-paper-2 hover:text-ink"
+                }
+              `}
+            >
+              <Icon
+                size={14}
+                className={`shrink-0 ${isActive ? "text-accent-ink" : "text-ink-4 group-hover:text-ink-3"}`}
+              />
+              {/* truncate: "Üniversite" dar sutunda tasabiliyor; buton
+                  metni iki satira sarmamali, dokunma hedefi bolunur. */}
+              <span className="truncate">{PLACE_TYPE_LABELS[id]}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

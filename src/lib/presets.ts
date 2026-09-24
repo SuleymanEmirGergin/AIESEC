@@ -13,6 +13,19 @@ export const DEFAULT_RADIUS_BY_TYPE: Record<PlaceType, number> = {
   high_school: 2000,
   private_school: 5000,
   college_keyword: 5000,
+  // Universiteler seyrek dagiliyor; backend RADIUS_PRESETS ile ayni deger.
+  college_university: 5000,
+  hotel: 3000,
+  company: 3000,
+  holding: 5000,
+  real_estate: 2000,
+  language_school: 2000,
+  travel_agency: 2000,
+  zoo_aquarium: 5000,
+  theme_park: 5000,
+  museum: 3000,
+  botanical_garden: 5000,
+  nature_park: 5000,
 };
 
 /**
