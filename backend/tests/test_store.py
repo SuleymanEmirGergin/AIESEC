@@ -392,3 +392,41 @@ class TestIngestState:
 
     async def test_bilinmeyen_ilce_none(self, db):
         assert await get_ingest_state(db, "tr-99-yok") is None
+
+
+@pytest.mark.asyncio
+class TestTopluYazim:
+    """
+    SQLite tek sorguda en fazla 32766 parametre kabul ediyor. Tek INSERT'le
+    yazilan ~2200+ yer (15 kolon) "too many SQL variables" ile patliyordu;
+    Atasehir'in Overture enrich'i boyle dustu.
+    """
+
+    async def test_cok_sayida_yer_tek_cagride_yazilir(self, db):
+        rows = [
+            place_row_values(
+                {
+                    "type": "node",
+                    "id": 500_000 + i,
+                    "lat": 41.0 + i * 1e-6,
+                    "lon": 29.0,
+                    "tags": {"name": f"Yer {i}", "man_made": "works"},
+                },
+                "factory",
+                60,
+                None,
+            )
+            for i in range(3000)
+        ]
+
+        assert await upsert_places(db, rows) == 3000
+
+        count = len((await db.execute(select(PlaceRow.id))).all())
+        assert count >= 3000
+
+    async def test_cok_sayida_uyelik_tek_cagride_yazilir(self, db):
+        # 3 kolonlu uyelikte sinir ~10900 satir; tekrarli id'ler de gecerli
+        # (ON CONFLICT ayni toplu yazim icindeki tekrarlari isliyor).
+        memberships = [(f"osm:node:{600_000 + i % 4000}", True) for i in range(12_000)]
+
+        assert await replace_memberships(db, "tr-34-atasehir", memberships) == 12_000

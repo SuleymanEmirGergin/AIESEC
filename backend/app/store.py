@@ -15,6 +15,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import DistrictIngest, PlaceDistrict, PlaceRow
 
+# SQLite tek sorguda en fazla 32766 parametre kabul ediyor. Toplu INSERT'ler
+# bu yuzden parcalaniyor: places satiri 15 kolon, 500 satir = 7500 parametre.
+# Parcalamadan once ~2200+ yerlik bir ilce (Atasehir Overture enrich'i)
+# "too many SQL variables" ile dusuyordu.
+ROWS_PER_INSERT = 500
+
+
+def _batches(rows: list) -> list[list]:
+    return [rows[i : i + ROWS_PER_INSERT] for i in range(0, len(rows), ROWS_PER_INSERT)]
+
 # Ulasilabilirlik sinyali sayilan etiketler.
 #
 # OSM'de iletisim iki bicimde yasiyor: duz (`phone`) ve `contact:`
@@ -123,33 +133,34 @@ async def upsert_places(db: AsyncSession, rows: list[dict]) -> int:
     if not rows:
         return 0
 
-    statement = sqlite_insert(PlaceRow).values(rows)
-    excluded = statement.excluded
-    updatable = {
-        column: getattr(excluded, column)
-        for column in (
-            "lat",
-            "lon",
-            "name",
-            "place_type",
-            "subtype",
-            "confidence",
-            "tags_json",
-            "fetched_at",
+    for batch in _batches(rows):
+        statement = sqlite_insert(PlaceRow).values(batch)
+        excluded = statement.excluded
+        updatable = {
+            column: getattr(excluded, column)
+            for column in (
+                "lat",
+                "lon",
+                "name",
+                "place_type",
+                "subtype",
+                "confidence",
+                "tags_json",
+                "fetched_at",
+            )
+        }
+        # Iletisim alanlari: yeni deger bossa eskisi kalir. Overture enrich
+        # OSM'de bos olan telefonu dolduruyor; sonraki tam OSM cekimi ayni
+        # kaydi telefonsuz getirince bu koruma olmadan zenginlestirme
+        # sessizce silinirdi.
+        for column in ("phone", "email", "website", "address"):
+            updatable[column] = func.coalesce(
+                func.nullif(getattr(excluded, column), ""), getattr(PlaceRow, column)
+            )
+        updatable["has_contact"] = or_(excluded.has_contact, PlaceRow.has_contact)
+        await db.execute(
+            statement.on_conflict_do_update(index_elements=["id"], set_=updatable)
         )
-    }
-    # Iletisim alanlari: yeni deger bossa eskisi kalir. Overture enrich
-    # OSM'de bos olan telefonu dolduruyor; sonraki tam OSM cekimi ayni
-    # kaydi telefonsuz getirince bu koruma olmadan zenginlestirme
-    # sessizce silinirdi.
-    for column in ("phone", "email", "website", "address"):
-        updatable[column] = func.coalesce(
-            func.nullif(getattr(excluded, column), ""), getattr(PlaceRow, column)
-        )
-    updatable["has_contact"] = or_(excluded.has_contact, PlaceRow.has_contact)
-    await db.execute(
-        statement.on_conflict_do_update(index_elements=["id"], set_=updatable)
-    )
     await db.commit()
     return len(rows)
 
@@ -184,24 +195,7 @@ async def replace_memberships(
         )
     )
 
-    if memberships:
-        statement = sqlite_insert(PlaceDistrict).values(
-            [
-                {
-                    "place_id": place_id,
-                    "district_id": district_id,
-                    "is_inside": is_inside,
-                }
-                for place_id, is_inside in memberships
-            ]
-        )
-        await db.execute(
-            statement.on_conflict_do_update(
-                index_elements=["place_id", "district_id"],
-                set_={"is_inside": statement.excluded.is_inside},
-            )
-        )
-
+    await _upsert_memberships(db, district_id, memberships)
     await db.commit()
     return len(memberships)
 
@@ -218,22 +212,27 @@ async def add_memberships(
     tamamen dusordu. Iki fonksiyon ayri duruyor cunku iki farkli niyet
     var: "bu kaynagin uyeliklerini bastan yaz" ve "bunlari da ekle".
     """
-    if not memberships:
-        return 0
-
-    statement = sqlite_insert(PlaceDistrict).values(
-        [
-            {"place_id": place_id, "district_id": district_id, "is_inside": is_inside}
-            for place_id, is_inside in memberships
-        ]
-    )
-    await db.execute(
-        statement.on_conflict_do_update(
-            index_elements=["place_id", "district_id"],
-            set_={"is_inside": statement.excluded.is_inside},
-        )
-    )
+    await _upsert_memberships(db, district_id, memberships)
     return len(memberships)
+
+
+async def _upsert_memberships(
+    db: AsyncSession, district_id: str, memberships: list[tuple[str, bool]]
+) -> None:
+    """Uyelikleri parca parca yaz; ayni (place_id, district_id) guncellenir."""
+    for batch in _batches(memberships):
+        statement = sqlite_insert(PlaceDistrict).values(
+            [
+                {"place_id": place_id, "district_id": district_id, "is_inside": is_inside}
+                for place_id, is_inside in batch
+            ]
+        )
+        await db.execute(
+            statement.on_conflict_do_update(
+                index_elements=["place_id", "district_id"],
+                set_={"is_inside": statement.excluded.is_inside},
+            )
+        )
 
 
 async def mark_ingest(
