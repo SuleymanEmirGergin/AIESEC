@@ -25,7 +25,14 @@ logger = logging.getLogger(__name__)
 # Surum sabit tutuluyor: Overture ayda bir yeni surum yayinliyor ve
 # "latest" diye bir yol yok. Yukseltmek bilincli bir karar olmali,
 # cunku kategoriler ve id'ler surumler arasi degisebiliyor.
-OVERTURE_RELEASE = os.getenv("OVERTURE_RELEASE", "2026-07-22.0")
+#
+# DIKKAT: Overture eski surumleri S3'ten siliyor (yalnizca son ~2 surum
+# kaliyor). Silinen surumde her enrich "No files found" ile 500 donuyor;
+# 2026-07-22.0 boyle dustu. Mevcut surumler:
+#   https://overturemaps-us-west-2.s3.amazonaws.com/?list-type=2&prefix=release/&delimiter=/
+# 2026-09-23.0 semayi degistirdi (`categories` sutunu yok), bu kodla calismiyor;
+# 2026-08-19.0 kalkmadan once sorgu yeni semaya uyarlanmali.
+OVERTURE_RELEASE = os.getenv("OVERTURE_RELEASE", "2026-08-19.0")
 OVERTURE_S3 = (
     f"s3://overturemaps-us-west-2/release/{OVERTURE_RELEASE}/theme=places/type=place/*"
 )

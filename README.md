@@ -105,7 +105,7 @@ Backend (`backend/.env`):
 | `OVERPASS_COOLDOWN_BASE` | Başarısız aynanın ilk bank süresi (sn, varsayılan 15). Üst üste hatalarda katlanarak uzar |
 | `OVERPASS_COOLDOWN_MAX` | Bank süresi tavanı (sn, varsayılan 300) |
 | `OVERPASS_PROVEN_FAIL_LIMIT` | Bir kez çalışmış ayna kaç ardışık hataya kadar öncelikli sayılır (varsayılan 3) |
-| `OVERTURE_RELEASE` | Overture sürümü (varsayılan `2026-07-22.0`). Sabit tutulur: "latest" yolu yok ve kategoriler sürümler arası değişebilir |
+| `OVERTURE_RELEASE` | Overture sürümü (varsayılan `2026-08-19.0`). Sabit tutulur: "latest" yolu yok ve kategoriler sürümler arası değişebilir. **Overture eski sürümleri S3'ten siler**; silinen sürümde enrich 500 döner. `2026-09-23.0` şemayı değiştirdi (`categories` yok) ve mevcut sorguyla çalışmaz — `2026-08-19.0` kalkmadan sorgu uyarlanmalı |
 | `REDIS_URL` | Sunucu tarafı önbellek |
 | `DISTRICT_BUFFER_M` | İlçe sınırına eklenen tampon (metre) |
 | `LOCAL_MODE` | `true` ise `X-API-KEY` zorunlu değil, kota işlemez. Üretimde `false` |
