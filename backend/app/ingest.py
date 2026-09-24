@@ -49,6 +49,7 @@ from app.districts import (
     point_membership,
 )
 from app.overpass import OverpassError, overpass_client
+from app.overture_ingest import absorb_overture_duplicates
 from app.search_service import is_valid_unnamed
 from app.store import (
     get_ingest_state,
@@ -389,6 +390,10 @@ async def ingest_district(
             query_count=total_queries,
             status="failed",
         )
+
+    # Overture bu ilceye OSM'den once islendiyse ayni kurumlar orada da
+    # var; yazmadan once OSM kaydina katiliyor, yoksa cift kalirdi.
+    rows, _ = await absorb_overture_duplicates(db, rows, bbox)
 
     await upsert_places(db, rows)
 

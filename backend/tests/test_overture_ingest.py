@@ -17,8 +17,12 @@ import pytest
 from sqlalchemy import text
 
 from app.database import AsyncSessionLocal, init_db
-from app.overture_ingest import _looks_same, ingest_overture_district
-from app.store import replace_memberships, upsert_places
+from app.overture_ingest import (
+    _looks_same,
+    absorb_overture_duplicates,
+    ingest_overture_district,
+)
+from app.store import add_memberships, replace_memberships, upsert_places
 
 DISTRICT = "tr-22-edirne-merkez"
 # Edirne Merkez sinirlari icinde bir nokta.
@@ -36,6 +40,16 @@ class TestIsimEslestirme:
     def test_turkce_katlama(self):
         """tr_fold olmadan 'İ' ile 'i' eslesmezdi."""
         assert _looks_same("İSTİKLAL LİSESİ", "istiklal lisesi")
+
+    def test_turkce_harf_ile_ascii_yazim_eslesir(self):
+        """
+        Kaynaklardan biri Turkce harfsiz yazabiliyor ("Bakirkoy"). Olcumde
+        ilce basina ~10 cift (Hilton Bakırköy, Yalçın Emlak) bu yuzden
+        birlesmiyordu.
+        """
+        assert _looks_same("Hilton Istanbul Bakırköy", "Hilton Istanbul Bakirkoy")
+        assert _looks_same("Yalçın Emlak", "Yalcin Emlak")
+        assert _looks_same("Türk Telekom", "Turk Telekom")
 
     def test_farkli_isim_eslesmez(self):
         assert not _looks_same("Atatürk İlkokulu", "Cumhuriyet İlkokulu")
@@ -245,3 +259,131 @@ class TestZenginlestirme:
 
         assert result.inserted == 0
         assert leaked == 0
+
+
+# OSM ingest'in Overture'la birlesmesi. Enrich OSM'den SONRA calisinca
+# eslestirmeyi o yapiyor; ama OSM bir ilceye Overture'dan SONRA gelirse
+# (kismi cekimi tekrar denemek gibi) ayni kurum iki kez yaziliyordu.
+BBOX = (LAT - 0.01, LON - 0.01, LAT + 0.01, LON + 0.01)
+
+
+def _osm_satiri(pid: str, name: str | None, lat: float = LAT, **kw) -> dict:
+    return {
+        "id": pid,
+        "lat": lat,
+        "lon": LON,
+        "name": name,
+        "place_type": kw.get("place_type", "primary_school"),
+        "subtype": None,
+        "confidence": 70,
+        "has_contact": bool(kw.get("phone")),
+        "phone": kw.get("phone"),
+        "email": None,
+        "website": None,
+        "address": None,
+        "tags_json": "{}",
+    }
+
+
+@pytest.mark.asyncio
+class TestOsmOvertureBirlestirme:
+    async def _overture_kaydi(self, db, oid: str, name: str, **kw):
+        await upsert_places(
+            db,
+            [
+                {
+                    **_osm_satiri(oid, name, place_type=kw.get("place_type", "primary_school")),
+                    "phone": kw.get("phone"),
+                    "website": kw.get("website"),
+                    "has_contact": bool(kw.get("phone") or kw.get("website")),
+                    "source": "overture",
+                }
+            ],
+        )
+        await add_memberships(db, DISTRICT, [(oid, True)])
+        await db.commit()
+
+    async def _say(self, db, sql: str) -> int:
+        return (await db.execute(text(sql))).scalar()
+
+    async def test_eslesen_overture_kaydi_osm_ye_katilir(self):
+        await init_db()
+        async with AsyncSessionLocal() as db:
+            await self._overture_kaydi(
+                db, "overture:bir-1", "Birlesme Ilkokulu",
+                phone="+902841110000", website="https://birlesme.k12.tr",
+            )
+
+            rows, absorbed = await absorb_overture_duplicates(
+                db, [_osm_satiri("osm:node:9991001", "Birlesme İlkokulu")], BBOX
+            )
+
+            kalan = await self._say(db, "SELECT COUNT(*) FROM places WHERE id='overture:bir-1'")
+            uyelik = await self._say(
+                db, "SELECT COUNT(*) FROM place_districts WHERE place_id='overture:bir-1'"
+            )
+
+        assert absorbed == 1
+        assert kalan == 0 and uyelik == 0, "Overture cifti silinmedi"
+        assert rows[0]["phone"] == "+902841110000"
+        assert rows[0]["website"] == "https://birlesme.k12.tr"
+        assert rows[0]["has_contact"] is True
+
+    async def test_osm_deki_dolu_alan_ezilmez(self):
+        await init_db()
+        async with AsyncSessionLocal() as db:
+            await self._overture_kaydi(db, "overture:bir-2", "Ezilmez Lisesi", phone="+902842220000")
+            original = _osm_satiri("osm:node:9991002", "Ezilmez Lisesi", phone="+900000000001")
+
+            rows, _ = await absorb_overture_duplicates(db, [original], BBOX)
+
+        assert rows[0]["phone"] == "+900000000001"
+        assert original["phone"] == "+900000000001", "girdi satiri yerinde degistirildi"
+
+    async def test_farkli_isim_ya_da_uzak_kayit_katilmaz(self):
+        await init_db()
+        async with AsyncSessionLocal() as db:
+            await self._overture_kaydi(db, "overture:bir-3", "Cumhuriyet Ortaokulu")
+
+            _, absorbed = await absorb_overture_duplicates(
+                db,
+                [
+                    _osm_satiri("osm:node:9991003", "Ataturk Ortaokulu"),
+                    # ~330 m kuzeyde, ayni isim
+                    _osm_satiri("osm:node:9991004", "Cumhuriyet Ortaokulu", lat=LAT + 0.003),
+                ],
+                BBOX,
+            )
+            kalan = await self._say(db, "SELECT COUNT(*) FROM places WHERE id='overture:bir-3'")
+            await db.execute(text("DELETE FROM place_districts WHERE place_id='overture:bir-3'"))
+            await db.execute(text("DELETE FROM places WHERE id='overture:bir-3'"))
+            await db.commit()
+
+        assert absorbed == 0
+        assert kalan == 1
+
+    async def test_kayitli_yer_osm_kaydina_yonlendirilir(self):
+        """Arayuz 'kaydedildi' isaretini place_id ile buluyor; silinen id'de kalamaz."""
+        await init_db()
+        async with AsyncSessionLocal() as db:
+            await self._overture_kaydi(db, "overture:bir-5", "Kayitli Anaokulu")
+            await db.execute(
+                text(
+                    "INSERT INTO saved_places (id, api_key_id, place_id, name, lat, lon,"
+                    " tags, contact_status) VALUES ('sp-bir-5', 424242, 'overture:bir-5',"
+                    " 'Kayitli Anaokulu', :lat, :lon, '{}', 'uncontacted')"
+                ),
+                {"lat": LAT, "lon": LON},
+            )
+            await db.commit()
+
+            await absorb_overture_duplicates(
+                db, [_osm_satiri("osm:node:9991005", "Kayitli Anaokulu")], BBOX
+            )
+            pid = (
+                await db.execute(text("SELECT place_id FROM saved_places WHERE id='sp-bir-5'"))
+            ).scalar()
+            await db.execute(text("DELETE FROM saved_places WHERE id='sp-bir-5'"))
+            await db.commit()
+
+        assert pid == "osm:node:9991005"

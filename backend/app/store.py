@@ -9,7 +9,7 @@ hepsi bu tanima bagli.
 import json
 from datetime import datetime, timezone
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -163,6 +163,34 @@ async def upsert_places(db: AsyncSession, rows: list[dict]) -> int:
         )
     await db.commit()
     return len(rows)
+
+
+async def delete_places(db: AsyncSession, ids: list[str]) -> None:
+    """Kayitlari ve ilce uyeliklerini sil (commit cagirana ait)."""
+    for batch in _batches(ids):
+        await db.execute(delete(PlaceDistrict).where(PlaceDistrict.place_id.in_(batch)))
+        await db.execute(delete(PlaceRow).where(PlaceRow.id.in_(batch)))
+
+
+async def repoint_saved_places(db: AsyncSession, id_map: dict[str, str]) -> None:
+    """
+    Kayitli yerlerin place_id'sini eskiden yeniye tasi (commit cagirana ait).
+
+    Arayuz "kaydedildi" isaretini place_id ile buluyor; birlestirmede
+    silinen id'de kalan kayit haritada kaydedilmemis gorunurdu. Ayni
+    anahtar yeni id'yi zaten kaydettiyse (UNIQUE api_key_id+place_id)
+    eski kayit oldugu gibi birakilir: iki notu tek kayda sessizce
+    birlestirmek devir teslimi bozardi.
+    """
+    for old_id, new_id in id_map.items():
+        await db.execute(
+            text(
+                "UPDATE saved_places SET place_id = :new WHERE place_id = :old"
+                " AND NOT EXISTS (SELECT 1 FROM saved_places s2"
+                " WHERE s2.api_key_id = saved_places.api_key_id AND s2.place_id = :new)"
+            ),
+            {"old": old_id, "new": new_id},
+        )
 
 
 async def replace_memberships(

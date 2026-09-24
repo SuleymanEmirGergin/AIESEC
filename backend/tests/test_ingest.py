@@ -516,3 +516,65 @@ class TestIngestDistrict:
     async def test_bilinmeyen_ilce_hata_verir(self, db):
         with pytest.raises(KeyError):
             await ingest_district(db, "tr-99-yok", 2000, force=True)
+
+
+@pytest.mark.asyncio
+class TestIngestOvertureSonrasi:
+    async def test_onceden_gelen_overture_kaydi_osm_ye_katilir(self, db):
+        """
+        Kismi bir ilceyi Overture'dan sonra tekrar cekmek ayni kurumu iki
+        kez yaziyordu: enrich eslestirmeyi yalnizca OSM'den SONRA yapiyor.
+        """
+        from app.districts import get_district
+        from app.store import upsert_places
+
+        district = get_district("tr-34-kadikoy")
+        if district is None:
+            pytest.skip("districts.geojson yok")
+        lat, lon = district.center
+
+        await upsert_places(
+            db,
+            [
+                {
+                    "id": "overture:ing-1",
+                    "lat": lat + 0.0003,
+                    "lon": lon,
+                    "name": "Birlesik Kadikoy Fabrikasi",
+                    "place_type": "factory",
+                    "subtype": "manufacturer",
+                    "confidence": 90,
+                    "has_contact": True,
+                    "phone": "+902165550000",
+                    "email": None,
+                    "website": None,
+                    "address": "Kadikoy",
+                    "tags_json": "{}",
+                    "source": "overture",
+                }
+            ],
+        )
+        elements = [
+            {
+                "type": "node",
+                "id": 9101,
+                "lat": lat,
+                "lon": lon,
+                "tags": {"name": "Birlesik Kadıköy Fabrikası", "man_made": "works"},
+            }
+        ]
+
+        with patch(
+            "app.ingest.overpass_client.query",
+            new=AsyncMock(side_effect=_overpass_stub({1: elements})),
+        ):
+            await ingest_district(db, "tr-34-kadikoy", 2000, force=True)
+
+        ids = set((await db.execute(select(PlaceRow.id))).scalars().all())
+        osm = (
+            await db.execute(select(PlaceRow).where(PlaceRow.id == "osm:node:9101"))
+        ).scalar_one()
+
+        assert "overture:ing-1" not in ids, "ayni kurum iki kez duruyor"
+        assert osm.phone == "+902165550000"
+        assert osm.address is not None

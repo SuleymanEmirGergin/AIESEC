@@ -20,7 +20,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.classify import tr_fold
 from app.districts import expanded_bbox, point_membership
 from app.overture import fetch_places
-from app.store import add_memberships, upsert_places
+from app.store import (
+    add_memberships,
+    delete_places,
+    repoint_saved_places,
+    upsert_places,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +47,14 @@ class OvertureResult:
     skipped_unmapped: int
 
 
+# tr_fold buyuk/kucuk harfi Turkceye gore katliyor ama harfleri koruyor;
+# kaynaklardan biri "Bakirkoy", digeri "Bakırköy" yazinca eslesmiyordu.
+_ASCII = str.maketrans("ıöüşçğâîû", "iouscgaiu")
+
+
 def _norm(name: str | None) -> str:
-    """Isim karsilastirmasi icin normalize et (Turkce katlamayla)."""
-    return tr_fold(name or "").replace(" ", "")
+    """Isim karsilastirmasi icin normalize et (Turkce katlama + ASCII)."""
+    return tr_fold(name or "").replace(" ", "").translate(_ASCII)
 
 
 def _looks_same(a: str | None, b: str | None) -> bool:
@@ -59,6 +69,102 @@ def _looks_same(a: str | None, b: str | None) -> bool:
     if len(na) < 5 or len(nb) < 5:
         return na == nb and bool(na)
     return na == nb or na in nb or nb in na
+
+
+_CONTACT_FIELDS = ("phone", "email", "website", "address")
+
+
+def _cell(lat: float, lon: float) -> tuple[int, int]:
+    return int(lat // MATCH_RADIUS_DEG), int(lon // MATCH_RADIUS_DEG)
+
+
+async def absorb_overture_duplicates(
+    db: AsyncSession,
+    rows: list[dict],
+    bbox: tuple[float, float, float, float],
+) -> tuple[list[dict], int]:
+    """
+    Yazilacak OSM satirlariyla ayni kurumu gosteren Overture kayitlarini
+    OSM'e kat. Donus: (yeni satirlar, katilan Overture kaydi sayisi).
+
+    Enrich OSM'den sonra calisinca eslestirmeyi kendisi yapiyor. Ama OSM
+    bir ilceye Overture'dan SONRA gelirse (kismi cekimi tekrar denemek
+    gibi) ayni kurum iki kez yaziliyordu. Kural enrich'inkiyle ayni: ad +
+    150 m; OSM kaydi kalir, yalnizca BOS iletisim alanlari (ve tur)
+    Overture'dan dolar, Overture kaydi silinir.
+
+    Girdi satirlari degistirilmiyor; birlesen satir yeni bir dict.
+    """
+    south, west, north, east = bbox
+    overture = (
+        await db.execute(
+            text(
+                """
+                SELECT id, name, lat, lon, place_type, phone, email, website, address
+                FROM places
+                WHERE source = 'overture'
+                  AND lat BETWEEN :s AND :n AND lon BETWEEN :w AND :e
+                """
+            ),
+            {"s": south, "n": north, "w": west, "e": east},
+        )
+    ).mappings().all()
+    if not overture:
+        return rows, 0
+
+    # Izgara: her OSM satiri yalnizca komsu 9 hucreye bakiyor. Duz iki
+    # dongu Eyupsultan gibi 7k+ OSM x binlerce Overture'da milyonlarca
+    # karsilastirma demekti.
+    grid: dict[tuple[int, int], list] = {}
+    for o in overture:
+        grid.setdefault(_cell(o["lat"], o["lon"]), []).append(o)
+
+    absorbed: dict[str, str] = {}  # overture id -> osm id
+    merged: list[dict] = []
+    for row in rows:
+        match = None
+        if row.get("name"):
+            ci, cj = _cell(row["lat"], row["lon"])
+            candidates = (
+                o
+                for di in (-1, 0, 1)
+                for dj in (-1, 0, 1)
+                for o in grid.get((ci + di, cj + dj), ())
+            )
+            match = next(
+                (
+                    o
+                    for o in candidates
+                    if o["id"] not in absorbed
+                    and abs(o["lat"] - row["lat"]) <= MATCH_RADIUS_DEG
+                    and abs(o["lon"] - row["lon"]) <= MATCH_RADIUS_DEG
+                    and _looks_same(row["name"], o["name"])
+                ),
+                None,
+            )
+        if match is None:
+            merged.append(row)
+            continue
+
+        absorbed[match["id"]] = row["id"]
+        patch = {k: match[k] for k in _CONTACT_FIELDS if not row.get(k) and match[k]}
+        if not row.get("place_type") and match["place_type"]:
+            patch["place_type"] = match["place_type"]
+        new_row = {**row, **patch}
+        new_row["has_contact"] = bool(
+            new_row.get("has_contact")
+            or new_row.get("phone")
+            or new_row.get("email")
+            or new_row.get("website")
+        )
+        merged.append(new_row)
+
+    if absorbed:
+        await repoint_saved_places(db, absorbed)
+        await delete_places(db, list(absorbed))
+        await db.commit()
+        logger.info("OSM ingest: %s Overture kaydi OSM'e katildi", len(absorbed))
+    return merged, len(absorbed)
 
 
 async def ingest_overture_district(
