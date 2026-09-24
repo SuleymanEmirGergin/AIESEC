@@ -1,19 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-// DIKKAT: Bu listeye `MapContainer` EKLEMEYIN. 4.2.1'in MapContainer'i kurulum
-// muhafizini bayat bir closure degiskeninden okuyor; React 18 StrictMode ref'i
-// ikinci kez baglayinca ayni DOM dugumune ikinci bir harita kurmaya calisip
-// "Map container is already initialized" firlatiyor. Hata React'in hata
-// sinirina kadar cikip sayfa agacini yeniden kurduruyor ve secili kategori
-// sifirlaniyor. Yerine asagidaki StrictModeMapContainer kullanilir -
-// gerekcesi ve upstream (react-leaflet 5.0.0) duzeltmesi o dosyada.
-import { TileLayer, Marker, Popup, useMap } from "react-leaflet";
+// MapContainer >= 5.0.0 olmali: 4.2.1 StrictMode'da ayni dugume ikinci harita
+// kurup "Map container is already initialized" firlatiyordu (kurulum muhafizi
+// bayat closure okuyordu). 5.0.0 muhafizi ref'ten okuyor.
+import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import MarkerClusterGroup from "react-leaflet-cluster";
 import "leaflet/dist/leaflet.css";
 import ContactLinks from "./ContactLinks";
-import { StrictModeMapContainer } from "./StrictModeMapContainer";
 import { createSpringGroup, type SpringGroup } from "../lib/spring";
 import type { Place } from "../lib/types";
 import { PLACE_TYPE_LABELS } from "../lib/labels";
@@ -162,10 +157,7 @@ export default function MapView({
     // Golge yok: derinlik hairline'dan geliyor. Harita zaten yogun bir
     // yuzey; ustune ic golge koymak kenarlari bulaniklastiriyordu.
     <div className="w-full h-full relative overflow-hidden bg-paper-3">
-      {/* react-leaflet'in MapContainer'i yerine kendi sarmalayicimiz:
-          4.2.1'in StrictMode'da ayni dugume ikinci harita kurma hatasi
-          icin bkz. StrictModeMapContainer. */}
-      <StrictModeMapContainer
+      <MapContainer
         center={center}
         zoom={zoom}
         className="w-full h-full z-0"
@@ -235,7 +227,7 @@ export default function MapView({
           places={places} 
           selectedPlaceId={selectedPlaceId}
         />
-      </StrictModeMapContainer>
+      </MapContainer>
     </div>
   );
 }

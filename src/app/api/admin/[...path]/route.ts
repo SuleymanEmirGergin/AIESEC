@@ -18,38 +18,43 @@ function targetUrl(req: NextRequest, path: string[]): string | null {
   return rootUrl(`/admin/${path.join("/")}${search}`);
 }
 
-type Context = { params: { path: string[] } };
+/** Next 15: dinamik segmentler Promise olarak geliyor. */
+type Context = { params: Promise<{ path: string[] }> };
 
 export async function GET(req: NextRequest, { params }: Context) {
+  const { path } = await params;
   return proxyToBackend(req, {
-    url: targetUrl(req, params.path),
+    url: targetUrl(req, path),
     method: "GET",
-    label: `admin/${params.path.join("/")}`,
+    label: `admin/${path.join("/")}`,
   });
 }
 
 export async function POST(req: NextRequest, { params }: Context) {
+  const { path } = await params;
   return proxyToBackend(req, {
-    url: targetUrl(req, params.path),
+    url: targetUrl(req, path),
     method: "POST",
     body: await req.json().catch(() => ({})),
-    label: `admin/${params.path.join("/")}`,
+    label: `admin/${path.join("/")}`,
   });
 }
 
 export async function PATCH(req: NextRequest, { params }: Context) {
+  const { path } = await params;
   return proxyToBackend(req, {
-    url: targetUrl(req, params.path),
+    url: targetUrl(req, path),
     method: "PATCH",
     body: await req.json().catch(() => ({})),
-    label: `admin/${params.path.join("/")}`,
+    label: `admin/${path.join("/")}`,
   });
 }
 
 export async function DELETE(req: NextRequest, { params }: Context) {
+  const { path } = await params;
   return proxyToBackend(req, {
-    url: targetUrl(req, params.path),
+    url: targetUrl(req, path),
     method: "DELETE",
-    label: `admin/${params.path.join("/")}`,
+    label: `admin/${path.join("/")}`,
   });
 }

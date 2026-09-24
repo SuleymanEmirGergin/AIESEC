@@ -19,9 +19,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { path?: string[] } }
+  { params }: { params: Promise<{ path?: string[] }> }
 ) {
-  const segments = params.path ?? [];
+  const segments = (await params).path ?? [];
   const suffix = segments.length ? `/${segments.join("/")}` : "";
   const { key } = resolveApiKey(req);
 

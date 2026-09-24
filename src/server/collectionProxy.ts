@@ -13,12 +13,13 @@ import { apiUrl, proxyToBackend, resolveApiKey } from "./backend";
  * ekip anahtar girmeden ayni listeleri paylasiyor.
  */
 
+/** Next 15: dinamik segmentler Promise olarak geliyor. */
 interface RouteContext {
-  params: { path?: string[] };
+  params: Promise<{ path?: string[] }>;
 }
 
-function suffixOf(context: RouteContext): string {
-  const segments = context.params.path ?? [];
+async function suffixOf(context: RouteContext): Promise<string> {
+  const segments = (await context.params).path ?? [];
   return segments.length ? `/${segments.join("/")}` : "";
 }
 
@@ -43,7 +44,7 @@ export function createCollectionRoutes(basePath: string) {
     const { key } = resolveApiKey(req);
     if (!key) return missingKeyResponse();
 
-    const suffix = suffixOf(context);
+    const suffix = await suffixOf(context);
 
     // Govdesi olan metotlarda gecersiz JSON'u backend'e tasimak yerine
     // burada kesiyoruz; backend'den donen 422 daha az anlasilir olurdu.
