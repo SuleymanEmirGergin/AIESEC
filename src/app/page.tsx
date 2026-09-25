@@ -345,6 +345,7 @@ export default function Home() {
         const types = district ? query.types ?? [] : category ? [category] : [];
         const scope = district ? district.name : "Harita alanı";
         const what = types.length === 1 ? PLACE_TYPE_LABELS[types[0]] : "Kayıtlı yerler";
+        const title = `${scope} · ${what}`;
         const blob = await exportLeads(chosen, {
           type: category ?? chosen[0]?.type ?? "kayitli",
           radius: 0,
@@ -352,9 +353,9 @@ export default function Home() {
             ? { lat: (bbox[1] + bbox[3]) / 2, lon: (bbox[0] + bbox[2]) / 2 }
             : undefined,
           format,
-          title: `${scope} · ${what}`,
+          title,
         });
-        downloadBlob(blob, `leads_${category ?? "kayitli"}`, format);
+        downloadBlob(blob, title, format);
         reloadAccount();
       } catch (err) {
         handleApiError(err);

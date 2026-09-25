@@ -249,11 +249,7 @@ export default function SavedPage() {
         format,
         title: activeListName,
       });
-      downloadBlob(
-        blob,
-        activeListName.replace(/[^\p{L}\p{N}]+/gu, "-").toLowerCase(),
-        format
-      );
+      downloadBlob(blob, activeListName, format);
       fetchAccount().then(setAccount);
     } catch (err: any) {
       setError(err?.message || "Dışa aktarım başarısız oldu.");

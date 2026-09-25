@@ -202,12 +202,30 @@ export async function exportLeads(
   return response.blob();
 }
 
-/** Blob'u tarayicida indirir; uzanti bicimden. Iki sayfada ayni kod vardi. */
-export function downloadBlob(blob: Blob, basename: string, format: ExportFormat): void {
+/**
+ * Dosya adi = PDF/Excel basligi ("Kadıköy liseleri.xlsx"). Eskiden
+ * "leads_kayitli.csv" iniyordu ve indirilenler klasorunde hangi listenin
+ * hangisi oldugu anlasilmiyordu. Turkce harfler korunuyor; yalnizca
+ * dosya sistemlerinin kabul etmedigi karakterler temizleniyor.
+ */
+export function exportFileName(title: string, format: ExportFormat): string {
+  const name = title
+    .replace(/\s*·\s*/g, " - ")
+    .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    // Windows sondaki nokta ve boslugu dosya adinda kabul etmiyor.
+    .replace(/[. ]+$/, "")
+    .slice(0, 100);
+  return `${name || "Kayıtlı yerler"}.${format}`;
+}
+
+/** Blob'u tarayicida basliktan uretilen adla indirir. */
+export function downloadBlob(blob: Blob, title: string, format: ExportFormat): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${basename}.${format}`;
+  link.download = exportFileName(title, format);
   document.body.appendChild(link);
   link.click();
   link.remove();
