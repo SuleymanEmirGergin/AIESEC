@@ -369,7 +369,21 @@ async def ingest_district(
                 if values is not None:
                     rows_by_id[values["id"]] = values
 
-    rows = dedupe_node_way(list(rows_by_id.values()))
+    # Yalnizca ilce + tampon icindekiler yaziliyor. Sorgu bbox'i dikdortgen;
+    # koselerinden gelen kayitlar hicbir ilceye baglanmadan tabloda
+    # kaliyordu (tam cekimde 958). Komsu ilcenin kaydi o ilcenin kendi
+    # cekiminde gelir, yani burada atmak veri kaybi degil.
+    #
+    # districts_for_point yerine point_membership: 80 ilcenin hepsini
+    # test edip 79'unu atmak gereksiz maliyet olurdu.
+    rows: list[dict] = []
+    memberships: list[tuple[str, bool]] = []
+    for row in dedupe_node_way(list(rows_by_id.values())):
+        membership = point_membership(district_id, row["lat"], row["lon"], buffer_m)
+        if membership is None:
+            continue
+        rows.append(row)
+        memberships.append((row["id"], membership))
 
     # Bos ama "basarili" yanit, onceden kaydi olan bir ilce icin veri
     # degil ayna sorunudur: yalnizca Isvicre verisi tasiyan bir ayna
@@ -400,20 +414,8 @@ async def ingest_district(
     # Uyelik: yalnizca ISLENEN ilceye karsi test ediliyor. Kaydin
     # baska ilcelere uyeligi o ilcelerin ingest'inde kurulur, cunku
     # replace_memberships yalnizca bu district_id'nin satirlarini
-    # siliyor.
-    #
-    # districts_for_point yerine point_membership: 80 ilcenin hepsini
-    # test edip 79'unu atmak gereksiz maliyet olurdu.
-    memberships = [
-        (row["id"], membership)
-        for row in rows
-        if (
-            membership := point_membership(
-                district_id, row["lat"], row["lon"], buffer_m
-            )
-        )
-        is not None
-    ]
+    # siliyor. Birlestirme id'leri degistirmedigi icin yukarida
+    # hesaplanan uyelikler gecerli.
     await replace_memberships(db, district_id, memberships)
 
     status = "ok" if all_ok else ("partial" if rows else "failed")

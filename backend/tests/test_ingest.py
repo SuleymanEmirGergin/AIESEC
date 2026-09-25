@@ -578,3 +578,51 @@ class TestIngestOvertureSonrasi:
         assert "overture:ing-1" not in ids, "ayni kurum iki kez duruyor"
         assert osm.phone == "+902165550000"
         assert osm.address is not None
+
+
+@pytest.mark.asyncio
+class TestIlceDisiKayit:
+    async def test_ilce_ve_tampon_disindaki_kayit_yazilmaz(self, db):
+        """
+        Sorgu bbox'i dikdortgen; koselerinde ilceye (ve tamponuna) ait
+        olmayan kayitlar da geliyor. Onceden bunlar da yaziliyor ama hicbir
+        ilceye baglanmiyordu: tum cekimde 958 kayit hicbir aramada
+        gorunmeden tabloda kaldi. Komsu ilcenin kaydi o ilcenin kendi
+        cekiminde zaten geliyor.
+        """
+        from app.districts import expanded_bbox, get_district, point_membership
+
+        if get_district("tr-34-kadikoy") is None:
+            pytest.skip("districts.geojson yok")
+        south, west, north, east = expanded_bbox("tr-34-kadikoy", 2000)
+        eps = 1e-4
+        corners = [
+            (south + eps, west + eps),
+            (south + eps, east - eps),
+            (north - eps, west + eps),
+            (north - eps, east - eps),
+        ]
+        outside = next(
+            (p for p in corners if point_membership("tr-34-kadikoy", *p, 2000) is None),
+            None,
+        )
+        if outside is None:
+            pytest.skip("bbox koselerinin hepsi ilce tamponunda")
+        lat, lon = get_district("tr-34-kadikoy").center
+
+        elements = [
+            {"type": "node", "id": 9201, "lat": lat, "lon": lon,
+             "tags": {"name": "Icerideki Fabrika", "man_made": "works"}},
+            {"type": "node", "id": 9202, "lat": outside[0], "lon": outside[1],
+             "tags": {"name": "Kosedeki Fabrika", "man_made": "works"}},
+        ]
+        with patch(
+            "app.ingest.overpass_client.query",
+            new=AsyncMock(side_effect=_overpass_stub({1: elements})),
+        ):
+            result = await ingest_district(db, "tr-34-kadikoy", 2000, force=True)
+
+        ids = set((await db.execute(select(PlaceRow.id))).scalars().all())
+        assert "osm:node:9201" in ids
+        assert "osm:node:9202" not in ids, "ilce disindaki kayit yazildi"
+        assert result.place_count == 1
