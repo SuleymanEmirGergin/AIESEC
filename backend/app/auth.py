@@ -94,7 +94,12 @@ async def validate_api_key(
     x_api_key: Optional[str] = Header(None), db: AsyncSession = Depends(get_db)
 ) -> APIKey:
     """Validate key exists and is active, without incrementing usage."""
-    if settings.local_mode:
+    # LOCAL_MODE anahtari ZORUNLU olmaktan cikariyor, kimligi atmiyor.
+    # Anahtar geldiyse gercek kayit donuyor: kayitli yerler ve listeler
+    # takima api_key_id ile bagli, sanal anahtarin id'si yok ve kaydetme
+    # NOT NULL ihlaliyle 500 veriyordu. Web sunucusu her istekte
+    # SEARCH_API_KEY gonderiyor.
+    if settings.local_mode and not x_api_key:
         return LOCAL_API_KEY
 
     if not x_api_key:
