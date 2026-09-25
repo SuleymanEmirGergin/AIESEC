@@ -1,0 +1,58 @@
+name: Veri yenileme
+
+# Aylik: OSM (Overpass) ingest + Overture zenginlestirme, dogrudan canli
+# veritabanina. Elle de baslatilabilir (Actions > Veri yenileme > Run).
+on:
+  schedule:
+    - cron: "0 1 1 * *" # her ayin 1'i, 04:00 TR
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Taze ilceleri de yeniden cek (OSM)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    # 80 ilce ~3,5 saat; GitHub'in siniri 6 saat.
+    timeout-minutes: 350
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - run: python -m pip install -r requirements-dev.txt
+
+      - name: Veritabani adresi tanimli mi
+        run: test -n "$DATABASE_URL" || { echo "::error::DATABASE_URL secret'i eksik"; exit 1; }
+
+      - name: OSM ingest
+        run: python -m app.ingest --all ${{ inputs.force && '--force' || '' }}
+
+      # Overture eski surumleri S3'ten siliyor; sabit surum birkac ay
+      # icinde bozulurdu. En yeni tam surum her seferinde bulunuyor.
+      - name: En yeni Overture surumu
+        if: ${{ !cancelled() }}
+        run: |
+          release=$(curl -fsS "https://overturemaps-us-west-2.s3.amazonaws.com/?list-type=2&prefix=release/&delimiter=/" \
+            | grep -oE 'release/[0-9]{4}-[0-9]{2}-[0-9]{2}\.[0-9]+/' | sort | tail -1 | cut -d/ -f2)
+          test -n "$release" || { echo "::error::Overture surumu bulunamadi"; exit 1; }
+          echo "Overture surumu: $release"
+          echo "OVERTURE_RELEASE=$release" >> "$GITHUB_ENV"
+
+      - name: Overture zenginlestirme
+        if: ${{ !cancelled() }}
+        run: python -m app.overture_ingest --all

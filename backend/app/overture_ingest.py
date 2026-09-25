@@ -319,3 +319,48 @@ async def ingest_overture_district(
         inserted=len(new_rows),
         skipped_unmapped=skipped,
     )
+
+
+async def _run_cli(district_ids: list[str]) -> int:
+    from app.database import AsyncSessionLocal, init_db
+
+    await init_db()
+    failed = []
+    for n, district_id in enumerate(district_ids, 1):
+        try:
+            async with AsyncSessionLocal() as db:
+                r = await ingest_overture_district(db, district_id)
+            print(f"[OVERTURE] {n}/{len(district_ids)} {district_id}: "
+                  f"{r.fetched} kayit, {r.enriched} zenginlesti, {r.inserted} yeni")
+        except Exception as error:  # tek ilce tum kosuyu durdurmasin
+            logger.exception("Overture %s basarisiz", district_id)
+            failed.append(f"{district_id} ({error.__class__.__name__})")
+    if failed:
+        print(f"[OVERTURE] Basarisiz: {', '.join(failed)}")
+    return 1 if failed else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    """`python -m app.overture_ingest --all` (aylik GitHub Actions isi)."""
+    import argparse
+    import asyncio
+
+    from app.ingest import PROVINCE_PLATES, _resolve_targets
+
+    parser = argparse.ArgumentParser(
+        prog="python -m app.overture_ingest",
+        description="Ilceleri Overture Maps ile zenginlestir (OVERTURE_RELEASE ortam degiskeni)",
+    )
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--all", action="store_true", help="Kapsamdaki tum ilceler")
+    group.add_argument("--province", help=f"Tek il: {', '.join(PROVINCE_PLATES)}")
+    group.add_argument("--district", help="Tek ilce kimligi, or. tr-34-kadikoy")
+    args = parser.parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    return asyncio.run(_run_cli(_resolve_targets(args)))
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(main())

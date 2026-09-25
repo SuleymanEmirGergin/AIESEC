@@ -1,0 +1,14 @@
+.venv
+tests
+scripts
+docs
+*.db
+*.db-*
+__pycache__
+.pytest_cache
+.ruff_cache
+verify_*.py
+seed_key.py
+Dockerfile
+docker-compose.yml
+requirements-dev.txt

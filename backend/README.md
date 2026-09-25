@@ -254,8 +254,8 @@ LOG_LEVEL=INFO
 ## 🧪 Testing
 
 ```bash
-# Install dev dependencies
-pip install -r requirements.txt
+# Install dev dependencies (tests, ingest)
+pip install -r requirements-dev.txt
 
 # Run all tests
 pytest tests/ -v

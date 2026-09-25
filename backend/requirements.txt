@@ -42,12 +42,7 @@ psutil==6.1.1
 # CORS Middleware (included in fastapi[standard])
 
 # Testing
-pytest==8.3.4
-pytest-asyncio==0.25.2
-pytest-cov==6.0.0
 
 # Code Quality
-ruff==0.9.1
 
 # Overture Maps places temasini S3 uzerinden sorgulamak icin (indirme yok).
-duckdb==1.5.5

@@ -1,0 +1,7 @@
+# Testler ve veri isleri (ingest / Overture). Canli sunucuya yuklenmiyor.
+-r requirements.txt
+pytest==8.3.4
+pytest-asyncio==0.25.2
+pytest-cov==6.0.0
+ruff==0.9.1
+duckdb==1.5.5

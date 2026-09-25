@@ -19,42 +19,60 @@ from sqlalchemy import (
     inspect,
     select,
 )
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.engine import make_url
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
 
 DB_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./storage.db")
 
+# libpq'ya ozgu, asyncpg'nin tanimadigi parametreler (Neon/Vercel adresi
+# bunlarla geliyor: ?sslmode=require&channel_binding=require).
+_LIBPQ_ONLY_PARAMS = {"sslmode", "channel_binding"}
 
-def _engine_options(url: str) -> dict:
+
+def make_engine(raw_url: str) -> AsyncEngine:
     """
-    Yerelde SQLite, canlida Postgres (Supabase).
+    Yerelde SQLite, canlida Postgres (Neon).
+
+    Neon/Vercel adresi `postgresql://...?sslmode=require` bicimde geliyor;
+    SQLAlchemy'ye asyncpg surucusu ve SSL ayri soylenmeli, asyncpg sslmode
+    parametresini tanimiyor.
 
     Postgres'te havuz yok (NullPool): Vercel fonksiyonlari istekler arasi
     donduruluyor, surec ici havuzdaki baglanti bir sonraki istekte olu
-    olabiliyor; havuzlamayi Supabase'in baglanti yoneticisi (Supavisor)
-    yapiyor. Ayrica asyncpg havuzdaki baglantiyi baska bir olay dongusune
+    olabiliyor; havuzlamayi Neon'un baglanti havuzu (pooler) yapiyor.
+    Ayrica asyncpg havuzdaki baglantiyi baska bir olay dongusune
     tasiyamiyor ("another operation is in progress") - testlerde yasandi.
 
-    statement_cache_size=0: Supavisor islem modunda (6543) hazirlanmis
-    ifadeler baglantilar arasinda tasinmiyor.
+    statement_cache_size=0: PgBouncer islem modunda hazirlanmis ifadeler
+    baglantilar arasinda tasinmiyor.
     """
-    if not url.startswith("postgresql"):
-        return {}
-    return {
-        "poolclass": NullPool,
-        "connect_args": {
-            "statement_cache_size": 0,
-            "prepared_statement_cache_size": 0,
-            # Islem modunda ayni adli ifade baska istemcinin baglantisina
-            # dusebiliyor; SQLAlchemy'nin PgBouncer onerisi benzersiz ad.
-            "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4()}__",
-        },
+    url = make_url(raw_url)
+    # "postgres://" da yaygin (Neon, Heroku); SQLAlchemy yalnizca "postgresql" taniyor.
+    if url.drivername.split("+")[0] not in ("postgres", "postgresql"):
+        return create_async_engine(url, echo=False)
+
+    sslmode = url.query.get("sslmode", "disable")
+    url = url.set(drivername="postgresql+asyncpg").difference_update_query(_LIBPQ_ONLY_PARAMS)
+    connect_args: dict = {
+        "statement_cache_size": 0,
+        "prepared_statement_cache_size": 0,
+        # Islem modunda ayni adli ifade baska istemcinin baglantisina
+        # dusebiliyor; SQLAlchemy'nin PgBouncer onerisi benzersiz ad.
+        "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4()}__",
     }
+    if sslmode not in ("disable", "allow", "prefer"):
+        connect_args["ssl"] = "require"
+    return create_async_engine(url, echo=False, poolclass=NullPool, connect_args=connect_args)
 
 
-# Async engine setup
-engine = create_async_engine(DB_URL, echo=False, **_engine_options(DB_URL))
+engine = make_engine(DB_URL)
 AsyncSessionLocal = async_sessionmaker(
     bind=engine, class_=AsyncSession, expire_on_commit=False
 )

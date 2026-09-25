@@ -22,6 +22,9 @@ import type { Place } from "../../../lib/types";
 
 export const dynamic = "force-dynamic";
 
+// 10.000 satirlik PDF ~50 sn suruyor; Vercel'in varsayilan sinirina yakin.
+export const maxDuration = 120;
+
 // Backend ExportRequest.items ile ayni sinir. En kalabalik ilce ~8600.
 const MAX_ITEMS = 10_000;
 

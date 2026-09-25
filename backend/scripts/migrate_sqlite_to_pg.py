@@ -2,7 +2,7 @@
 SQLite -> Postgres tek seferlik veri tasima.
 
     python scripts/migrate_sqlite_to_pg.py sqlite+aiosqlite:///./storage.db \
-        postgresql+asyncpg://user:pass@host:5432/postgres
+        postgresql://user:pass@host/db?sslmode=require
 
 Tablolari ORM metadata sirasiyla (yabanci anahtar bagimliligina gore)
 kopyalar; tipler SQLAlchemy uzerinden gectigi icin SQLite'in 0/1
@@ -21,16 +21,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sqlalchemy import Integer, func, select, text  # noqa: E402
-from sqlalchemy.ext.asyncio import create_async_engine  # noqa: E402
 
-from app.database import Base, _engine_options  # noqa: E402
+from app.database import Base, make_engine  # noqa: E402
 
 ROWS_PER_BATCH = 2000
 
 
 async def migrate(source_url: str, target_url: str) -> None:
-    source = create_async_engine(source_url)
-    target = create_async_engine(target_url, **_engine_options(target_url))
+    source = make_engine(source_url)
+    target = make_engine(target_url)
     tables = Base.metadata.sorted_tables
 
     async with target.begin() as dst:

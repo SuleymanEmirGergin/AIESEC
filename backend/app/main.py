@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -24,18 +26,8 @@ from app.routers import (
 # Rate limiter setup (IP-based)
 limiter = Limiter(key_func=get_remote_address)
 
-# FastAPI app instance
-app = FastAPI(
-    title="Nearby Place Finder API",
-    description="Enterprise-ready backend using Overpass API",
-    version=__version__,
-    docs_url="/docs",
-    redoc_url="/redoc",
-)
-
-
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(_: FastAPI):
     """Initialise storage on boot.
 
     Onceden burada run_warmup() arka plan gorevi baslatiliyordu: her
@@ -48,6 +40,20 @@ async def startup_event():
     cagrisi yapilmiyor.
     """
     await init_db()
+    yield
+
+
+# FastAPI app instance
+app = FastAPI(
+    title="Nearby Place Finder API",
+    description="Enterprise-ready backend using Overpass API",
+    version=__version__,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    lifespan=lifespan,
+)
+
+
 
 
 # Add metrics middleware

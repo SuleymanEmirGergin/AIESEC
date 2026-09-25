@@ -69,12 +69,11 @@ def _test_api_key_row():
     import asyncio
 
     from sqlalchemy import select, text
-    from sqlalchemy.ext.asyncio import create_async_engine
 
-    from app.database import DB_URL, Base, _engine_options
+    from app.database import DB_URL, Base, make_engine
 
     async def ensure():
-        engine = create_async_engine(DB_URL, **_engine_options(DB_URL))
+        engine = make_engine(DB_URL)
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
             exists = await conn.scalar(select(APIKey.id).where(APIKey.id == 1))
