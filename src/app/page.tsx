@@ -12,8 +12,9 @@ import ExportToolbar from "../components/ExportToolbar";
 import ReportModal from "../components/ReportModal";
 import SettingsModal from "../components/SettingsModal";
 import UpgradeModal from "../components/UpgradeModal";
-import { searchPlaces, exportLeads, fetchAccount } from "../lib/api";
-import type { AccountInfo } from "../lib/api";
+import { searchPlaces, exportLeads, fetchAccount, downloadBlob } from "../lib/api";
+import type { AccountInfo, ExportFormat } from "../lib/api";
+import { PLACE_TYPE_LABELS } from "../lib/labels";
 import CategoryFilter from "../components/CategoryFilter";
 import {
   districtPlaceToPlace,
@@ -332,36 +333,37 @@ export default function Home() {
     setNotice(message || "İşlem başarısız oldu.");
   }, []);
 
-  const handleExport = useCallback(async () => {
-    const chosen = places.filter((p) => savedIds.has(p.id));
-    if (chosen.length === 0 || exporting) return;
+  const handleExport = useCallback(
+    async (format: ExportFormat) => {
+      const chosen = places.filter((p) => savedIds.has(p.id));
+      if (chosen.length === 0 || exporting) return;
 
-    setExporting(true);
-    setNotice(null);
-    try {
-      const blob = await exportLeads(chosen, {
-        type: category ?? chosen[0]?.type ?? "kayitli",
-        radius: 0,
-        center: bbox
-          ? { lat: (bbox[1] + bbox[3]) / 2, lon: (bbox[0] + bbox[2]) / 2 }
-          : undefined,
-      });
-
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `leads_${category ?? "kayitli"}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-      reloadAccount();
-    } catch (err) {
-      handleApiError(err);
-    } finally {
-      setExporting(false);
-    }
-  }, [places, savedIds, category, bbox, exporting, handleApiError, reloadAccount]);
+      setExporting(true);
+      setNotice(null);
+      try {
+        // PDF/Excel basligi: "Kadıköy · Otel". Tek tur secili degilse genel ad.
+        const types = district ? query.types ?? [] : category ? [category] : [];
+        const scope = district ? district.name : "Harita alanı";
+        const what = types.length === 1 ? PLACE_TYPE_LABELS[types[0]] : "Kayıtlı yerler";
+        const blob = await exportLeads(chosen, {
+          type: category ?? chosen[0]?.type ?? "kayitli",
+          radius: 0,
+          center: bbox
+            ? { lat: (bbox[1] + bbox[3]) / 2, lon: (bbox[0] + bbox[2]) / 2 }
+            : undefined,
+          format,
+          title: `${scope} · ${what}`,
+        });
+        downloadBlob(blob, `leads_${category ?? "kayitli"}`, format);
+        reloadAccount();
+      } catch (err) {
+        handleApiError(err);
+      } finally {
+        setExporting(false);
+      }
+    },
+    [places, savedIds, category, bbox, exporting, handleApiError, reloadAccount, district, query.types]
+  );
 
   /**
    * Ilce envanterini cek (tur basina kayit sayisi).

@@ -18,6 +18,11 @@ geopy==2.5.0
 # cok parcali ilcelerde ve delikli poligonlarda gereksiz karmasikti.
 shapely==2.0.6
 
+# Disa aktarim: Excel (openpyxl) ve PDF (reportlab). PDF yazi tipleri
+# app/fonts altinda gomulu (Inter, Space Grotesk; OFL).
+openpyxl==3.1.5
+reportlab==5.0.1
+
 # Data Validation
 pydantic==2.10.5
 pydantic-settings==2.7.1

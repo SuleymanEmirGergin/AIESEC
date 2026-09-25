@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { Download, BookmarkPlus, AlertTriangle } from "lucide-react";
+import { BookmarkPlus, AlertTriangle } from "lucide-react";
+import DownloadMenu from "./DownloadMenu";
+import type { ExportFormat } from "../lib/api";
 
 interface ExportToolbarProps {
   /** Ekrandaki sonuclar icinden kac tanesi kayitli. */
@@ -18,7 +20,7 @@ interface ExportToolbarProps {
   allResultsCount?: number;
   /** Toplu kayit suruyorsa kaydedilen / hedeflenen. */
   saveProgress?: { done: number; total: number } | null;
-  onExport: () => void;
+  onExport: (format: ExportFormat) => void;
   /**
    * Doluysa indirme devre disi ve sebep gosteriliyor.
    * Kullanici basip 403/429 almadan once durumu bilsin diye.
@@ -127,15 +129,7 @@ export default function ExportToolbar({
             Kayıtlılar
           </Link>
 
-          <button
-            type="button"
-            onClick={onExport}
-            disabled={disabled}
-            className="btn btn--primary px-4 py-2 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Download size={14} aria-hidden="true" />
-            {isExporting ? "Hazırlanıyor…" : "CSV indir"}
-          </button>
+          <DownloadMenu onSelect={onExport} disabled={disabled} busy={isExporting} openUp />
         </div>
       </div>
     </div>

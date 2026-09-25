@@ -24,6 +24,9 @@ export const dynamic = "force-dynamic";
 
 const MAX_ITEMS = 1000;
 
+/** Backend ExportRequest.format ile ayni. */
+const EXPORT_FORMATS = ["csv", "xlsx", "pdf"];
+
 function toBackendItem(place: Place) {
   return {
     id: place.id,
@@ -62,6 +65,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const format = body.format ?? "csv";
+  if (!EXPORT_FORMATS.includes(format)) {
+    return NextResponse.json({ message: "Bilinmeyen dosya biçimi." }, { status: 400 });
+  }
+
   const { key } = resolveApiKey(req);
   if (!key) {
     return NextResponse.json(
@@ -88,6 +96,9 @@ export async function POST(req: NextRequest) {
         lon: body.center?.lon ?? body.center?.lng ?? 0,
       },
       items: items.map(toBackendItem),
+      format,
+      // PDF/Excel basligi; backend 120 karakterle sinirliyor.
+      title: typeof body.title === "string" ? body.title.slice(0, 120) : null,
     },
   });
 }

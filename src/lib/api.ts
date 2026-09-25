@@ -160,17 +160,23 @@ export async function fetchAccount(): Promise<AccountInfo | null> {
   }
 }
 
+export type ExportFormat = "xlsx" | "pdf" | "csv";
+
 export interface ExportContext {
-  /** Aramanin kategorisi; CSV dosya adinda ve export kaydinda kullaniliyor. */
+  /** Aramanin kategorisi; dosya adinda ve export kaydinda kullaniliyor. */
   type: string;
   radius?: number;
   center?: { lat: number; lon?: number; lng?: number };
+  /** Varsayilan csv (eski davranis). */
+  format?: ExportFormat;
+  /** PDF/Excel basligi, or. "Kadıköy · Otel" ya da liste adi. */
+  title?: string;
 }
 
 /**
- * Secili kayitlari CSV olarak disa aktarir.
+ * Secili kayitlari CSV, Excel ya da PDF olarak disa aktarir.
  *
- * Backend CSV'yi kayitlarin kendisinden urettigi icin ID degil tam Place
+ * Backend dosyayi kayitlarin kendisinden urettigi icin ID degil tam Place
  * nesneleri gonderiliyor. Boylece export, arama cache'inin hala duruyor
  * olmasina bagimli olmuyor.
  */
@@ -188,8 +194,22 @@ export async function exportLeads(
       type: context.type,
       radius: context.radius ?? 0,
       center: context.center ?? null,
+      format: context.format ?? "csv",
+      title: context.title ?? null,
     }),
   }, EXPORT_TIMEOUT_MS);
 
   return response.blob();
+}
+
+/** Blob'u tarayicida indirir; uzanti bicimden. Iki sayfada ayni kod vardi. */
+export function downloadBlob(blob: Blob, basename: string, format: ExportFormat): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${basename}.${format}`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }

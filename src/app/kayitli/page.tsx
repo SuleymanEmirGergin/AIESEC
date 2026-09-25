@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Plus,
-  Download,
   FolderInput,
   FolderOpen,
   Trash2,
@@ -20,8 +19,9 @@ import ExportHistory from "../../components/ExportHistory";
 import CategoryFilter from "../../components/CategoryFilter";
 import { PLACE_TYPE_LABELS } from "../../lib/labels";
 import type { PlaceType } from "../../lib/types";
-import { fetchAccount, exportLeads } from "../../lib/api";
-import type { AccountInfo } from "../../lib/api";
+import { fetchAccount, exportLeads, downloadBlob } from "../../lib/api";
+import type { AccountInfo, ExportFormat } from "../../lib/api";
+import DownloadMenu from "../../components/DownloadMenu";
 import {
   createList,
   addContactEvent,
@@ -238,7 +238,7 @@ export default function SavedPage() {
     }
   };
 
-  const handleExport = async () => {
+  const handleExport = async (format: ExportFormat) => {
     if (visible.length === 0 || exporting) return;
     setExporting(true);
     setError(null);
@@ -246,15 +246,14 @@ export default function SavedPage() {
       const blob = await exportLeads(visible.map(savedToPlace), {
         type: visible[0]?.place_type || "kayitli",
         radius: 0,
+        format,
+        title: activeListName,
       });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${activeListName.replace(/[^\p{L}\p{N}]+/gu, "-").toLowerCase()}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
+      downloadBlob(
+        blob,
+        activeListName.replace(/[^\p{L}\p{N}]+/gu, "-").toLowerCase(),
+        format
+      );
       fetchAccount().then(setAccount);
     } catch (err: any) {
       setError(err?.message || "Dışa aktarım başarısız oldu.");
@@ -414,15 +413,11 @@ export default function SavedPage() {
               {moving ? "Taşınıyor…" : `Listeye taşı (${visible.length})`}
             </button>
 
-            <button
-              type="button"
-              onClick={handleExport}
-              disabled={visible.length === 0 || exporting}
-              className="btn btn--primary px-4 py-2"
-            >
-              <Download size={14} aria-hidden="true" />
-              {exporting ? "Hazırlanıyor…" : "CSV indir"}
-            </button>
+            <DownloadMenu
+              onSelect={handleExport}
+              disabled={visible.length === 0}
+              busy={exporting}
+            />
           </div>
 
           <CategoryFilter value={typeFilter} onChange={setTypeFilter} counts={typeCounts} />

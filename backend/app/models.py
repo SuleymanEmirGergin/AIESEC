@@ -368,6 +368,10 @@ class ExportRequest(BaseModel):
     radius: int
     center: Dict[str, float]  # {"lat": ..., "lon": ...}
     items: List[Dict[str, Any]]  # Full item data for CSV construction
+    # Varsayilan csv: eski istemciler alan gondermeden ayni sonucu alir.
+    format: Literal["csv", "xlsx", "pdf"] = "csv"
+    # PDF/Excel basligi, or. "Kadıköy · Otel" ya da liste adi.
+    title: Optional[str] = Field(None, max_length=120)
 
 
 class ReportListResponse(BaseModel):
