@@ -1,18 +1,13 @@
 import type { AdminReport, AdminOverride, AdminStats } from "./types";
 import { TimeoutError, withTimeout } from "./fetchTimeout";
-
-const getAdminKey = () => typeof window !== "undefined" ? sessionStorage.getItem("admin_key") : "";
+import { redirectToLogin } from "./api";
 
 /** Admin uclari dogrudan veritabanina gidiyor; Overpass beklemesi yok. */
 const ADMIN_TIMEOUT_MS = 15_000;
 
 const fetchAdmin = async (url: string, options: any = {}) => {
-  const adminKey = getAdminKey();
-  const headers = {
-    ...options.headers,
-    "Content-Type": "application/json",
-    "X-ADMIN-KEY": adminKey,
-  };
+  // Yetki oturumdaki rolden; yonetici anahtari sunucuda ekleniyor.
+  const headers = { ...options.headers, "Content-Type": "application/json" };
 
   const timeout = withTimeout(ADMIN_TIMEOUT_MS, options.signal);
 
@@ -28,13 +23,7 @@ const fetchAdmin = async (url: string, options: any = {}) => {
     timeout.cleanup();
   }
 
-  if (response.status === 401) {
-    if (typeof window !== "undefined") {
-      sessionStorage.removeItem("admin_key");
-      window.location.reload();
-    }
-    throw new Error("Unauthorized");
-  }
+  if (response.status === 401) redirectToLogin();
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.message || "Admin API error");
@@ -42,31 +31,7 @@ const fetchAdmin = async (url: string, options: any = {}) => {
   return response.json();
 };
 
-/**
- * Anahtari dogrular ama fetchAdmin'in 401 davranisini tetiklemez.
- *
- * Giris formunun ihtiyaci bu: fetchAdmin 401 aldiginda sessionStorage'i
- * temizleyip sayfayi yeniliyor. Giris denemesinde bu, yanlis anahtar
- * girildiginde formun sessizce yeniden yuklenmesi ve kullanicinin hicbir
- * hata mesaji gormemesi demekti.
- */
-async function verifyAdminKey(key: string): Promise<boolean> {
-  const timeout = withTimeout(ADMIN_TIMEOUT_MS);
-  try {
-    const response = await fetch("/api/admin/stats", {
-      headers: { "X-ADMIN-KEY": key },
-      signal: timeout.signal,
-    });
-    return response.ok;
-  } catch {
-    return false;
-  } finally {
-    timeout.cleanup();
-  }
-}
-
 export const adminApi = {
-  verifyKey: verifyAdminKey,
   getReports: (params: any): Promise<{ data: AdminReport[]; total: number }> => {
     const query = new URLSearchParams(params).toString();
     return fetchAdmin(`/api/admin/reports?${query}`);

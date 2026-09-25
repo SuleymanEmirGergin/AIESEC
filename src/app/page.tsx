@@ -8,9 +8,8 @@ import ResultsTable, { nextSort } from "../components/ResultsTable";
 import SearchWizard, { type WizardSelection } from "../components/SearchWizard";
 import SaveDoneModal from "../components/SaveDoneModal";
 import ReportModal from "../components/ReportModal";
-import SettingsModal from "../components/SettingsModal";
-import { exportLeads, fetchAccount, downloadBlob } from "../lib/api";
-import type { AccountInfo, ExportFormat } from "../lib/api";
+import { exportLeads, downloadBlob } from "../lib/api";
+import type { ExportFormat } from "../lib/api";
 import { PLACE_TYPE_LABELS } from "../lib/labels";
 import {
   districtPlaceToPlace,
@@ -38,8 +37,6 @@ const FETCH_ALL_PAGE = 1000;
 
 /** Backend ExportRequest.items siniri. */
 const MAX_EXPORT_ITEMS = 10_000;
-
-const NO_VOLUNTEER = "Gönüllü adınızı Ayarlar'dan girin.";
 
 /** Kayitlilar'a gidip donunce arama kaybolmasin (sekme boyunca). */
 const LAST_SEARCH_KEY = "last_search";
@@ -83,9 +80,7 @@ export default function Home() {
   const [exporting, setExporting] = useState(false);
 
   const [reportTarget, setReportTarget] = useState<Place | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [account, setAccount] = useState<AccountInfo | null>(null);
 
   const reloadSaved = useCallback(async () => {
     try {
@@ -97,7 +92,6 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    fetchAccount().then(setAccount);
     reloadSaved();
   }, [reloadSaved]);
 
@@ -134,10 +128,7 @@ export default function Home() {
   }, []);
 
   const reportError = useCallback((err: any, fallback: string) => {
-    if (err?.message === NO_VOLUNTEER) {
-      setSettingsOpen(true);
-      setNotice("Kaydetmek için önce Ayarlar’dan gönüllü adınızı girin.");
-    } else if (err?.name === "TimeoutError") {
+    if (err?.name === "TimeoutError") {
       setNotice("İşlem zaman aşımına uğradı. Lütfen tekrar deneyin.");
     } else setNotice(err?.message || fallback);
   }, []);
@@ -308,7 +299,7 @@ export default function Home() {
 
   return (
     <main className="flex h-screen flex-col bg-paper text-ink-2">
-      <AppHeader account={account} onOpenSettings={() => setSettingsOpen(true)} savedCount={savedIds.size} />
+      <AppHeader savedCount={savedIds.size} />
 
       {notice && (
         <div className="shrink-0 rule-b bg-caution-bg">
@@ -469,17 +460,6 @@ export default function Home() {
         />
       )}
 
-      <SettingsModal
-        isOpen={settingsOpen}
-        account={account}
-        onClose={() => setSettingsOpen(false)}
-        onSaved={() => {
-          setSettingsOpen(false);
-          setNotice(null);
-          fetchAccount().then(setAccount);
-          reloadSaved();
-        }}
-      />
     </main>
   );
 }

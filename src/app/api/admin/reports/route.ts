@@ -36,5 +36,6 @@ export async function GET(req: NextRequest) {
     url: rootUrl(`/admin/reports?${query.toString()}`),
     method: "GET",
     label: "admin/reports",
+    admin: true,
   });
 }

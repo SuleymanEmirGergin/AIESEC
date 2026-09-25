@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { adminApi } from "@/lib/adminApi";
 import type { AdminReport, AdminStats } from "@/lib/types";
@@ -9,19 +10,13 @@ import AdminReportDetail from "@/components/AdminReportDetail";
 import {
   LayoutDashboard,
   Database,
-  LogOut,
-  Lock,
+  ArrowLeft,
   RefreshCw,
   AlertOctagon,
-  AlertCircle,
 } from "lucide-react";
 
 export default function AdminPage() {
   const router = useRouter();
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [adminKey, setAdminKey] = useState("");
-  const [loginError, setLoginError] = useState<string | null>(null);
-  const [isVerifying, setIsVerifying] = useState(false);
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [selectedReport, setSelectedReport] = useState<AdminReport | null>(null);
@@ -39,106 +34,10 @@ export default function AdminPage() {
     }
   }, []);
 
+  // Yetki middleware'de (yonetici rolu); anahtar sorulmuyor.
   useEffect(() => {
-    if (sessionStorage.getItem("admin_key")) {
-      setIsAdmin(true);
-      fetchStats();
-    }
-  }, [fetchStats]);
-
-  /**
-   * Giris artik anahtari gercekten dogruluyor.
-   *
-   * Onceden tek kosul `adminKey.length > 4` idi: yanlis bir anahtar da
-   * "giris yapmis" sayiliyor, panel aciliyor, sonra ilk istek 401 alip
-   * sayfayi sessizce yeniden yukluyordu. Kullanici anahtarinin yanlis
-   * oldugunu hicbir yerden ogrenemiyordu.
-   */
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const key = adminKey.trim();
-    if (!key) return;
-
-    setIsVerifying(true);
-    setLoginError(null);
-
-    const ok = await adminApi.verifyKey(key);
-
-    if (!ok) {
-      setIsVerifying(false);
-      setLoginError("Anahtar kabul edilmedi. Lütfen kontrol edip tekrar deneyin.");
-      return;
-    }
-
-    sessionStorage.setItem("admin_key", key);
-    setIsAdmin(true);
-    setIsVerifying(false);
     fetchStats();
-  };
-
-  const handleLogout = () => {
-    sessionStorage.removeItem("admin_key");
-    setIsAdmin(false);
-    setStats(null);
-    setAdminKey("");
-  };
-
-  if (!isAdmin) {
-    return (
-      <div className="min-h-screen bg-paper flex items-center justify-center p-4">
-        <div className="w-full max-w-sm surface p-6">
-          <div className="mb-6">
-            <Lock size={18} aria-hidden="true" className="mb-3 text-ink-4" strokeWidth={1.75} />
-            <p className="mono-label mb-1">Yönetim</p>
-            <h1 className="font-display text-xl font-semibold text-ink">
-              Yönetici anahtarı
-            </h1>
-          </div>
-
-          <form onSubmit={handleLogin} className="space-y-3">
-            <label htmlFor="admin-key" className="block text-xs font-medium text-ink">
-              Anahtar
-            </label>
-            <input
-              id="admin-key"
-              type="password"
-              value={adminKey}
-              onChange={(e) => {
-                setAdminKey(e.target.value);
-                setLoginError(null);
-              }}
-              autoComplete="off"
-              required
-              aria-invalid={!!loginError}
-              aria-describedby={loginError ? "admin-key-error" : undefined}
-              className={`tabular w-full rounded-input border bg-paper px-3 py-2.5 text-sm text-ink transition-colors duration-fast ease-out focus:border-accent ${
-                loginError ? "border-critical" : "border-rule-2 hover:border-ink-4"
-              }`}
-            />
-
-            {/* Alan bos olsa bile yer kapliyor (`field-note` min-height
-                tasiyor): hata belirdiginde altindaki buton asagi kaymasin. */}
-            <span id="admin-key-error" role="alert" className="field-note text-critical">
-              {loginError && (
-                <span className="flex items-start gap-1.5">
-                  <AlertCircle size={12} className="mt-0.5 shrink-0" />
-                  <span>{loginError}</span>
-                </span>
-              )}
-            </span>
-
-            <button
-              type="submit"
-              disabled={isVerifying || !adminKey.trim()}
-              className="btn btn--primary w-full px-4 py-2.5"
-            >
-              {isVerifying ? "Doğrulanıyor…" : "Giriş"}
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
+  }, [fetchStats]);
 
   const navItem = (active: boolean) =>
     `w-full flex items-center gap-2.5 rounded-input px-3 py-2 text-xs font-medium transition-colors duration-fast ease-out ${
@@ -180,13 +79,12 @@ export default function AdminPage() {
             </button>
           </nav>
 
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="mt-auto hidden w-full items-center gap-2.5 rounded-input px-3 py-2 text-xs font-medium text-ink-3 transition-colors duration-fast ease-out hover:bg-paper-2 hover:text-critical lg:flex"
+          <Link
+            href="/"
+            className="mt-auto hidden w-full items-center gap-2.5 rounded-input px-3 py-2 text-xs font-medium text-ink-3 transition-colors duration-fast ease-out hover:bg-paper-2 hover:text-ink lg:flex"
           >
-            <LogOut size={14} /> Çıkış
-          </button>
+            <ArrowLeft size={14} /> Uygulamaya dön
+          </Link>
         </div>
       </aside>
 

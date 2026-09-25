@@ -1,13 +1,13 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { KeyRound } from "lucide-react";
-import type { AccountInfo } from "../lib/api";
+import { signOut } from "next-auth/react";
+import { LogOut } from "lucide-react";
+import { fetchAccount, type AccountInfo } from "../lib/api";
 
 interface AppHeaderProps {
-  account: AccountInfo | null;
-  onOpenSettings: () => void;
   /** Kayitli yer sayisi; verilmezse rozet gosterilmez. */
   savedCount?: number | null;
 }
@@ -22,12 +22,13 @@ interface AppHeaderProps {
  * Gezinme burada dogdu: uygulamanin iki yuzeyi var (harita ve kayitlilar)
  * ve aralarinda gecis yolu yoktu.
  */
-export default function AppHeader({
-  account,
-  onOpenSettings,
-  savedCount,
-}: AppHeaderProps) {
+export default function AppHeader({ savedCount }: AppHeaderProps) {
   const pathname = usePathname();
+  const [account, setAccount] = useState<AccountInfo | null>(null);
+
+  useEffect(() => {
+    fetchAccount().then(setAccount);
+  }, []);
 
   const navLink = (active: boolean) =>
     `inline-flex items-center gap-1.5 rounded-input px-2.5 py-1.5 text-xs font-medium transition-colors duration-fast ease-out ${
@@ -56,16 +57,34 @@ export default function AppHeader({
               <span className="tabular text-2xs text-ink-4">{savedCount}</span>
             )}
           </Link>
+          {account?.role === "admin" && (
+            <>
+              <Link href="/ekip" className={navLink(pathname.startsWith("/ekip"))}>
+                Ekip
+              </Link>
+              <Link href="/admin" className={navLink(pathname.startsWith("/admin"))}>
+                Yönetim
+              </Link>
+            </>
+          )}
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
+          {account && (
+            <span className="hidden min-w-0 text-right sm:block">
+              <span className="block truncate text-xs font-medium text-ink">{account.name}</span>
+              {account.name !== account.email && (
+                <span className="block truncate text-2xs text-ink-4">{account.email}</span>
+              )}
+            </span>
+          )}
           <button
             type="button"
-            onClick={onOpenSettings}
+            onClick={() => signOut({ redirectTo: "/giris" })}
             className="btn btn--ghost px-2.5 py-1.5"
           >
-            <KeyRound size={13} aria-hidden="true" />
-            <span className="hidden sm:inline">Erişim</span>
+            <LogOut size={13} aria-hidden="true" />
+            <span className="hidden sm:inline">Çıkış</span>
           </button>
         </div>
       </div>

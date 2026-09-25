@@ -11,7 +11,6 @@ import { ArrowLeft, Plus, Info } from "lucide-react";
 function OverridesPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [isAdmin, setIsAdmin] = useState(false);
   const [selectedOverride, setSelectedOverride] = useState<AdminOverride | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -21,14 +20,8 @@ function OverridesPageContent() {
   const preType = searchParams.get("pre_type");
 
   useEffect(() => {
-    const savedKey = sessionStorage.getItem("admin_key");
-    if (!savedKey) {
-      router.push("/admin");
-      return;
-    }
-    setIsAdmin(true);
     if (prePlaceId) setIsFormOpen(true);
-  }, [prePlaceId, router]);
+  }, [prePlaceId]);
 
   const handleSave = async (data: Partial<AdminOverride>) => {
     if (selectedOverride) {
@@ -38,8 +31,6 @@ function OverridesPageContent() {
     }
     setRefreshTrigger((prev) => prev + 1);
   };
-
-  if (!isAdmin) return null;
 
   return (
     <div className="min-h-screen bg-paper text-ink-2">

@@ -1,5 +1,6 @@
 import type { Place, PlaceType } from "./types";
 import { TimeoutError, withTimeout } from "./fetchTimeout";
+import { redirectToLogin } from "./api";
 
 /**
  * Kayitli yerler, listeler ve disa aktarim gecmisi icin istemci katmani.
@@ -10,24 +11,11 @@ import { TimeoutError, withTimeout } from "./fetchTimeout";
 
 const TIMEOUT_MS = 15_000;
 
-const getApiKey = () =>
-  typeof window !== "undefined" ? localStorage.getItem("api_key") : null;
-
-/** Gönüllünün tarayıcıdaki görünen adı; boşluklardan ibaret değerler geçersizdir. */
-export function getVolunteerName(): string | null {
-  const value = typeof window === "undefined" ? null : localStorage.getItem("volunteer_name");
-  return value?.trim() || null;
-}
-
 async function request<T>(
   url: string,
-  options: { method?: string; body?: unknown; requireVolunteer?: boolean; volunteer?: boolean } = {}
+  options: { method?: string; body?: unknown } = {}
 ): Promise<T> {
-  const apiKey = getApiKey();
-  const volunteerName = getVolunteerName();
-  if (options.requireVolunteer && !volunteerName) {
-    throw new Error("Gönüllü adınızı Ayarlar'dan girin.");
-  }
+  // Kimlik (kim kaydetti, hangi ekip) sunucuda oturumdan ekleniyor.
   const timeout = withTimeout(TIMEOUT_MS);
 
   let response: Response;
@@ -36,10 +24,6 @@ async function request<T>(
       method: options.method ?? "GET",
       headers: {
         ...(options.body !== undefined ? { "Content-Type": "application/json" } : {}),
-        ...(apiKey ? { "X-API-KEY": apiKey } : {}),
-        ...((options.volunteer || options.requireVolunteer) && volunteerName
-          ? { "X-VOLUNTEER-NAME": volunteerName }
-          : {}),
       },
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
       signal: timeout.signal,
@@ -52,6 +36,8 @@ async function request<T>(
   } finally {
     timeout.cleanup();
   }
+
+  if (response.status === 401) redirectToLogin();
 
   if (!response.ok) {
     const detail = await response
@@ -136,7 +122,6 @@ export const createList = (name: string, note?: string) =>
   request<PlaceListSummary>("/api/lists", {
     method: "POST",
     body: { name, note: note || null },
-    requireVolunteer: true,
   });
 
 export const renameList = (id: string, name: string) =>
@@ -171,7 +156,6 @@ export const savePlace = (place: Place, listId?: string | null) =>
     // Tekrarlanan kayitlar backend tarafinda idempotenttir ve ad istemez.
     // Istemci yeni mi tekrar mi oldugunu bilemeyecegi icin ad varsa iletir,
     // yoksa istegi gonderir; backend yalnizca yeni kaydi reddeder.
-    volunteer: true,
     body: { ...toSaveBody(place), list_id: listId ?? null },
   });
 
@@ -188,7 +172,6 @@ export const BULK_SAVE_LIMIT = 10_000;
 export const savePlaces = (places: Place[], listId?: string | null) =>
   request<{ created: number; ids: Record<string, string> }>("/api/saved/bulk", {
     method: "POST",
-    volunteer: true,
     body: { items: places.map(toSaveBody), list_id: listId ?? null },
   });
 
@@ -226,7 +209,6 @@ export const addContactEvent = (id: string, body: ContactEventCreate) =>
   request<SavedPlace>(`/api/saved/${encodeURIComponent(id)}/contacts`, {
     method: "POST",
     body,
-    requireVolunteer: true,
   });
 
 export const fetchContactEvents = (id: string) =>

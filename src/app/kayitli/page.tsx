@@ -14,13 +14,12 @@ import SaveTargetModal, { rememberList, type SaveTarget } from "../../components
 import { getDueFollowUps, isOverdue } from "../../lib/contactTracking";
 import AppHeader from "../../components/AppHeader";
 import SavedPlaceRow from "../../components/SavedPlaceRow";
-import SettingsModal from "../../components/SettingsModal";
 import ExportHistory from "../../components/ExportHistory";
 import CategoryFilter from "../../components/CategoryFilter";
 import { PLACE_TYPE_LABELS } from "../../lib/labels";
 import type { PlaceType } from "../../lib/types";
-import { fetchAccount, exportLeads, downloadBlob } from "../../lib/api";
-import type { AccountInfo, ExportFormat } from "../../lib/api";
+import { exportLeads, downloadBlob } from "../../lib/api";
+import type { ExportFormat } from "../../lib/api";
 import DownloadMenu from "../../components/DownloadMenu";
 import {
   createList,
@@ -47,8 +46,6 @@ export default function SavedPage() {
   const [typeFilter, setTypeFilter] = useState<PlaceType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [account, setAccount] = useState<AccountInfo | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newListName, setNewListName] = useState("");
@@ -74,7 +71,6 @@ export default function SavedPage() {
 
   useEffect(() => {
     reload();
-    fetchAccount().then(setAccount);
   }, [reload]);
 
   /**
@@ -133,10 +129,7 @@ export default function SavedPage() {
       setActiveList(created.id);
       await reload();
     } catch (err: any) {
-      if (err?.message === "Gönüllü adınızı Ayarlar'dan girin.") {
-        setSettingsOpen(true);
-        setError("Liste oluşturmak için önce Ayarlar’dan gönüllü adınızı girin.");
-      } else setError(err?.message || "Liste oluşturulamadı.");
+      setError(err?.message || "Liste oluşturulamadı.");
     } finally {
       setCreating(false);
     }
@@ -193,16 +186,8 @@ export default function SavedPage() {
   };
 
   const handleAddContact = async (id: string, data: Parameters<typeof addContactEvent>[1]) => {
-    try {
-      const updated = await addContactEvent(id, data);
-      setPlaces((prev) => prev.map((place) => (place.id === id ? updated : place)));
-    } catch (err: any) {
-      if (err?.message === "Gönüllü adınızı Ayarlar'dan girin.") {
-        setSettingsOpen(true);
-        setError("Temas eklemek için önce Ayarlar’dan gönüllü adınızı girin.");
-      }
-      throw err;
-    }
+    const updated = await addContactEvent(id, data);
+    setPlaces((prev) => prev.map((place) => (place.id === id ? updated : place)));
   };
 
   /**
@@ -229,10 +214,7 @@ export default function SavedPage() {
       );
       await reload();
     } catch (err: any) {
-      if (err?.message === "Gönüllü adınızı Ayarlar'dan girin.") {
-        setSettingsOpen(true);
-        setError("Yeni liste için önce Ayarlar’dan gönüllü adınızı girin.");
-      } else setError(err?.message || "Kayıtlar taşınamadı.");
+      setError(err?.message || "Kayıtlar taşınamadı.");
     } finally {
       setMoving(false);
     }
@@ -250,7 +232,6 @@ export default function SavedPage() {
         title: activeListName,
       });
       downloadBlob(blob, activeListName, format);
-      fetchAccount().then(setAccount);
     } catch (err: any) {
       setError(err?.message || "Dışa aktarım başarısız oldu.");
     } finally {
@@ -266,8 +247,6 @@ export default function SavedPage() {
   return (
     <main className="flex h-screen flex-col bg-paper text-ink-2">
       <AppHeader
-        account={account}
-        onOpenSettings={() => setSettingsOpen(true)}
         savedCount={places.length}
       />
 
@@ -505,16 +484,6 @@ export default function SavedPage() {
         onConfirm={handleBulkMove}
       />
 
-      <SettingsModal
-        isOpen={settingsOpen}
-        account={account}
-        onClose={() => setSettingsOpen(false)}
-        onSaved={() => {
-          setSettingsOpen(false);
-          fetchAccount().then(setAccount);
-          reload();
-        }}
-      />
     </main>
   );
 }

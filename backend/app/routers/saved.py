@@ -15,6 +15,7 @@ degil). Kaydetmek bir arama degil; gonullu bir yeri kaydettigi icin
 gunluk hakkini kaybetmemeli.
 """
 
+from urllib.parse import unquote
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -48,7 +49,9 @@ def _now() -> datetime:
 
 
 def _volunteer_name(x_volunteer_name: str | None = Header(None)) -> str:
-    name = (x_volunteer_name or "").strip()
+    # Web sunucusu adi yuzde-kodlu gonderiyor: HTTP basligi Latin-1 disi
+    # harf (s, g, I noktali) tasiyamiyor. ASCII adlar unquote'tan degismeden gecer.
+    name = unquote(x_volunteer_name or "").strip()
     if not name or len(name) > 120:
         raise HTTPException(
             status_code=422,

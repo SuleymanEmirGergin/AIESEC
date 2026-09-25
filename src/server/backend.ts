@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "../auth";
+import { getMember, type Member } from "./team";
 
 /**
  * Next.js route handler'lari ile FastAPI backend arasindaki ortak proxy katmani.
@@ -31,8 +33,8 @@ export function rootUrl(path: string): string | null {
   return origin ? `${origin}${path}` : null;
 }
 
-/** Anahtarin kime ait oldugu; arayuz bunu kullaniciya farkli gosteriyor. */
-export type ApiKeyScope = "personal" | "server";
+/** Anahtarin kime ait oldugu. Kisisel anahtar kalkti; hep sunucununki. */
+export type ApiKeyScope = "server";
 
 export interface ResolvedApiKey {
   key: string | null;
@@ -40,48 +42,51 @@ export interface ResolvedApiKey {
 }
 
 /**
- * Istekte kullanilacak API anahtarini secer.
- *
- * Oncelik kullanicinin kendi anahtarinda: kota ve plan onun uzerinden
- * islesin. Anahtar yoksa sunucunun kendi anahtari (SEARCH_API_KEY)
- * devreye giriyor. Bu geri dusme daha once yalnizca /api/search'te vardi;
- * export ve hesap durumu bilincli olarak disinda birakilmisti ve sonucta
- * son kullanici anahtar girmeden arama yapabiliyor ama indirdigi veriyi
- * CSV olarak alamiyordu.
- *
- * Anahtarin kendisi tarayiciya hicbir zaman gitmiyor; yalnizca Next.js
- * sunucusundan backend'e giden istekte tasiniyor.
+ * Backend'e giden istekte kullanilacak anahtar: her zaman sunucunun
+ * SEARCH_API_KEY'i. Kimlik artik oturumdan geliyor (Google / e-posta);
+ * ekip ayni veriyi paylasiyor. Anahtar tarayiciya hicbir zaman gitmiyor.
  */
-export function resolveApiKey(req: NextRequest): ResolvedApiKey {
-  const personal = req.headers.get("x-api-key");
-  if (personal) return { key: personal, scope: "personal" };
+export function resolveApiKey(_req?: NextRequest): ResolvedApiKey {
   return { key: process.env.SEARCH_API_KEY ?? null, scope: "server" };
 }
 
 /**
- * Istemciden gelen kimlik basliklarini backend'e tasir.
- * Baska hicbir basligi gecirmiyoruz: host/cookie gibi basliklarin
- * sizmasi istenmiyor.
+ * Istegi yapan onayli uye. Oturum yoksa ya da e-posta listeden
+ * cikarildiysa null; middleware yalnizca oturumun varligina bakiyor,
+ * listeden cikarilma burada (en gec 1 dk onbellek) yakalaniyor.
  */
-function authHeaders(
-  req: NextRequest,
-  apiKeyOverride?: string | null
-): Record<string, string> {
-  const headers: Record<string, string> = {};
+export async function currentMember(): Promise<(Member & { name: string }) | null> {
+  const session = await auth();
+  const member = await getMember(session?.user?.email);
+  if (!member) return null;
+  return { ...member, name: session?.user?.name?.trim() || member.email };
+}
 
-  // `undefined` = "sen karar ver" (istemci basligini kullan),
-  // `null` = "anahtar yok" (baslik hic gonderilmesin). Ikisini ayirmak
-  // gerekiyor, yoksa acikca bos gecilen anahtar sessizce istemcininkine
-  // geri duserdi.
-  const apiKey = apiKeyOverride !== undefined ? apiKeyOverride : req.headers.get("x-api-key");
+export function forbidden(message = "Bu işlem için yetkiniz yok."): NextResponse {
+  return NextResponse.json({ message }, { status: 403 });
+}
+
+export function unauthorized(): NextResponse {
+  return NextResponse.json(
+    { message: "Oturumunuz yok ya da erişiminiz kaldırıldı." },
+    { status: 401 }
+  );
+}
+
+/**
+ * Backend'e giden kimlik basliklari - hepsi SUNUCUDA uretiliyor, istemcinin
+ * gonderdigi hicbir kimlik basligi gecirilmiyor (taklit edilemesin).
+ *
+ * X-VOLUNTEER-NAME yuzde-kodlu: HTTP basligi Turkce harf tasiyamiyor;
+ * backend cozuyor.
+ */
+function authHeaders(member: Member & { name: string }, admin: boolean): Record<string, string> {
+  const headers: Record<string, string> = {
+    "X-VOLUNTEER-NAME": encodeURIComponent(member.name.slice(0, 120)),
+  };
+  const apiKey = resolveApiKey().key;
   if (apiKey) headers["X-API-KEY"] = apiKey;
-
-  const adminKey = req.headers.get("x-admin-key");
-  if (adminKey) headers["X-ADMIN-KEY"] = adminKey;
-
-  const volunteerName = req.headers.get("x-volunteer-name");
-  if (volunteerName) headers["X-VOLUNTEER-NAME"] = volunteerName;
-
+  if (admin && process.env.ADMIN_API_KEY) headers["X-ADMIN-KEY"] = process.env.ADMIN_API_KEY;
   return headers;
 }
 
@@ -93,11 +98,10 @@ interface ProxyOptions {
   body?: unknown;
   /** Hata mesajlarinda kullanilacak insan okur etiket */
   label: string;
-  /**
-   * Istemcininki yerine kullanilacak anahtar (resolveApiKey ciktisi).
-   * Verilmezse istegin kendi X-API-KEY basligi aynen gecirilir.
-   */
+  /** Eski cagiranlar icin; yok sayiliyor, anahtar hep sunucununki. */
   apiKey?: string | null;
+  /** Yalnizca yoneticiler; backend'e sunucunun ADMIN_API_KEY'i gider. */
+  admin?: boolean;
   /**
    * Basarili JSON cevabina eklenecek alanlar. Backend'in bilmedigi ama
    * arayuzun ihtiyac duydugu bilgi icin (orn. anahtarin kime ait oldugu).
@@ -113,8 +117,12 @@ interface ProxyOptions {
  */
 export async function proxyToBackend(
   req: NextRequest,
-  { url, method, body, label, apiKey, augment }: ProxyOptions
+  { url, method, body, label, admin = false, augment }: ProxyOptions
 ): Promise<NextResponse> {
+  const member = await currentMember();
+  if (!member) return unauthorized();
+  if (admin && member.role !== "admin") return forbidden();
+
   if (!url) {
     return NextResponse.json(
       { message: "NEXT_PUBLIC_API_BASE tanimli degil; backend'e baglanilamiyor." },
@@ -127,7 +135,7 @@ export async function proxyToBackend(
     response = await fetch(url, {
       method,
       headers: {
-        ...authHeaders(req, apiKey),
+        ...authHeaders(member, admin),
         ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,

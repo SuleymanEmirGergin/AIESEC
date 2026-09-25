@@ -205,6 +205,15 @@ class TestSavingPlaces:
         assert saved["tags"]["phone"] == "+90 216 000 00 00"
         assert saved["address"] == "Kadikoy, Istanbul"
 
+    def test_turkce_ad_yuzde_kodlu_baslikla_gelir(self, client):
+        """HTTP basligi 'Şükrü'yu tasiyamiyor; web sunucusu kodlayip gonderiyor."""
+        saved = client.post(
+            "/api/saved",
+            json=_place(f"osm:node:tr-ad-{uuid.uuid4()}"),
+            headers={"X-VOLUNTEER-NAME": "%C5%9E%C3%BCkr%C3%BC"},
+        ).json()
+        assert saved["saved_by"] == "Şükrü"
+
     def test_saved_by_records_who(self, client):
         saved = client.post(
             "/api/saved",
