@@ -13,6 +13,9 @@ import os
 # once ayarlanmali. Testler gercek storage.db'ye dokunmamali.
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_storage.db")
 os.environ.setdefault("ADMIN_API_KEY", "test-admin-key")
+# Gelistiricinin .env'indeki LOCAL_MODE=true testlere sizmasin; yerel
+# mod testleri bayragi kendileri aciyor.
+os.environ["LOCAL_MODE"] = "false"
 # Ingest artik startup'ta calismiyor (app/ingest.py elle tetikleniyor),
 # bu yuzden eski WARMUP_ENABLED bayragina gerek kalmadi.
 
@@ -38,9 +41,10 @@ def api_key():
     cift, gercekte olmayan bir durumu taklit edip NOT NULL ihlaline
     dusuyordu.
 
-    Satirin kendisi api_keys tablosuna yazilmiyor: SQLite yabanci anahtar
-    kontrolunu varsayilan olarak uygulamiyor, dolayisiyla ilgili
-    ForeignKey burada belgeleme gorevi goruyor.
+    Satir api_keys tablosunda da var (bkz. _test_api_key_row): Postgres
+    yabanci anahtari uyguluyor; SQLite uygulamadigi icin bu eksiklik
+    yillarca gorunmedi ve testler ancak baska bir test tesadufen id=1
+    anahtar yarattiginda geciyordu.
     """
     return APIKey(
         id=1,
@@ -52,6 +56,48 @@ def api_key():
         is_active=True,
         last_reset_date=datetime.now(timezone.utc).replace(tzinfo=None),
     )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _test_api_key_row():
+    """
+    Sahte test anahtarinin (id=1) satirini bir kez yazar.
+
+    Ayri bir motorla ve asyncio.run ile: uygulamanin motoru testlerin
+    olay dongulerine bagli, oturum basinda ona dokunmak dongu karistirir.
+    """
+    import asyncio
+
+    from sqlalchemy import select, text
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from app.database import DB_URL, Base, _engine_options
+
+    async def ensure():
+        engine = create_async_engine(DB_URL, **_engine_options(DB_URL))
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+            exists = await conn.scalar(select(APIKey.id).where(APIKey.id == 1))
+            if not exists:
+                await conn.execute(
+                    APIKey.__table__.insert().values(
+                        id=1, name="test", key_hash="test-hash", daily_limit=10_000,
+                        used_today=0, plan="pro", is_active=True,
+                        last_reset_date=datetime.now(timezone.utc).replace(tzinfo=None),
+                    )
+                )
+            if conn.dialect.name == "postgresql":
+                # Elle verilen id seriyi ilerletmiyor; sonraki gercek anahtar
+                # (admin ucu) yine 1'i alip cakisirdi.
+                await conn.execute(
+                    text(
+                        "SELECT setval(pg_get_serial_sequence('api_keys', 'id'),"
+                        " (SELECT MAX(id) FROM api_keys))"
+                    )
+                )
+        await engine.dispose()
+
+    asyncio.run(ensure())
 
 
 @pytest.fixture(autouse=True)

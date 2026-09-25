@@ -30,6 +30,7 @@ pydantic-settings==2.7.1
 # Database
 sqlalchemy[asyncio]==2.0.37
 aiosqlite==0.20.0
+asyncpg==0.31.0
 
 # Rate Limiting
 slowapi==0.1.9

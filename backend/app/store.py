@@ -10,7 +10,7 @@ import json
 from datetime import datetime, timezone
 
 from sqlalchemy import delete, func, or_, select, text
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import DistrictIngest, PlaceDistrict, PlaceRow
@@ -24,6 +24,30 @@ ROWS_PER_INSERT = 500
 
 def _batches(rows: list) -> list[list]:
     return [rows[i : i + ROWS_PER_INSERT] for i in range(0, len(rows), ROWS_PER_INSERT)]
+
+
+def _upsert(db: AsyncSession, model):
+    """
+    ON CONFLICT destekleyen INSERT, baglantinin lehcesine gore.
+
+    Yerelde SQLite, canlida Postgres (Supabase). Ikisi de ayni
+    on_conflict_do_update/excluded arayuzunu sunuyor; yalnizca insert
+    kurucusu lehceye ozel.
+    """
+    dialect = db.get_bind().dialect.name
+    return (postgresql.insert if dialect == "postgresql" else sqlite.insert)(model)
+
+
+def _last_wins(rows: list, key) -> list:
+    """
+    Ayni anahtar birden cok kez geliyorsa sonuncusu kalir.
+
+    SQLite ayni toplu INSERT icindeki tekrarlari sirayla isliyordu (son
+    deger kazaniyordu); Postgres ayni istekte bir satiri iki kez
+    guncellemeyi reddediyor ("cannot affect row a second time").
+    Tekrarlar bilincli olarak gelebiliyor (bkz. replace_memberships).
+    """
+    return list({key(row): row for row in rows}.values())
 
 # Ulasilabilirlik sinyali sayilan etiketler.
 #
@@ -133,8 +157,8 @@ async def upsert_places(db: AsyncSession, rows: list[dict]) -> int:
     if not rows:
         return 0
 
-    for batch in _batches(rows):
-        statement = sqlite_insert(PlaceRow).values(batch)
+    for batch in _batches(_last_wins(rows, lambda r: r["id"])):
+        statement = _upsert(db, PlaceRow).values(batch)
         excluded = statement.excluded
         updatable = {
             column: getattr(excluded, column)
@@ -248,8 +272,8 @@ async def _upsert_memberships(
     db: AsyncSession, district_id: str, memberships: list[tuple[str, bool]]
 ) -> None:
     """Uyelikleri parca parca yaz; ayni (place_id, district_id) guncellenir."""
-    for batch in _batches(memberships):
-        statement = sqlite_insert(PlaceDistrict).values(
+    for batch in _batches(_last_wins(memberships, lambda m: m[0])):
+        statement = _upsert(db, PlaceDistrict).values(
             [
                 {"place_id": place_id, "district_id": district_id, "is_inside": is_inside}
                 for place_id, is_inside in batch
@@ -271,7 +295,7 @@ async def mark_ingest(
     status: str,
 ) -> None:
     """Ilcenin ingest durumunu yaz veya guncelle."""
-    statement = sqlite_insert(DistrictIngest).values(
+    statement = _upsert(db, DistrictIngest).values(
         district_id=district_id,
         fetched_at=datetime.now(timezone.utc).replace(tzinfo=None),
         place_count=place_count,

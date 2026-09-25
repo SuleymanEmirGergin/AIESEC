@@ -9,7 +9,7 @@ liste silme, ayni yeri iki kez kaydetme, baskasinin listesine erisme.
 import uuid
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 
 from app.auth import validate_api_key
 from app.database import APIKey, AsyncSessionLocal, ContactEvent, engine, init_db
@@ -241,25 +241,26 @@ async def test_saved_places_contact_columns_are_migrated_idempotently():
 
 @pytest.mark.asyncio
 async def test_contact_event_history_index_is_migrated_idempotently():
-    await init_db()
-    async with engine.connect() as connection:
-        indexes = await connection.exec_driver_sql("PRAGMA index_list(contact_events)")
-        index_name = next(
-            row[1]
-            for row in indexes.fetchall()
-            if row[1] == "ix_contact_events_history"
+    # inspect ile: PRAGMA yalnizca SQLite'ta var, Postgres'te de kosmali.
+    def history_index_columns(sync_conn):
+        index = next(
+            ix
+            for ix in inspect(sync_conn).get_indexes("contact_events")
+            if ix["name"] == "ix_contact_events_history"
         )
-        columns = await connection.exec_driver_sql(f"PRAGMA index_info({index_name})")
+        return index["column_names"]
 
-    assert [row[2] for row in columns.fetchall()] == [
-        "saved_place_id",
-        "contacted_at",
-        "created_at",
-    ]
+    def saved_place_columns(sync_conn):
+        return {c["name"] for c in inspect(sync_conn).get_columns("saved_places")}
+
     await init_db()
     async with engine.connect() as connection:
-        columns = await connection.exec_driver_sql("PRAGMA table_info(saved_places)")
-        column_names = {row[1] for row in columns.fetchall()}
+        index_columns = await connection.run_sync(history_index_columns)
+
+    assert index_columns == ["saved_place_id", "contacted_at", "created_at"]
+    await init_db()
+    async with engine.connect() as connection:
+        column_names = await connection.run_sync(saved_place_columns)
 
     assert {"contact_status", "last_contact_at", "next_follow_up_at"} <= column_names
 
@@ -677,8 +678,14 @@ class TestBulkMove:
         """Id tahmin eden biri baska takimin kaydini kendi listesine cekemez."""
         ids = self._saved(client, 1, "move-d")
         target = self._list(client)
+        # Ikinci anahtar veritabaninda gercekten olmali: Postgres
+        # place_lists.api_key_id yabanci anahtarini uyguluyor.
+        admin = {"X-ADMIN-KEY": "test-admin-key"}
+        name = f"baska-{self.RUN}"
+        client.post("/admin/keys", params={"name": name, "plan": "pro"}, headers=admin)
+        other_id = next(k["id"] for k in client.get("/admin/keys", headers=admin).json() if k["name"] == name)
         other = APIKey(
-            id=api_key.id + 1000, name="baska", key_hash="baska-hash", daily_limit=10,
+            id=other_id, name=name, key_hash="baska-hash", daily_limit=10,
             used_today=0, plan="pro", is_active=True,
             last_reset_date=api_key.last_reset_date,
         )

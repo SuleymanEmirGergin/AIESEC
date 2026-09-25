@@ -370,7 +370,7 @@ class TestOsmOvertureBirlestirme:
             await db.execute(
                 text(
                     "INSERT INTO saved_places (id, api_key_id, place_id, name, lat, lon,"
-                    " tags, contact_status) VALUES ('sp-bir-5', 424242, 'overture:bir-5',"
+                    " tags, contact_status) VALUES ('sp-bir-5', 1, 'overture:bir-5',"
                     " 'Kayitli Anaokulu', :lat, :lon, '{}', 'uncontacted')"
                 ),
                 {"lat": LAT, "lon": LON},

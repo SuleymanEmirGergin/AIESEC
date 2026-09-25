@@ -2,6 +2,7 @@
 
 import datetime
 import os
+from uuid import uuid4
 
 from sqlalchemy import (
     JSON,
@@ -15,15 +16,45 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
+    inspect,
     select,
 )
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 
 DB_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./storage.db")
 
+
+def _engine_options(url: str) -> dict:
+    """
+    Yerelde SQLite, canlida Postgres (Supabase).
+
+    Postgres'te havuz yok (NullPool): Vercel fonksiyonlari istekler arasi
+    donduruluyor, surec ici havuzdaki baglanti bir sonraki istekte olu
+    olabiliyor; havuzlamayi Supabase'in baglanti yoneticisi (Supavisor)
+    yapiyor. Ayrica asyncpg havuzdaki baglantiyi baska bir olay dongusune
+    tasiyamiyor ("another operation is in progress") - testlerde yasandi.
+
+    statement_cache_size=0: Supavisor islem modunda (6543) hazirlanmis
+    ifadeler baglantilar arasinda tasinmiyor.
+    """
+    if not url.startswith("postgresql"):
+        return {}
+    return {
+        "poolclass": NullPool,
+        "connect_args": {
+            "statement_cache_size": 0,
+            "prepared_statement_cache_size": 0,
+            # Islem modunda ayni adli ifade baska istemcinin baglantisina
+            # dusebiliyor; SQLAlchemy'nin PgBouncer onerisi benzersiz ad.
+            "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4()}__",
+        },
+    }
+
+
 # Async engine setup
-engine = create_async_engine(DB_URL, echo=False)
+engine = create_async_engine(DB_URL, echo=False, **_engine_options(DB_URL))
 AsyncSessionLocal = async_sessionmaker(
     bind=engine, class_=AsyncSession, expire_on_commit=False
 )
@@ -309,14 +340,18 @@ async def init_db():
         # EKLEMEZ. Projede alembic yok; yeni kolonlar bu idempotent
         # kontrolle ekleniyor. Aksi halde calisan bir kurulumda
         # "no such column: places.source" ile karsilasilir.
-        cols = await conn.exec_driver_sql("PRAGMA table_info(places)")
-        if "source" not in {row[1] for row in cols.fetchall()}:
+        #
+        # Kolon listesi inspect ile: PRAGMA table_info yalnizca SQLite'ta
+        # var, Postgres'te (Supabase) sozdizimi hatasi.
+        def columns(sync_conn, table: str) -> set[str]:
+            return {c["name"] for c in inspect(sync_conn).get_columns(table)}
+
+        if "source" not in await conn.run_sync(columns, "places"):
             await conn.exec_driver_sql(
                 "ALTER TABLE places ADD COLUMN source TEXT NOT NULL DEFAULT 'osm'"
             )
 
-        saved_place_cols = await conn.exec_driver_sql("PRAGMA table_info(saved_places)")
-        existing_saved_place_columns = {row[1] for row in saved_place_cols.fetchall()}
+        existing_saved_place_columns = await conn.run_sync(columns, "saved_places")
         saved_place_migrations = {
             "contact_status": (
                 "ALTER TABLE saved_places ADD COLUMN "

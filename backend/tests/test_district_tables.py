@@ -133,6 +133,9 @@ async def test_confidence_null_reddedilir(db):
 async def test_bir_kayit_iki_ilceye_uye_olabilir(db):
     # Sinirdaki fabrika: Kadikoy'un icinde, Atasehir'in tamponunda.
     db.add(_place("osm:node:1003"))
+    # Iliski (relationship) tanimli degil; flush sirasi garanti degil ve
+    # Postgres yabanci anahtari uyguluyor. Yer once yazilmali.
+    await db.flush()
     db.add(
         PlaceDistrict(
             place_id="osm:node:1003", district_id="tr-34-kadikoy", is_inside=True

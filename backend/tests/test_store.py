@@ -427,6 +427,18 @@ class TestTopluYazim:
     async def test_cok_sayida_uyelik_tek_cagride_yazilir(self, db):
         # 3 kolonlu uyelikte sinir ~10900 satir; tekrarli id'ler de gecerli
         # (ON CONFLICT ayni toplu yazim icindeki tekrarlari isliyor).
+        # Uyeliklerin baglanacagi yerler once yazilmali (Postgres FK).
+        await upsert_places(
+            db,
+            [
+                place_row_values(
+                    {"type": "node", "id": 600_000 + i, "lat": 41.0, "lon": 29.0,
+                     "tags": {"name": f"Y {i}", "man_made": "works"}},
+                    "factory", 60, None,
+                )
+                for i in range(4000)
+            ],
+        )
         memberships = [(f"osm:node:{600_000 + i % 4000}", True) for i in range(12_000)]
 
         assert await replace_memberships(db, "tr-34-atasehir", memberships) == 12_000
