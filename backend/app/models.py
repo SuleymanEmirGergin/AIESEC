@@ -487,11 +487,12 @@ MAX_BULK_SAVE = 10_000
 
 class SavedPlaceBulkCreate(BaseModel):
     """
-    Toplu kayit. Not ve liste yok: "hepsini kaydet" dosyalanmamis olarak
-    ekliyor, tasima Kayitli sayfasinin isi.
+    Toplu kayit. Liste tek ve istegin tamamina uygulanir; verilmezse yeni
+    kayitlar dosyalanmamis olur, mevcutlarin listesine dokunulmaz.
     """
 
     items: List[SavedPlaceData] = Field(..., min_length=1, max_length=MAX_BULK_SAVE)
+    list_id: Optional[str] = None
 
 
 class SavedPlaceBulkResponse(BaseModel):

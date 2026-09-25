@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from sqlalchemy import delete, desc, func, select
+from sqlalchemy import delete, desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import validate_api_key
@@ -304,9 +304,13 @@ async def save_places_bulk(
     Birden cok yeri tek istekte, tek islemde kaydet.
 
     Tekli uctaki kurallar aynen gecerli: zaten kayitli olan hata degil,
-    mevcut id donuyor; gonullu adi yalnizca yeni kayit varsa gerekli.
+    mevcut id donuyor; gonullu adi yalnizca yeni kayit varsa gerekli;
+    liste verildiyse zaten kayitli olanlar da oraya tasiniyor (niyet bu).
     Ayni istekte tekrar eden yer bir kez kaydediliyor.
     """
+    if data.list_id:
+        await _owned_list(data.list_id, api_key, db)
+
     items = {item.place_id: item for item in data.items}
     place_ids = list(items)
 
@@ -320,6 +324,18 @@ async def save_places_bulk(
         )
         ids.update(dict(rows.all()))
 
+    if data.list_id and ids:
+        existing = list(ids)
+        for start in range(0, len(existing), _IN_CHUNK):
+            await db.execute(
+                update(SavedPlace)
+                .where(
+                    SavedPlace.api_key_id == api_key.id,
+                    SavedPlace.place_id.in_(existing[start : start + _IN_CHUNK]),
+                )
+                .values(list_id=data.list_id)
+            )
+
     missing = [pid for pid in place_ids if pid not in ids]
     if missing:
         volunteer_name = _volunteer_name(x_volunteer_name)
@@ -328,6 +344,7 @@ async def save_places_bulk(
             SavedPlace(
                 id=str(uuid.uuid4()),
                 api_key_id=api_key.id,
+                list_id=data.list_id,
                 place_id=pid,
                 name=items[pid].name,
                 place_type=items[pid].place_type,
@@ -343,8 +360,9 @@ async def save_places_bulk(
         # Id'ler burada uretildi; commit sonrasi nesneye dokunmaya gerek yok.
         ids.update({p.place_id: p.id for p in new_places})
         db.add_all(new_places)
-        await db.commit()
 
+    # Tek commit: yalnizca tasima olsa bile (hepsi zaten kayitli) yazilmali.
+    await db.commit()
     return {"created": len(missing), "ids": ids}
 
 

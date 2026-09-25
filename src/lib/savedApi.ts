@@ -182,14 +182,14 @@ export const BULK_SAVE_LIMIT = 10_000;
  * Birden cok yeri tek istekte kaydeder.
  *
  * Tekli kayitla ayni kurallar: zaten kayitli olan hata degil, `ids` her
- * yer icin kayit id'sini tasiyor. Liste ve not yok - toplu kayit
- * dosyalanmamis olarak ekliyor.
+ * yer icin kayit id'sini tasiyor. Liste verilirse yeniler oraya eklenir,
+ * zaten kayitli olanlar oraya tasinir; verilmezse yeniler dosyalanmamis.
  */
-export const savePlaces = (places: Place[]) =>
+export const savePlaces = (places: Place[], listId?: string | null) =>
   request<{ created: number; ids: Record<string, string> }>("/api/saved/bulk", {
     method: "POST",
     volunteer: true,
-    body: { items: places.map(toSaveBody) },
+    body: { items: places.map(toSaveBody), list_id: listId ?? null },
   });
 
 function toSaveBody(place: Place) {

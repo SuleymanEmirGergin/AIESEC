@@ -112,6 +112,19 @@ describe("saved API client", () => {
       { place_id: "b", name: "B", place_type: "hotel", lat: 3, lon: 4, address: "Merkez", tags: {} },
     ]);
     expect(result.ids).toEqual({ a: "s-a", b: "s-b" });
+    expect(JSON.parse(init.body).list_id).toBeNull();
+  });
+
+  it("toplu kayitta secilen listeyi iletir", async () => {
+    localStorage.setItem("volunteer_name", "Ece");
+    const spy = mockFetch({ created: 1, ids: { a: "s-a" } });
+
+    await savePlaces(
+      [{ id: "a", name: "A", type: "hotel", address: "Merkez", tags: {}, coordinates: { lat: 1, lng: 2 } }],
+      "list-7"
+    );
+
+    expect(JSON.parse(spy.mock.calls[0][1].body).list_id).toBe("list-7");
   });
 
   it("temas eklerken gonullu adini iletir", async () => {

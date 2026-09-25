@@ -22,7 +22,14 @@ import {
   type DistrictMeta,
   type PlaceQuery,
 } from "../lib/districts";
-import { fetchSavedPlaces, savePlace, savePlaces, removeSavedPlace } from "../lib/savedApi";
+import {
+  createList,
+  fetchSavedPlaces,
+  savePlace,
+  savePlaces,
+  removeSavedPlace,
+} from "../lib/savedApi";
+import SaveTargetModal, { rememberList, type SaveTarget } from "../components/SaveTargetModal";
 import type { Place, PlaceType } from "../lib/types";
 import { X, Database } from "lucide-react";
 
@@ -205,33 +212,33 @@ export default function Home() {
    * guncellemesi.
    */
   const saveMany = useCallback(
-    async (targets: Place[]) => {
-      const unsaved = targets.filter((p) => !savedIds.has(p.id));
-      if (unsaved.length === 0) return;
-      setSaveProgress({ done: 0, total: unsaved.length });
-      for (let i = 0; i < unsaved.length; i += BULK_CHUNK) {
-        const { ids } = await savePlaces(unsaved.slice(i, i + BULK_CHUNK));
+    async (targets: Place[], listId: string | null) => {
+      // Liste secildiyse zaten kayitli olanlar da gidiyor: sunucu onlari
+      // o listeye tasiyor, yani "bu sonuclari su listeye" niyeti tamamlaniyor.
+      // Dosyalanmamis secildiyse yalnizca yeniler; mevcutlarin listesi korunur.
+      const batch = listId ? targets : targets.filter((p) => !savedIds.has(p.id));
+      if (batch.length === 0) return;
+      setSaveProgress({ done: 0, total: batch.length });
+      for (let i = 0; i < batch.length; i += BULK_CHUNK) {
+        const { ids } = await savePlaces(batch.slice(i, i + BULK_CHUNK), listId);
         setSavedIds((prev) => {
           const next = new Map(prev);
           for (const [placeId, savedId] of Object.entries(ids)) next.set(placeId, savedId);
           return next;
         });
-        setSaveProgress({
-          done: Math.min(i + BULK_CHUNK, unsaved.length),
-          total: unsaved.length,
-        });
+        setSaveProgress({ done: Math.min(i + BULK_CHUNK, batch.length), total: batch.length });
       }
     },
     [savedIds]
   );
 
   const runBulkSave = useCallback(
-    async (collect: () => Promise<Place[]>) => {
+    async (collect: () => Promise<Place[]>, listId: string | null) => {
       if (savingAll) return;
       setSavingAll(true);
       setNotice(null);
       try {
-        await saveMany(await collect());
+        await saveMany(await collect(), listId);
       } catch (err: any) {
         reportSaveError(err, "Bazı kayıtlar eklenemedi.");
       } finally {
@@ -244,7 +251,7 @@ export default function Home() {
 
   /** Ekranda yuklu olan sonuclar. */
   const saveAllVisible = useCallback(
-    () => runBulkSave(async () => places),
+    (listId: string | null) => runBulkSave(async () => places, listId),
     [runBulkSave, places]
   );
 
@@ -257,7 +264,7 @@ export default function Home() {
    * satiri DOM'a koymak tarayiciyi kilitliyordu (bkz. loadMore).
    */
   const saveAllResults = useCallback(
-    () =>
+    (listId: string | null) =>
       runBulkSave(async () => {
         if (!district) return places;
         const all = [...places];
@@ -277,8 +284,38 @@ export default function Home() {
           }
         }
         return all;
-      }),
+      }, listId),
     [runBulkSave, district, places, total, query]
+  );
+
+  /**
+   * Toplu kayit butonlari once hedefi soruyor (SaveTargetModal). Yeni
+   * liste secildiyse kayittan once olusturuluyor.
+   */
+  const [pendingSave, setPendingSave] = useState<{
+    scope: "visible" | "all";
+    count: number;
+  } | null>(null);
+
+  const confirmSaveTarget = useCallback(
+    async (target: SaveTarget) => {
+      const scope = pendingSave?.scope;
+      setPendingSave(null);
+      let listId: string | null = null;
+      if (target.kind === "list") listId = target.listId;
+      if (target.kind === "new") {
+        try {
+          listId = (await createList(target.name)).id;
+          rememberList(listId);
+        } catch (err: any) {
+          reportSaveError(err, "Liste oluşturulamadı.");
+          return;
+        }
+      }
+      if (scope === "all") await saveAllResults(listId);
+      else await saveAllVisible(listId);
+    },
+    [pendingSave, saveAllResults, saveAllVisible, reportSaveError]
   );
 
   const handleApiError = useCallback((err: any) => {
@@ -640,9 +677,13 @@ export default function Home() {
           <ExportToolbar
             savedCount={savedInView}
             totalResults={places.length}
-            onSaveAll={saveAllVisible}
+            onSaveAll={() => setPendingSave({ scope: "visible", count: places.length })}
             // Yalnizca yuklenmemis sonuc varken: aksi halde iki buton ayni isi yapar.
-            onSaveAllResults={district && total > places.length ? saveAllResults : undefined}
+            onSaveAllResults={
+              district && total > places.length
+                ? () => setPendingSave({ scope: "all", count: total })
+                : undefined
+            }
             allResultsCount={total}
             saveProgress={saveProgress}
             onExport={handleExport}
@@ -655,6 +696,13 @@ export default function Home() {
           />
         </div>
       </div>
+
+      <SaveTargetModal
+        isOpen={pendingSave !== null}
+        count={pendingSave?.count ?? 0}
+        onClose={() => setPendingSave(null)}
+        onConfirm={confirmSaveTarget}
+      />
 
       {reportTarget && (
         <ReportModal

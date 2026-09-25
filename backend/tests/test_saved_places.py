@@ -567,3 +567,61 @@ class TestBulkSave:
         )
         assert response.status_code == 200, response.text
         assert response.json()["created"] == 2500
+
+    # --- Hedef liste ------------------------------------------------------
+
+    def _list(self, client, name: str = "Toplu hedef") -> str:
+        created = client.post("/api/lists", json={"name": name}, headers=VOLUNTEER_HEADERS)
+        assert created.status_code == 201, created.text
+        return created.json()["id"]
+
+    def test_liste_verilirse_yeni_kayitlar_listeye_eklenir(self, client):
+        list_id = self._list(client)
+        items = self._items("bulk-g", 3)
+        response = client.post(
+            "/api/saved/bulk",
+            json={"items": items, "list_id": list_id},
+            headers=VOLUNTEER_HEADERS,
+        )
+        assert response.status_code == 200, response.text
+
+        in_list = {p["place_id"] for p in client.get(f"/api/saved?list_id={list_id}").json()}
+        assert in_list == {i["place_id"] for i in items}
+
+    def test_liste_verilirse_kayitli_olan_da_listeye_tasinir(self, client):
+        """Tekli uctaki kural: liste belirtildiyse niyet oraya tasimak."""
+        item = _place(self._id("bulk-h-0"))
+        client.post("/api/saved", json=item, headers=VOLUNTEER_HEADERS)
+        list_id = self._list(client)
+
+        body = client.post(
+            "/api/saved/bulk",
+            json={"items": [item], "list_id": list_id},
+            headers=VOLUNTEER_HEADERS,
+        ).json()
+
+        assert body["created"] == 0
+        in_list = [p["place_id"] for p in client.get(f"/api/saved?list_id={list_id}").json()]
+        assert in_list == [item["place_id"]]
+
+    def test_liste_verilmezse_mevcut_kaydin_listesi_degismez(self, client):
+        list_id = self._list(client)
+        item = _place(self._id("bulk-i-0"), list_id=list_id)
+        client.post("/api/saved", json=item, headers=VOLUNTEER_HEADERS)
+
+        client.post(
+            "/api/saved/bulk",
+            json={"items": [{k: v for k, v in item.items() if k != "list_id"}]},
+            headers=VOLUNTEER_HEADERS,
+        )
+
+        in_list = [p["place_id"] for p in client.get(f"/api/saved?list_id={list_id}").json()]
+        assert in_list == [item["place_id"]]
+
+    def test_bilinmeyen_liste_reddedilir(self, client):
+        response = client.post(
+            "/api/saved/bulk",
+            json={"items": self._items("bulk-j", 1), "list_id": "yok-boyle-liste"},
+            headers=VOLUNTEER_HEADERS,
+        )
+        assert response.status_code == 404
