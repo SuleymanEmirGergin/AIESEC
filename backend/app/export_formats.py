@@ -242,21 +242,23 @@ def to_xlsx(items: List[Dict[str, Any]], title: str, generated_at: datetime) -> 
         cell.alignment = Alignment(vertical="center")
 
     link_font = Font(color=ACCENT.lstrip("#"), underline="single")
-    for row in rows:
-        ws.append(
-            [
-                row.name,
-                row.type_label,
-                row.phone,
-                row.email,
-                row.website,
-                row.address,
-                row.location,
-                "Haritada aç" if row.maps_url else "",
-                row.record_id,
-            ]
-        )
-        r = ws.max_row
+    values = []
+    # Satir numarasi sayactan: ws.max_row her cagrida tum hucreleri tariyor
+    # ve dongude O(n^2) oluyordu (10.000 satir 51 sn).
+    for r, row in enumerate(rows, start=2):
+        line = [
+            row.name,
+            row.type_label,
+            row.phone,
+            row.email,
+            row.website,
+            row.address,
+            row.location,
+            "Haritada aç" if row.maps_url else "",
+            row.record_id,
+        ]
+        values.append(line)
+        ws.append(line)
         links = {
             3: f"tel:{row.phone.replace(' ', '')}" if row.phone else "",
             4: f"mailto:{row.email}" if row.email else "",
@@ -271,13 +273,12 @@ def to_xlsx(items: List[Dict[str, Any]], title: str, generated_at: datetime) -> 
 
     # Baslik kaydirirken gorunur kalsin; her sutunda filtre hazir.
     ws.freeze_panes = "A2"
-    ws.auto_filter.ref = f"A1:{get_column_letter(len(CSV_HEADER))}{max(ws.max_row, 1)}"
+    ws.auto_filter.ref = f"A1:{get_column_letter(len(CSV_HEADER))}{len(rows) + 1}"
 
     # Genislik icerige gore, ama adres gibi uzun sutunlar ekrani kaplamasin.
-    for idx, header in enumerate(CSV_HEADER, start=1):
-        values = [header] + [str(ws.cell(row=r, column=idx).value or "") for r in range(2, ws.max_row + 1)]
-        width = max(len(v) for v in values) + 2
-        ws.column_dimensions[get_column_letter(idx)].width = min(max(width, 8), 50)
+    for idx, header in enumerate(CSV_HEADER):
+        width = max([len(header)] + [len(line[idx] or "") for line in values]) + 2
+        ws.column_dimensions[get_column_letter(idx + 1)].width = min(max(width, 8), 50)
 
     info = wb.create_sheet("Bilgi")
     for line in (
@@ -341,6 +342,12 @@ PDF_COLUMNS_SINGLE_TYPE = [
 ]
 
 
+# Bos hucre isareti ve duz metin hucrelerin satir yuksekligi (Paragraph
+# stilleriyle ayni, 7.6 pt yazi).
+EMPTY = "—"
+STRING_LEADING = 9.6
+
+
 def pdf_columns(rows: List[ExportRow]) -> list:
     """Tek turlu listede TUR sutunu yok (bkz. PDF_COLUMNS_SINGLE_TYPE)."""
     return PDF_COLUMNS_SINGLE_TYPE if len({r.type_label for r in rows}) <= 1 else PDF_COLUMNS
@@ -361,10 +368,11 @@ def to_pdf(
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.pdfgen import canvas as pdf_canvas
     from reportlab.platypus import (
-        LongTable,
+        PageBreak,
         Paragraph,
         SimpleDocTemplate,
         Spacer,
+        Table,
         TableStyle,
     )
 
@@ -384,14 +392,10 @@ def to_pdf(
     summary = style("summary", fontSize=7.5, leading=10, textColor=colors.HexColor(INK_3))
     cell = style("cell")
     cell_name = style("cell_name", fontName="Inter-SemiBold")
-    cell_muted = style("cell_muted", textColor=colors.HexColor(INK_4))
     head = style("head", fontName="Inter-SemiBold", fontSize=6.6, textColor=colors.HexColor(INK_3))
-    num = style("num", textColor=colors.HexColor(INK_4), alignment=2)
 
     def linked(text: str, href: str, st=cell, color=ACCENT) -> Paragraph:
         return Paragraph(f'<a href="{_esc(href)}" color="{color}">{_esc(text)}</a>', st)
-
-    empty = Paragraph("—", cell_muted)
 
     with_phone = sum(1 for r in rows if r.phone)
     ratio = f" (%{round(100 * with_phone / len(rows))})" if rows else ""
@@ -414,42 +418,98 @@ def to_pdf(
     story.append(Spacer(0, 12))
 
     columns = pdf_columns(rows)
+    col_widths = [w for _, _, w in columns]
 
+    # Bagli olmayan kisa hucreler (sira no, bos "—") duz metin: Paragraph
+    # olcumu satir basina en pahali is.
     def cells(i: int, r: ExportRow) -> dict:
         return {
-            "num": Paragraph(str(i), num),
+            "num": str(i),
             "name": linked(r.name or "İsimsiz yer", r.maps_url, cell_name, INK)
             if r.maps_url
             else Paragraph(_esc(r.name or "İsimsiz yer"), cell_name),
-            "type": Paragraph(_esc(r.type_label), cell) if r.type_label else empty,
-            "phone": linked(r.phone, f"tel:{r.phone.replace(' ', '')}") if r.phone else empty,
-            "email": linked(r.email, f"mailto:{r.email}") if r.email else empty,
-            "web": linked(_web_label(r.website), _web_href(r.website)) if r.website else empty,
-            "address": Paragraph(_esc(r.address), cell) if r.address else empty,
+            "type": Paragraph(_esc(r.type_label), cell) if r.type_label else EMPTY,
+            "phone": linked(r.phone, f"tel:{r.phone.replace(' ', '')}") if r.phone else EMPTY,
+            "email": linked(r.email, f"mailto:{r.email}") if r.email else EMPTY,
+            "web": linked(_web_label(r.website), _web_href(r.website)) if r.website else EMPTY,
+            "address": Paragraph(_esc(r.address), cell) if r.address else EMPTY,
         }
 
-    data = [[Paragraph(label, head) for _, label, _ in columns]]
+    header = [Paragraph(label, head) for _, label, _ in columns]
+    body = []
     for i, r in enumerate(rows, start=1):
         row_cells = cells(i, r)
-        data.append([row_cells[key] for key, _, _ in columns])
+        body.append([row_cells[key] for key, _, _ in columns])
 
-    table = LongTable(data, colWidths=[w for _, _, w in columns], repeatRows=1)
-    table.setStyle(
-        TableStyle(
-            [
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("TOPPADDING", (0, 0), (-1, -1), 4.5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4.5),
-                ("LEFTPADDING", (0, 0), (-1, -1), 5),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(PAPER_3)),
-                ("LINEBELOW", (0, 0), (-1, 0), 0.8, colors.HexColor(INK_4)),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor(PAPER_2)]),
-                ("LINEBELOW", (0, 1), (-1, -1), 0.3, colors.HexColor(RULE)),
-            ]
+    # Sayfalama elle: tek bir LongTable'i kutuphane bolerken her sayfa
+    # sonunda kalan TUM satirlarin yuksekligini yeniden hesapliyordu
+    # (4000 satir 28 sn, karesel). Burada her satir bir kez olculuyor,
+    # sayfalara doldurulup her sayfaya kendi basligiyla ayri tablo konuyor.
+    pad_y, pad_x = 4.5, 5
+
+    def row_height(row) -> float:
+        tallest = STRING_LEADING
+        for value, width in zip(row, col_widths):
+            if not isinstance(value, str):
+                tallest = max(tallest, value.wrap(width - 2 * pad_x, 1e6)[1])
+        return tallest + 2 * pad_y
+
+    frame_w = page_w - 2 * margin_x - 12  # SimpleDocTemplate cercevesi 6 pt ic bosluk
+    frame_h = page_h - margin_top - margin_bottom - 12
+    intro_h = sum(f.wrap(frame_w, frame_h)[1] for f in story)
+    header_h = row_height(header)
+    safety = 4  # olcum ile tablo yerlesimi arasindaki yuvarlama payi
+
+    pages: list[list] = []
+    current: list = []
+    used = intro_h + header_h
+    for row in body:
+        h = row_height(row)
+        if current and used + h > frame_h - safety:
+            pages.append(current)
+            current, used = [], header_h
+        current.append(row)
+        used += h
+    if current or not pages:
+        pages.append(current)
+
+    zebra = [colors.white, colors.HexColor(PAPER_2)]
+    start = 0
+    for index, page_rows in enumerate(pages):
+        muted = [
+            ("TEXTCOLOR", (c, r), (c, r), colors.HexColor(INK_4))
+            for r, row in enumerate(page_rows, start=1)
+            for c, value in enumerate(row)
+            if isinstance(value, str) and value == EMPTY
+        ]
+        table = Table([header] + page_rows, colWidths=col_widths, repeatRows=1)
+        table.setStyle(
+            TableStyle(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("TOPPADDING", (0, 0), (-1, -1), pad_y),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), pad_y),
+                    ("LEFTPADDING", (0, 0), (-1, -1), pad_x),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), pad_x),
+                    ("FONTNAME", (0, 0), (-1, -1), "Inter"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 7.6),
+                    ("LEADING", (0, 0), (-1, -1), STRING_LEADING),
+                    ("TEXTCOLOR", (0, 1), (0, -1), colors.HexColor(INK_4)),
+                    ("ALIGN", (0, 1), (0, -1), "RIGHT"),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(PAPER_3)),
+                    ("LINEBELOW", (0, 0), (-1, 0), 0.8, colors.HexColor(INK_4)),
+                    # Zebra sayfalar arasinda kesintisiz: tek numarali
+                    # satirla baslayan sayfada renk sirasi donuyor.
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), zebra[start % 2 :] + zebra[: start % 2]),
+                    ("LINEBELOW", (0, 1), (-1, -1), 0.3, colors.HexColor(RULE)),
+                    *muted,
+                ]
+            )
         )
-    )
-    story.append(table)
+        story.append(table)
+        if index < len(pages) - 1:
+            story.append(PageBreak())
+        start += len(page_rows)
 
     class NumberedCanvas(pdf_canvas.Canvas):
         """'Sayfa x / y' icin toplam sayfa gerekli: once hepsi toplanir."""

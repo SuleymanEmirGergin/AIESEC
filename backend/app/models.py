@@ -367,7 +367,9 @@ class ExportRequest(BaseModel):
     type: str
     radius: int
     center: Dict[str, float]  # {"lat": ..., "lon": ...}
-    items: List[Dict[str, Any]]  # Full item data for CSV construction
+    # Full item data for file construction. Next route'u ile ayni sinir;
+    # 10.000 satirlik PDF ~50 sn suruyor.
+    items: List[Dict[str, Any]] = Field(..., max_length=10_000)
     # Varsayilan csv: eski istemciler alan gondermeden ayni sonucu alir.
     format: Literal["csv", "xlsx", "pdf"] = "csv"
     # PDF/Excel basligi, or. "Kadıköy · Otel" ya da liste adi.

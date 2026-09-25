@@ -22,7 +22,8 @@ import type { Place } from "../../../lib/types";
 
 export const dynamic = "force-dynamic";
 
-const MAX_ITEMS = 1000;
+// Backend ExportRequest.items ile ayni sinir. En kalabalik ilce ~8600.
+const MAX_ITEMS = 10_000;
 
 /** Backend ExportRequest.format ile ayni. */
 const EXPORT_FORMATS = ["csv", "xlsx", "pdf"];

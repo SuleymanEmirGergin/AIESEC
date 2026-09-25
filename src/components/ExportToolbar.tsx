@@ -32,7 +32,7 @@ interface ExportToolbarProps {
 }
 
 /** Sunucu 1000 ustunu reddediyor (sessizce kirpmiyor). */
-const MAX_EXPORT_ITEMS = 1000;
+const MAX_EXPORT_ITEMS = 10_000;
 
 const SAVE_BUTTON =
   "inline-flex items-center gap-1.5 rounded-input px-2.5 py-1.5 text-2xs font-medium text-graphite-ink-2 transition-colors duration-fast ease-out hover:bg-graphite-2 hover:text-graphite-ink disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent";

@@ -21,8 +21,11 @@ const DEFAULT_TIMEOUT_MS = 20_000;
  */
 const SEARCH_TIMEOUT_MS = 120_000;
 
-/** Export yalnizca veritabanina gidiyor, Overpass beklemesi yok. */
-const EXPORT_TIMEOUT_MS = 60_000;
+/**
+ * Export Overpass'e gitmiyor ama PDF uretimi satir basina ~5 ms:
+ * olcumde 10.000 satir (ust sinir) ~50 sn. 60 sn sinira fazla yakindi.
+ */
+const EXPORT_TIMEOUT_MS = 120_000;
 
 async function fetchWithAuth(
   url: string,

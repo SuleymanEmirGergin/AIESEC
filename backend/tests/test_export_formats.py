@@ -147,3 +147,32 @@ class TestUc:
 
     def test_bilinmeyen_bicim_reddedilir(self, client):
         assert self._post(client, "docx").status_code == 422
+
+    def test_ust_sinir_10000(self, client):
+        """Next route'u ile ayni sinir; asan istek dosya uretmeden reddedilir."""
+        body = {
+            "type": "hotel", "radius": 0, "center": {"lat": 0, "lon": 0},
+            "items": [ITEMS[1]] * 10_001, "format": "csv",
+        }
+        assert client.post("/api/export", json=body).status_code == 422
+
+
+class TestPdfSayfalama:
+    """Elle sayfalama: hic satir kaybolmamali, sira bozulmamali."""
+
+    def test_tum_satirlar_sirayla_tablolarda(self, monkeypatch):
+        from reportlab.platypus import Table
+
+        seen = []
+        original = Table.__init__
+
+        def spy(self, data, *args, **kwargs):
+            seen.append(data)
+            original(self, data, *args, **kwargs)
+
+        monkeypatch.setattr(Table, "__init__", spy)
+        to_pdf([_item(i) for i in range(1, 501)], "Sayfalama", NOW)
+
+        numbers = [int(row[0]) for table in seen for row in table[1:]]
+        assert numbers == list(range(1, 501))
+        assert len(seen) > 1, "500 satir tek sayfaya sigmamali"
