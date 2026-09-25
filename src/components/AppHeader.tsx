@@ -12,12 +12,6 @@ interface AppHeaderProps {
   savedCount?: number | null;
 }
 
-const PLAN_LABELS: Record<string, string> = {
-  free: "Ücretsiz",
-  pro: "Pro",
-  enterprise: "Enterprise",
-};
-
 /**
  * Sayfalarin paylastigi baslik seridi.
  *
@@ -42,20 +36,6 @@ export default function AppHeader({
         : "text-ink-3 hover:bg-paper-2 hover:text-ink"
     }`;
 
-  const planLabel = account ? PLAN_LABELS[account.plan] ?? account.plan : null;
-  const remaining = account
-    ? Math.max(0, account.daily_limit - account.used_today)
-    : null;
-
-  /**
-   * Kalan hak yalnizca gercekten azaldiginda gorunuyor.
-   *
-   * "99.910" gibi bir sayi gonulluye hicbir sey anlatmiyor, yalnizca
-   * seridi dolduruyor. Yogunluk kazanilir (PRODUCT.md ilke 4): sayi
-   * ancak bir karari etkileyecek hale gelince cikar.
-   */
-  const showRemaining = remaining !== null && remaining < 50;
-
   return (
     <header className="shrink-0 rule-b bg-paper">
       <div className="flex h-14 items-center gap-2 px-4">
@@ -68,7 +48,7 @@ export default function AppHeader({
 
         <nav className="ml-3 flex items-center gap-1" aria-label="Ana gezinme">
           <Link href="/" className={navLink(pathname === "/")}>
-            Harita
+            Arama
           </Link>
           <Link href="/kayitli" className={navLink(pathname.startsWith("/kayitli"))}>
             Kayıtlı
@@ -79,17 +59,6 @@ export default function AppHeader({
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
-          {planLabel && (
-            <span className="hidden sm:inline-flex items-center gap-2 rounded-input border border-rule px-2.5 py-1.5">
-              <span className="mono-label text-ink-2">{planLabel}</span>
-              {showRemaining && (
-                <span className="mono-label tabular text-caution">
-                  {remaining} hak kaldı
-                </span>
-              )}
-            </span>
-          )}
-
           <button
             type="button"
             onClick={onOpenSettings}

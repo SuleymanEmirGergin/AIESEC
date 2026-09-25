@@ -14,7 +14,11 @@ const SORT_LABELS: { id: SortOption; label: string; note?: string }[] = [
   { id: "contact_first", label: "Önce iletişimi olanlar" },
   { id: "lead_score", label: "Lead kalitesi" },
   { id: "confidence", label: "Güven skoru" },
-  { id: "name", label: "İsme göre" },
+  { id: "name", label: "İsme göre (A→Z)" },
+  { id: "name_desc", label: "İsme göre (Z→A)" },
+  { id: "type", label: "Türe göre (A→Z)" },
+  { id: "type_desc", label: "Türe göre (Z→A)" },
+  { id: "contact_last", label: "Önce iletişimi olmayanlar" },
   { id: "ref_distance", label: "Referans noktaya uzaklık" },
 ];
 

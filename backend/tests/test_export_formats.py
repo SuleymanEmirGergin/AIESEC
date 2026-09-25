@@ -132,6 +132,12 @@ class TestUc:
         assert response.headers["content-type"].startswith("text/csv")
         assert response.headers["content-disposition"].endswith('.csv"')
 
+    def test_plan_ve_kota_indirmeyi_engellemez(self, client, api_key):
+        """Plan sistemi kaldirildi: eski 'free' ve kotasi dolmus anahtar da indirir."""
+        api_key.plan = "free"
+        api_key.used_today = api_key.daily_limit
+        assert self._post(client, "pdf").status_code == 200
+
     def test_excel(self, client):
         response = self._post(client, "xlsx")
         assert response.status_code == 200

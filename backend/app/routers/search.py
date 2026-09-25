@@ -130,40 +130,34 @@ async def search_places(
     """
     debug_mode = os.getenv("DEBUG_OVERPASS", "false").lower() == "true"
 
-    # 0. Girdi dogrulamasi (plan kontrolunden once: gecersiz istek
-    #    kullanicinin planiyla ilgili degil)
+    # 0. Girdi dogrulamasi
     _validate_search_input(type, radius)
     parsed_bbox = _parse_bbox(bbox)
 
-    # 1. Plan Enforcement
-    max_allowed_radius = 5000
-    if api_key.plan == "free":
-        max_allowed_radius = 2000
+    # 1. Alan siniri. Plan yok; sinir teknik: Overpass'i genis alanla
+    #    yormamak. Herkes icin ayni.
+    max_allowed_radius = MAX_RADIUS_M
 
     if parsed_bbox is not None:
-        # Plan siniri yaricap uzerinden tanimli; bbox'in esdeger yaricapi
-        # (merkezden koseye) kullaniliyor ki bbox plan sinirini atlatmanin
+        # Sinir yaricap uzerinden tanimli; bbox'in esdeger yaricapi
+        # (merkezden koseye) kullaniliyor ki bbox siniri atlatmanin
         # yolu olmasin.
         current_radius = bbox_circumscribed_radius_m(parsed_bbox)
     else:
         current_radius = radius or 1500  # Default if None
 
     if current_radius > max_allowed_radius:
-        detail = (
-            f"Radius {current_radius}m exceeds plan limit "
-            f"({max_allowed_radius}m) for '{api_key.plan}' plan."
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Arama alani cok genis: esdeger yaricap {current_radius}m > "
+                f"{max_allowed_radius}m. Daha dar bir alan secin."
+            ),
         )
-        if parsed_bbox is not None:
-            detail = (
-                f"Bbox alani plan sinirini asiyor: esdeger yaricap "
-                f"{current_radius}m > {max_allowed_radius}m "
-                f"('{api_key.plan}' plani). Daha dar bir alan secin."
-            )
-        raise HTTPException(status_code=403, detail=detail)
 
-    # Plan kontrolu bittikten SONRA izgaraya oturtuluyor: onbellek
+    # Sinir kontrolu bittikten SONRA izgaraya oturtuluyor: onbellek
     # isabetini artiriyor (haritayi birkac piksel kaydiran kullanici ayni
-    # sorguyu tetiklemesin) ama plan siniri ham istege gore uygulandi.
+    # sorguyu tetiklemesin) ama sinir ham istege gore uygulandi.
     query_bbox = snap_bbox_outward(parsed_bbox) if parsed_bbox else None
 
     # 2. Consult Search Policy

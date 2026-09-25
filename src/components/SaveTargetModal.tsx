@@ -8,7 +8,7 @@ import { fetchLists, type PlaceListSummary } from "../lib/savedApi";
 /** Kullanicinin secimi: mevcut liste, yeni liste adi ya da dosyalanmamis. */
 export type SaveTarget =
   | { kind: "unfiled" }
-  | { kind: "list"; listId: string }
+  | { kind: "list"; listId: string; name: string }
   | { kind: "new"; name: string };
 
 interface SaveTargetModalProps {
@@ -107,7 +107,7 @@ export default function SaveTargetModal({
       onConfirm({ kind: "new", name: trimmedName });
     } else {
       rememberList(choice);
-      onConfirm({ kind: "list", listId: choice });
+      onConfirm({ kind: "list", listId: choice, name: lists?.find((l) => l.id === choice)?.name ?? "Liste" });
     }
   };
 

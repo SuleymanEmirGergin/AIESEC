@@ -44,3 +44,27 @@ export function isOverdue(place: SavedPlace, today: Date): boolean {
   );
   return toDayNumber(place.next_follow_up_at) < todayNumber;
 }
+
+/** Durum rozetinin rengi: listede hangi kurumla nerede kalindigi bir bakista. */
+export const CONTACT_STATUS_TONES: Record<ContactStatus, string> = {
+  uncontacted: "bg-paper-3 text-ink-3",
+  preparing: "bg-accent-wash text-accent",
+  contacted: "bg-accent-wash text-accent",
+  follow_up: "bg-caution-bg text-caution",
+  positive: "bg-paper-2 text-positive",
+  not_suitable: "bg-paper-2 text-critical",
+};
+
+const dayFormat = new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short", year: "numeric" });
+
+/** "2026-09-25" -> "25 Eyl 2026". Yerel gun; UTC'ye cevirip bir gun kaydirmiyor. */
+export function formatDay(value: string): string {
+  const [year, month, day] = value.slice(0, 10).split("-").map(Number);
+  return dayFormat.format(new Date(year, month - 1, day));
+}
+
+/** "2026-09-25" + 7 -> "2026-10-02" (takip tarihi kisayollari icin). */
+export function addDays(value: string, days: number): string {
+  const [year, month, day] = value.split("-").map(Number);
+  return localDateInputValue(new Date(year, month - 1, day + days));
+}

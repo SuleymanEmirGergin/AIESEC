@@ -1,12 +1,13 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { MapPin, Trash2, FolderInput, Check } from "lucide-react";
+import { MapPin, Trash2, FolderInput, Check, CalendarClock, History, MessageSquarePlus } from "lucide-react";
 import ContactLinks from "./ContactLinks";
 import { PLACE_TYPE_LABELS } from "../lib/labels";
-import { fetchContactEvents, type ContactEvent, type ContactEventCreate, type ContactStatus, type PlaceListSummary, type SavedPlace } from "../lib/savedApi";
+import { fetchContactEvents, type ContactEvent, type ContactEventCreate, type PlaceListSummary, type SavedPlace } from "../lib/savedApi";
 import type { PlaceType } from "../lib/types";
-import { CONTACT_STATUS_LABELS, localDateInputValue } from "../lib/contactTracking";
+import { formatDay, isOverdue } from "../lib/contactTracking";
+import { ContactForm, ContactHistory, StatusBadge } from "./ContactPanel";
 
 interface SavedPlaceRowProps {
   place: SavedPlace;
@@ -47,11 +48,6 @@ export default function SavedPlaceRow({
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
-  const [contactStatus, setContactStatus] = useState<ContactStatus>(place.contact_status);
-  const [contactedAt, setContactedAt] = useState(localDateInputValue);
-  const [contactNote, setContactNote] = useState("");
-  const [followUpAt, setFollowUpAt] = useState("");
-  const [contactError, setContactError] = useState<string | null>(null);
   const [history, setHistory] = useState<ContactEvent[] | null>(null);
   const [historyVisible, setHistoryVisible] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -93,15 +89,16 @@ export default function SavedPlaceRow({
     } finally { setHistoryLoading(false); }
   };
 
-  const submitContact = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setContactError(null);
-    try {
-      await onAddContact(place.id, { status: contactStatus, contacted_at: contactedAt, note: contactNote || null, next_follow_up_at: followUpAt || null });
-      setContactOpen(false);
-      await loadHistory();
-    } catch (err: any) { setContactError(err?.message || "Temas kaydedilemedi."); }
+  // Hata ContactForm'da gosteriliyor; basarida gecmis acilip tazeleniyor
+  // ki yeni kayit gorunsun (eskiden yukleniyor ama gizli kaliyordu).
+  const submitContact = async (data: ContactEventCreate) => {
+    await onAddContact(place.id, data);
+    setContactOpen(false);
+    setHistoryVisible(true);
+    await loadHistory();
   };
+
+  const overdue = isOverdue(place, new Date());
 
   return (
     <li className="rule-b last:border-b-0">
@@ -170,9 +167,18 @@ export default function SavedPlaceRow({
         </div>
 
         <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <StatusBadge status={place.contact_status} />
           <span className="mono-label">{typeLabel}</span>
-          <span className="mono-label">{CONTACT_STATUS_LABELS[place.contact_status]}</span>
-          {place.next_follow_up_at && <span className="mono-label tabular">Takip zamanı: {place.next_follow_up_at}</span>}
+          {place.next_follow_up_at && (
+            <span className={`inline-flex items-center gap-1 text-2xs font-medium ${overdue ? "text-critical" : "text-ink-3"}`}>
+              <CalendarClock size={11} aria-hidden="true" />
+              Takip {formatDay(place.next_follow_up_at)}
+              {overdue && " · gecikti"}
+            </span>
+          )}
+          {place.last_contact_at && (
+            <span className="text-2xs text-ink-4">Son temas {formatDay(place.last_contact_at)}</span>
+          )}
 
           {/* Kim, ne zaman - devir teslimin tasiyicisi. */}
           <span className="mono-label tabular">
@@ -185,21 +191,28 @@ export default function SavedPlaceRow({
           <label className="sr-only" htmlFor={`note-${place.id}`}>
             {place.name ?? "Yer"} için not
           </label>
-          <input
+          {/* Cok satirli: yetkili adi, telefon, adres tarifi tek satira
+              sigmiyordu. Enter kaydeder, Shift+Enter yeni satir. */}
+          <textarea
             id={`note-${place.id}`}
-            type="text"
+            rows={Math.min(4, Math.max(1, note.split("\n").length))}
             value={note}
             onChange={(e) => setNote(e.target.value)}
             onBlur={commit}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 commit();
               }
             }}
-            placeholder="Not ekle — kiminle görüşüldü, ne zaman aranacak"
-            className="w-full rounded-input border border-transparent bg-paper-2 px-2.5 py-1.5 text-2xs text-ink placeholder:text-ink-4 transition-colors duration-fast ease-out hover:border-rule-2 focus:border-accent focus:bg-paper"
+            maxLength={2000}
+            placeholder="Kalıcı not — yetkili kişi, dahili numara, dikkat edilecekler"
+            className="w-full resize-none rounded-input border border-transparent bg-paper-2 px-2.5 py-1.5 text-xs text-ink placeholder:text-ink-4 transition-colors duration-fast ease-out hover:border-rule-2 focus:border-accent focus:bg-paper"
           />
+          {dirty && !saving && !saved && (
+            <span className="mt-1.5 shrink-0 text-2xs text-ink-4">Enter ile kaydet</span>
+          )}
+          {saving && <span className="mt-1.5 shrink-0 text-2xs text-ink-4">Kaydediliyor…</span>}
           {saved && (
             <span
               role="status"
@@ -211,29 +224,40 @@ export default function SavedPlaceRow({
           )}
         </div>
 
-        <div className="mt-2 flex flex-wrap gap-2">
-          <button type="button" onClick={() => setContactOpen((open) => !open)} className="btn btn--ghost px-2.5 py-1.5 text-2xs">Temas ekle</button>
-          <button type="button" onClick={() => {
-            if (!historyVisible && history === null) loadHistory();
-            setHistoryVisible((visible) => !visible);
-          }} className="btn btn--ghost px-2.5 py-1.5 text-2xs">{historyVisible ? "Geçmişi gizle" : "Geçmişi göster"}</button>
+        <div className="mt-2.5 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setContactOpen((open) => !open)}
+            aria-expanded={contactOpen}
+            className={`btn px-2.5 py-1.5 text-2xs ${contactOpen ? "btn--primary" : "btn--ghost"}`}
+          >
+            <MessageSquarePlus size={12} aria-hidden="true" />
+            Temas ekle
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!historyVisible && history === null) loadHistory();
+              setHistoryVisible((visible) => !visible);
+            }}
+            aria-expanded={historyVisible}
+            className="btn btn--ghost px-2.5 py-1.5 text-2xs"
+          >
+            <History size={12} aria-hidden="true" />
+            {historyVisible ? "Geçmişi gizle" : history ? `Geçmiş (${history.length})` : "Geçmişi göster"}
+          </button>
         </div>
 
         {contactOpen && (
-          <form onSubmit={submitContact} className="mt-2.5 grid gap-2 rounded-input bg-paper-2 p-2.5 text-2xs">
-            <select value={contactStatus} onChange={(e) => setContactStatus(e.target.value as ContactStatus)} className="rounded-input border border-rule bg-paper px-2 py-1.5">
-              {Object.entries(CONTACT_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-            <label>Temas tarihi<input required type="date" value={contactedAt} onChange={(e) => setContactedAt(e.target.value)} className="ml-2 rounded-input border border-rule bg-paper px-2 py-1" /></label>
-            <label>Takip tarihi<input type="date" value={followUpAt} onChange={(e) => setFollowUpAt(e.target.value)} className="ml-2 rounded-input border border-rule bg-paper px-2 py-1" /></label>
-            <input value={contactNote} onChange={(e) => setContactNote(e.target.value)} placeholder="Not" className="rounded-input border border-rule bg-paper px-2 py-1.5" />
-            {contactError && <p className="text-critical">{contactError}</p>}
-            <button className="btn btn--primary justify-center px-3 py-1.5 text-2xs">Kaydet</button>
-          </form>
+          <ContactForm
+            initialStatus={place.contact_status}
+            onSubmit={submitContact}
+            onCancel={() => setContactOpen(false)}
+          />
         )}
-        {historyVisible && historyLoading && <p className="mt-2 mono-label">Geçmiş yükleniyor</p>}
-        {historyVisible && historyError && <p className="mt-2 text-2xs text-critical">{historyError}</p>}
-        {historyVisible && history && <ol className="mt-2 space-y-1 text-2xs text-ink-3">{history.map((item) => <li key={item.id}>{item.contacted_at} · {CONTACT_STATUS_LABELS[item.status]} · {item.volunteer_name}{item.note ? ` · ${item.note}` : ""}</li>)}</ol>}
+        {historyVisible && historyLoading && <p className="mono-label mt-3">Geçmiş yükleniyor</p>}
+        {historyVisible && historyError && <p className="mt-3 text-2xs text-critical">{historyError}</p>}
+        {historyVisible && !historyLoading && history && <ContactHistory items={history} />}
       </div>
     </li>
   );

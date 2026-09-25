@@ -75,20 +75,19 @@ class TestBboxParsing:
         )
         assert response.status_code == 422
 
-    def test_plan_limit_uses_raw_bbox_not_snapped(self, client, api_key):
+    def test_limit_uses_raw_bbox_not_snapped(self, client, api_key):
         """
-        Plan kontrolu kullanicinin istedigi alana bakmali, bizim
+        Alan kontrolu kullanicinin istedigi alana bakmali, bizim
         onbellek optimizasyonumuza degil.
 
         Izgaraya oturtma alani disari dogru buyutuyor (kenar basina 0.01
         dereceye kadar). Kontrol snap'ten sonra yapilirsa, sinirin altinda
         kalan bir istek bizim optimizasyonumuz yuzunden 403 aliyor.
 
-        Asagidaki bbox'in ham esdeger yaricapi 4752 m (pro siniri 5000),
+        Asagidaki bbox'in ham esdeger yaricapi 4752 m (sinir 5000),
         snap'lenmis hali ise 5122 m - yani snap uzerinden kontrol
         edilseydi reddedilirdi.
         """
-        api_key.plan = "pro"
         seen, stub = _capture_queries()
         with patch(SEAM, new=stub):
             response = client.get(
@@ -97,20 +96,19 @@ class TestBboxParsing:
             )
 
         assert response.status_code == 200, (
-            "sinira oturan bbox reddedildi; plan kontrolu snap'ten once yapilmali"
+            "sinira oturan bbox reddedildi; alan kontrolu snap'ten once yapilmali"
         )
 
-    def test_bbox_respects_plan_limit(self, client, api_key):
+    def test_bbox_respects_area_limit(self, client, api_key):
         """
-        Bbox plan sinirini atlatmanin yolu olmamali: cok genis bir
+        Bbox alan sinirini atlatmanin yolu olmamali: cok genis bir
         dikdortgen, esdeger yaricap uzerinden reddedilmeli.
         """
-        api_key.plan = "free"  # free plan siniri 2000 m
         response = client.get(
             "/api/search?lat=41.0&lon=29.0&type=kindergarten&bbox=28.0,40.5,30.0,41.5"
         )
         assert response.status_code == 403
-        assert "plan" in response.json()["detail"].lower()
+        assert "genis" in response.json()["detail"].lower()
 
 
 class TestBboxGeometry:

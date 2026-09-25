@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app.database import AsyncSessionLocal, PlaceDistrict, PlaceRow, init_db
 from app.queries import (
+    TYPE_ORDER,
     VALID_SORTS,
     PlaceFilter,
     count_by_type,
@@ -254,6 +255,20 @@ class TestSiralama:
         adlar = [r.name for r in rows]
         assert adlar == sorted(adlar)
 
+    async def test_name_desc_ters_alfabetik(self, db):
+        rows, _ = await fetch_places(
+            db, PlaceFilter(district_id=D, sort="name_desc", named_only=True)
+        )
+        adlar = [r.name for r in rows]
+        assert adlar == sorted(adlar, reverse=True)
+
+    async def test_type_ayni_turu_bitisik_tutar(self, db):
+        """Tur basligina tiklayinca turler karismamali, Turkce alfabe sirasiyla."""
+        for sort, reverse in (("type", False), ("type_desc", True)):
+            rows, _ = await fetch_places(db, PlaceFilter(district_id=D, sort=sort))
+            ranks = [TYPE_ORDER[r.place_type] for r in rows]
+            assert ranks == sorted(ranks, reverse=reverse), sort
+
     async def test_confidence_azalan(self, db):
         rows, _ = await fetch_places(db, PlaceFilter(district_id=D, sort="confidence"))
         skorlar = [r.confidence for r in rows]
@@ -292,8 +307,12 @@ class TestSiralama:
 def test_gecerli_siralamalar():
     assert VALID_SORTS == {
         "contact_first",
+        "contact_last",
         "confidence",
         "name",
+        "name_desc",
+        "type",
+        "type_desc",
         "lead_score",
         "ref_distance",
     }

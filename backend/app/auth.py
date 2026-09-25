@@ -80,13 +80,6 @@ async def _get_api_key_obj(x_api_key: str, db: AsyncSession) -> APIKey:
 
     if not key_obj or not key_obj.is_active:
         raise HTTPException(status_code=401, detail="Invalid or inactive API key")
-
-    # Reset quota if new day
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    if now.date() > key_obj.last_reset_date.date():
-        key_obj.used_today = 0
-        key_obj.last_reset_date = now
-
     return key_obj
 
 
@@ -110,26 +103,14 @@ async def validate_api_key(
 async def verify_api_key(
     x_api_key: Optional[str] = Header(None), db: AsyncSession = Depends(get_db)
 ) -> APIKey:
-    """Validate API key and increment daily usage."""
-    # LOCAL_MODE: kota sayaci islemiyor, bu yuzden used_today
-    # artirilmiyor ve db'ye yazilmiyor.
+    """
+    Anahtari dogrular. Plan ve gunluk kota yok: onayli her kullanici
+    her seyi yapabiliyor (kapali ekip araci).
+    """
     if settings.local_mode:
         return LOCAL_API_KEY
 
     if not x_api_key:
         raise HTTPException(status_code=401, detail="X-API-KEY required")
 
-    key_obj = await _get_api_key_obj(x_api_key, db)
-
-    # Check limit
-    if key_obj.used_today >= key_obj.daily_limit:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Daily quota exceeded ({key_obj.daily_limit} calls)",
-        )
-
-    # Increment usage
-    key_obj.used_today += 1
-    await db.commit()
-
-    return key_obj
+    return await _get_api_key_obj(x_api_key, db)

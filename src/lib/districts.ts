@@ -66,9 +66,13 @@ export interface DistrictSummary {
 
 export type SortOption =
   | "contact_first"
+  | "contact_last"
   | "lead_score"
   | "confidence"
   | "name"
+  | "name_desc"
+  | "type"
+  | "type_desc"
   | "ref_distance";
 
 export interface PlaceQuery {
@@ -127,6 +131,22 @@ export function fetchDistrictGeojson(): Promise<unknown> {
   return geojsonPromise;
 }
 
+/**
+ * Il adi, plakaya gore. Sinir verisi il adini ASCII tutuyor
+ * ("istanbul", "tekirdag"); ekranda Turkce yazimi gorunmeli.
+ */
+const PROVINCE_NAMES: Record<string, string> = {
+  "22": "Edirne",
+  "34": "İstanbul",
+  "39": "Kırklareli",
+  "44": "Malatya",
+  "59": "Tekirdağ",
+};
+
+export function provinceName(district: Pick<DistrictMeta, "province" | "province_plate">): string {
+  return PROVINCE_NAMES[district.province_plate] ?? district.province;
+}
+
 /** Ilceleri il bazinda grupla; secici once il, sonra ilce soruyor. */
 export function groupByProvince(
   districts: DistrictMeta[]
@@ -141,7 +161,7 @@ export function groupByProvince(
   return Array.from(groups.entries())
     .map(([plate, items]) => ({
       plate,
-      province: items[0].province,
+      province: provinceName(items[0]),
       districts: items,
     }))
     .sort((a, b) => a.plate.localeCompare(b.plate));

@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import verify_api_key
@@ -36,23 +36,8 @@ async def export_leads(
 ):
     """
     Export as CSV, Excel or PDF (`format`).
-    Consumes 2 API quota units. Disallowed for 'free' plans.
     """
-    # 1. Plan Enforcement
-    if api_key.plan == "free":
-        raise HTTPException(
-            status_code=403,
-            detail=f"Export is disabled for '{api_key.plan}' plan. Please upgrade to Pro or Enterprise.",
-        )
-
-    # 2. Increment additional quota (middleware already did 1)
-    if api_key.used_today >= api_key.daily_limit:
-        raise HTTPException(
-            status_code=429, detail="Daily quota exceeded for export (2 units)"
-        )
-    api_key.used_today += 1  # Total 2
-
-    # 3. Log export
+    # 1. Log export
     log = ExportLog(
         ip="X-API-KEY:" + api_key.name,
         client="api",
@@ -65,7 +50,7 @@ async def export_leads(
     db.add(log)
     await db.commit()
 
-    # 4. Build file
+    # 2. Build file
     now = datetime.now(timezone.utc)
     title = (request.title or "").strip() or "Kayıtlı yerler"
     if request.format == "xlsx":

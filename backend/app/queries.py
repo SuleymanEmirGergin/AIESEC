@@ -8,10 +8,11 @@ hareketi buraya dusuyor ve milisaniye mertebesinde donuyor.
 from dataclasses import dataclass
 from math import asin, cos, radians, sin, sqrt
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import PlaceDistrict, PlaceRow
+from app.export_formats import TYPE_LABELS
 
 # 21 tur. count_by_type her zaman bu anahtarlarin hepsini donuyor:
 # arayuz chip'leri bu sozlukten besleniyor ve eksik anahtar "sayi yok"
@@ -40,8 +41,26 @@ ALL_TYPES: tuple[str, ...] = (
     "nature_park",
 )
 
-# SQL'de siralanabilenler.
-SQL_SORTS = frozenset({"contact_first", "confidence", "name"})
+# SQL'de siralanabilenler. *_desc / contact_last: tablo basligina
+# ikinci tiklama (ters yon).
+SQL_SORTS = frozenset(
+    {"contact_first", "contact_last", "confidence", "name", "name_desc", "type", "type_desc"}
+)
+
+_TR_ALPHABET = "abcçdefgğhıijklmnoöprsştuüvyz"
+
+
+def _tr_key(text: str) -> list[int]:
+    """Turkce alfabe sirasi: kod noktasi sirasi Ö/Ş/Ü'yu z'den sonraya atiyor."""
+    lowered = text.replace("I", "ı").replace("İ", "i").lower()
+    return [_TR_ALPHABET.index(c) if c in _TR_ALPHABET else 100 + ord(c) for c in lowered]
+
+
+# Tur siralamasi Turkce etiketin alfabetik sirasi: kullanici ekranda
+# "Emlak Ofisi, Lise, Otel" goruyor, ic anahtarlari degil.
+TYPE_ORDER: dict[str, int] = {
+    t: i for i, t in enumerate(sorted(ALL_TYPES, key=lambda t: _tr_key(TYPE_LABELS[t])))
+}
 
 # Python'da siralanmasi gerekenler.
 #
@@ -131,10 +150,25 @@ def _apply_sql_sort(statement: Select, sort: str) -> Select:
         return statement.order_by(
             PlaceRow.has_contact.desc(), PlaceRow.name.is_(None), PlaceRow.name
         )
+    if sort == "contact_last":
+        return statement.order_by(
+            PlaceRow.has_contact, PlaceRow.name.is_(None), PlaceRow.name
+        )
     if sort == "confidence":
         return statement.order_by(
             PlaceRow.confidence.desc(), PlaceRow.name.is_(None), PlaceRow.name
         )
+    if sort in ("type", "type_desc"):
+        # Ayni tur hep bitisik; tur icinde iletisimi olan ustte, sonra ad.
+        rank = case(TYPE_ORDER, value=PlaceRow.place_type, else_=len(TYPE_ORDER))
+        return statement.order_by(
+            rank.desc() if sort == "type_desc" else rank,
+            PlaceRow.has_contact.desc(),
+            PlaceRow.name.is_(None),
+            PlaceRow.name,
+        )
+    if sort == "name_desc":
+        return statement.order_by(PlaceRow.name.is_(None), PlaceRow.name.desc())
     # name: isimsizler en sona (NULL'lar SQLite'ta once gelirdi)
     return statement.order_by(PlaceRow.name.is_(None), PlaceRow.name)
 

@@ -16,12 +16,6 @@ interface SettingsModalProps {
   account?: AccountInfo | null;
 }
 
-const PLAN_LABELS: Record<string, string> = {
-  free: "Ücretsiz",
-  pro: "Pro",
-  enterprise: "Enterprise",
-};
-
 export default function SettingsModal({
   isOpen,
   onClose,
@@ -40,13 +34,6 @@ export default function SettingsModal({
       setShowSuccess(false);
     }
   }, [isOpen]);
-
-  const plan = account?.plan;
-  const isPaidPlan = plan === "pro" || plan === "enterprise";
-  const planLabel = plan ? PLAN_LABELS[plan] ?? plan : "Bilinmiyor";
-  const quotaRemaining = account
-    ? Math.max(0, account.daily_limit - account.used_today)
-    : null;
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,24 +63,10 @@ export default function SettingsModal({
       isOpen={isOpen}
       onClose={onClose}
       eyebrow="Erişim"
-      title="API anahtarı ve plan"
+      title="Erişim ve gönüllü adı"
     >
       <div className="space-y-6">
-        {/*
-          Durum tablosu. Onceden buradaki plan rozeti sahteydi: yalnizca
-          "kutuda metin var mi" diye bakiyor, herhangi bir sey yazilinca
-          "PRO PLAN" gosteriyordu. Kota da sabit "SINIRSIZ" yaziyordu.
-          Ucu de artik /api/me'den geliyor.
-        */}
         <dl className="rounded-input border border-rule divide-y divide-rule">
-          <div className="flex items-center gap-3 px-3 py-2.5">
-            <dt className="mono-label shrink-0 w-24">Plan</dt>
-            <dd
-              className={`text-sm font-medium ${isPaidPlan ? "text-accent" : "text-ink"}`}
-            >
-              {planLabel}
-            </dd>
-          </div>
           <div className="flex items-center gap-3 px-3 py-2.5">
             <dt className="mono-label shrink-0 w-24">Kimlik</dt>
             <dd className="text-sm text-ink">
@@ -104,21 +77,12 @@ export default function SettingsModal({
                 : "Okunamadı"}
             </dd>
           </div>
-          <div className="flex items-center gap-3 px-3 py-2.5">
-            <dt className="mono-label shrink-0 w-24">Günlük kota</dt>
-            <dd className="tabular text-sm text-ink">
-              {account && quotaRemaining !== null
-                ? `${quotaRemaining} / ${account.daily_limit}`
-                : "—"}
-            </dd>
-          </div>
         </dl>
 
         {account?.scope === "server" && (
           <p className="text-xs leading-relaxed text-ink-3">
-            Şu an uygulamanın paylaşılan sunucu anahtarı kullanılıyor; arama ve
-            CSV indirme kişisel anahtar olmadan çalışır. Kendi kotanızı ayırmak
-            isterseniz aşağıya kişisel anahtarınızı girin.
+            Şu an uygulamanın paylaşılan sunucu anahtarı kullanılıyor; arama,
+            kaydetme ve indirme kişisel anahtar olmadan çalışır.
           </p>
         )}
 
