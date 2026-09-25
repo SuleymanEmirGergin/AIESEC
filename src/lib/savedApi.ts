@@ -192,6 +192,16 @@ export const savePlaces = (places: Place[], listId?: string | null) =>
     body: { items: places.map(toSaveBody), list_id: listId ?? null },
   });
 
+/**
+ * Kayitli yerleri (kayit id'leriyle) tek istekte tasir. `listId` null ise
+ * dosyalanmamisa. Yalnizca bu anahtarin kayitlari etkilenir.
+ */
+export const moveSavedPlaces = (ids: string[], listId: string | null) =>
+  request<{ moved: number }>("/api/saved/move", {
+    method: "POST",
+    body: { ids, list_id: listId },
+  });
+
 function toSaveBody(place: Place) {
   return {
     place_id: place.id,

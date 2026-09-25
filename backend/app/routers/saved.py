@@ -33,6 +33,7 @@ from app.models import (
     PlaceListResponse,
     PlaceListUpdate,
     SavedPlaceBulkCreate,
+    SavedPlaceBulkMove,
     SavedPlaceBulkResponse,
     SavedPlaceCreate,
     SavedPlaceResponse,
@@ -364,6 +365,36 @@ async def save_places_bulk(
     # Tek commit: yalnizca tasima olsa bile (hepsi zaten kayitli) yazilmali.
     await db.commit()
     return {"created": len(missing), "ids": ids}
+
+
+@router.post("/saved/move")
+async def move_saved_places(
+    data: SavedPlaceBulkMove,
+    db: AsyncSession = Depends(get_db),
+    api_key: APIKey = Depends(validate_api_key),
+):
+    """
+    Kayitli yerleri tek seferde tasi; list_id None ise dosyalanmamisa.
+
+    Yalnizca cagiranin kayitlari etkileniyor: baska anahtarin kayit
+    id'si verilse de sorgunun sahiplik filtresi onu atliyor.
+    """
+    if data.list_id:
+        await _owned_list(data.list_id, api_key, db)
+
+    moved = 0
+    for start in range(0, len(data.ids), _IN_CHUNK):
+        result = await db.execute(
+            update(SavedPlace)
+            .where(
+                SavedPlace.api_key_id == api_key.id,
+                SavedPlace.id.in_(data.ids[start : start + _IN_CHUNK]),
+            )
+            .values(list_id=data.list_id)
+        )
+        moved += result.rowcount
+    await db.commit()
+    return {"moved": moved}
 
 
 async def _owned_place(place_id: str, api_key: APIKey, db: AsyncSession) -> SavedPlace:

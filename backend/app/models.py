@@ -495,6 +495,14 @@ class SavedPlaceBulkCreate(BaseModel):
     list_id: Optional[str] = None
 
 
+class SavedPlaceBulkMove(BaseModel):
+    """Kayitli yerleri (kayit id'leriyle) bir listeye ya da dosyalanmamisa tasi."""
+
+    ids: List[str] = Field(..., min_length=1, max_length=MAX_BULK_SAVE)
+    # None: dosyalanmamis
+    list_id: Optional[str] = None
+
+
 class SavedPlaceBulkResponse(BaseModel):
     created: int
     # place_id -> kayitli yer id'si (yeni ya da zaten kayitli olan)

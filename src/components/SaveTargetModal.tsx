@@ -13,10 +13,19 @@ export type SaveTarget =
 
 interface SaveTargetModalProps {
   isOpen: boolean;
-  /** Kac yer kaydedilecek; baslikta gosteriliyor. */
+  /** Kac yer kaydedilecek/tasinacak; baslik ustunde gosteriliyor. */
   count: number;
   onClose: () => void;
   onConfirm: (target: SaveTarget) => void;
+  /** Varsayilan kayit icin; Kayitli sayfasi tasima icin degistiriyor. */
+  title?: string;
+  countLabel?: string;
+  confirmLabel?: string;
+  /**
+   * Gosterilmeyecek hedef: kayitlarin zaten bulundugu liste id'si ya da
+   * "unfiled". Bulundugu yere tasimak anlamsiz bir secenek olurdu.
+   */
+  exclude?: string;
 }
 
 const LAST_LIST_KEY = "last_save_list";
@@ -46,7 +55,16 @@ export function rememberList(listId: string | null) {
  * Kayitli sayfasinda tek tek tasimak gerekiyordu. Son secilen liste
  * varsayilan geliyor: ayni listeye ard arda kayit yaygin durum.
  */
-export default function SaveTargetModal({ isOpen, count, onClose, onConfirm }: SaveTargetModalProps) {
+export default function SaveTargetModal({
+  isOpen,
+  count,
+  onClose,
+  onConfirm,
+  title = "Nereye kaydedelim?",
+  countLabel = "yer",
+  confirmLabel = "Kaydet",
+  exclude,
+}: SaveTargetModalProps) {
   const [lists, setLists] = useState<PlaceListSummary[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [choice, setChoice] = useState<string>("unfiled"); // "unfiled" | "new" | liste id
@@ -59,11 +77,13 @@ export default function SaveTargetModal({ isOpen, count, onClose, onConfirm }: S
     setLoadError(null);
     setNewName("");
     fetchLists()
-      .then((items) => {
+      .then((all) => {
         if (!alive) return;
+        const items = all.filter((l) => l.id !== exclude);
         setLists(items);
         const last = readLastList();
-        setChoice(last && items.some((l) => l.id === last) ? last : "unfiled");
+        const fallback = exclude === "unfiled" ? (items[0]?.id ?? "new") : "unfiled";
+        setChoice(last && items.some((l) => l.id === last) ? last : fallback);
       })
       .catch((err: any) => {
         if (!alive) return;
@@ -73,7 +93,7 @@ export default function SaveTargetModal({ isOpen, count, onClose, onConfirm }: S
     return () => {
       alive = false;
     };
-  }, [isOpen]);
+  }, [isOpen, exclude]);
 
   const trimmedName = newName.trim();
   const canConfirm = choice !== "new" || trimmedName.length > 0;
@@ -118,8 +138,8 @@ export default function SaveTargetModal({ isOpen, count, onClose, onConfirm }: S
     <ModalShell
       isOpen={isOpen}
       onClose={onClose}
-      eyebrow={`${count} yer`}
-      title="Nereye kaydedelim?"
+      eyebrow={`${count} ${countLabel}`}
+      title={title}
       widthClass="max-w-md"
     >
       <form
@@ -130,7 +150,7 @@ export default function SaveTargetModal({ isOpen, count, onClose, onConfirm }: S
         className="space-y-4"
       >
         <div className="max-h-[50vh] space-y-2 overflow-y-auto" role="radiogroup">
-          {option("unfiled", "Dosyalanmamış", <Inbox size={15} />)}
+          {exclude !== "unfiled" && option("unfiled", "Dosyalanmamış", <Inbox size={15} />)}
 
           {lists === null && <p className="mono-label px-1 py-2">Listeler yükleniyor…</p>}
           {loadError && <p className="px-1 text-2xs text-critical">{loadError}</p>}
@@ -160,7 +180,7 @@ export default function SaveTargetModal({ isOpen, count, onClose, onConfirm }: S
             disabled={!canConfirm}
             className="btn btn--primary px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Kaydet
+            {confirmLabel}
           </button>
         </div>
       </form>

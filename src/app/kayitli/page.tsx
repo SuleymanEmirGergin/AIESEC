@@ -2,7 +2,16 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Plus, Download, FolderOpen, Trash2, AlertCircle, Search } from "lucide-react";
+import {
+  Plus,
+  Download,
+  FolderInput,
+  FolderOpen,
+  Trash2,
+  AlertCircle,
+  Search,
+} from "lucide-react";
+import SaveTargetModal, { rememberList, type SaveTarget } from "../../components/SaveTargetModal";
 import { getDueFollowUps, isOverdue } from "../../lib/contactTracking";
 import AppHeader from "../../components/AppHeader";
 import SavedPlaceRow from "../../components/SavedPlaceRow";
@@ -19,6 +28,7 @@ import {
   deleteList,
   fetchLists,
   fetchSavedPlaces,
+  moveSavedPlaces,
   removeSavedPlace,
   savedToPlace,
   updateSavedPlace,
@@ -195,6 +205,39 @@ export default function SavedPage() {
     }
   };
 
+  /**
+   * Gorunen kayitlarin tamamini (liste + tur filtresi) tek seferde tasi.
+   * Eskiden her kayit satirdan tek tek tasiniyordu.
+   */
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [moving, setMoving] = useState(false);
+
+  const handleBulkMove = async (target: SaveTarget) => {
+    setMoveOpen(false);
+    setMoving(true);
+    setError(null);
+    try {
+      let listId: string | null = null;
+      if (target.kind === "list") listId = target.listId;
+      if (target.kind === "new") {
+        listId = (await createList(target.name)).id;
+        rememberList(listId);
+      }
+      await moveSavedPlaces(
+        visible.map((p) => p.id),
+        listId
+      );
+      await reload();
+    } catch (err: any) {
+      if (err?.message === "Gönüllü adınızı Ayarlar'dan girin.") {
+        setSettingsOpen(true);
+        setError("Yeni liste için önce Ayarlar’dan gönüllü adınızı girin.");
+      } else setError(err?.message || "Kayıtlar taşınamadı.");
+    } finally {
+      setMoving(false);
+    }
+  };
+
   const handleExport = async () => {
     if (visible.length === 0 || exporting) return;
     setExporting(true);
@@ -363,9 +406,19 @@ export default function SavedPage() {
 
             <button
               type="button"
+              onClick={() => setMoveOpen(true)}
+              disabled={visible.length === 0 || moving}
+              className="btn btn--ghost ml-auto px-4 py-2 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <FolderInput size={14} aria-hidden="true" />
+              {moving ? "Taşınıyor…" : `Listeye taşı (${visible.length})`}
+            </button>
+
+            <button
+              type="button"
               onClick={handleExport}
               disabled={visible.length === 0 || exporting}
-              className="btn btn--primary ml-auto px-4 py-2"
+              className="btn btn--primary px-4 py-2"
             >
               <Download size={14} aria-hidden="true" />
               {exporting ? "Hazırlanıyor…" : "CSV indir"}
@@ -449,6 +502,17 @@ export default function SavedPage() {
           <ExportHistory />
         </div>
       </div>
+
+      <SaveTargetModal
+        isOpen={moveOpen}
+        count={visible.length}
+        countLabel="kayıt"
+        title="Nereye taşıyalım?"
+        confirmLabel="Taşı"
+        exclude={activeList === ALL ? undefined : activeList}
+        onClose={() => setMoveOpen(false)}
+        onConfirm={handleBulkMove}
+      />
 
       <SettingsModal
         isOpen={settingsOpen}

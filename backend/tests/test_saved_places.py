@@ -625,3 +625,74 @@ class TestBulkSave:
             headers=VOLUNTEER_HEADERS,
         )
         assert response.status_code == 404
+
+
+class TestBulkMove:
+    """
+    Kayitli sayfasinda gorunen kayitlari tek seferde baska listeye tasima.
+    Eskiden her kayit satirdan tek tek tasiniyordu.
+    """
+
+    RUN = uuid.uuid4().hex[:8]
+
+    def _saved(self, client, n: int, prefix: str, list_id=None) -> list[str]:
+        ids = []
+        for i in range(n):
+            body = _place(f"osm:node:{prefix}-{i}-{self.RUN}", list_id=list_id)
+            ids.append(client.post("/api/saved", json=body, headers=VOLUNTEER_HEADERS).json()["id"])
+        return ids
+
+    def _list(self, client, name="Tasima hedefi") -> str:
+        return client.post("/api/lists", json={"name": name}, headers=VOLUNTEER_HEADERS).json()["id"]
+
+    def _in(self, client, list_id) -> set[str]:
+        return {p["id"] for p in client.get(f"/api/saved?list_id={list_id}").json()}
+
+    def test_kayitlar_listeye_tasinir(self, client):
+        ids = self._saved(client, 3, "move-a")
+        target = self._list(client)
+
+        response = client.post("/api/saved/move", json={"ids": ids, "list_id": target})
+
+        assert response.status_code == 200, response.text
+        assert response.json()["moved"] == 3
+        assert self._in(client, target) == set(ids)
+
+    def test_dosyalanmamisa_tasinabilir(self, client):
+        source = self._list(client, "Kaynak")
+        ids = self._saved(client, 2, "move-b", list_id=source)
+
+        response = client.post("/api/saved/move", json={"ids": ids, "list_id": None})
+
+        assert response.json()["moved"] == 2
+        assert self._in(client, source) == set()
+        assert set(ids) <= self._in(client, "unfiled")
+
+    def test_bilinmeyen_liste_404(self, client):
+        ids = self._saved(client, 1, "move-c")
+        response = client.post("/api/saved/move", json={"ids": ids, "list_id": "yok"})
+        assert response.status_code == 404
+
+    def test_baskasinin_kaydi_tasinmaz(self, client, api_key):
+        """Id tahmin eden biri baska takimin kaydini kendi listesine cekemez."""
+        ids = self._saved(client, 1, "move-d")
+        target = self._list(client)
+        other = APIKey(
+            id=api_key.id + 1000, name="baska", key_hash="baska-hash", daily_limit=10,
+            used_today=0, plan="pro", is_active=True,
+            last_reset_date=api_key.last_reset_date,
+        )
+        app.dependency_overrides[validate_api_key] = lambda: other
+        try:
+            other_list = client.post(
+                "/api/lists", json={"name": "Baska"}, headers=VOLUNTEER_HEADERS
+            ).json()["id"]
+            moved = client.post("/api/saved/move", json={"ids": ids, "list_id": other_list})
+        finally:
+            app.dependency_overrides[validate_api_key] = lambda: api_key
+
+        assert moved.json()["moved"] == 0
+        assert ids[0] not in self._in(client, target)
+
+    def test_bos_istek_reddedilir(self, client):
+        assert client.post("/api/saved/move", json={"ids": [], "list_id": None}).status_code == 422

@@ -5,6 +5,7 @@ import {
   fetchContactEvents,
   fetchLists,
   fetchSavedPlaces,
+  moveSavedPlaces,
   savePlace,
   savePlaces,
   savedToPlace,
@@ -125,6 +126,18 @@ describe("saved API client", () => {
     );
 
     expect(JSON.parse(spy.mock.calls[0][1].body).list_id).toBe("list-7");
+  });
+
+  it("toplu tasimada kayit id'lerini ve hedefi gonderir; null dosyalanmamis", async () => {
+    const spy = mockFetch({ moved: 2 });
+
+    const result = await moveSavedPlaces(["s-1", "s-2"], null);
+
+    const [url, init] = spy.mock.calls[0];
+    expect(url).toBe("/api/saved/move");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({ ids: ["s-1", "s-2"], list_id: null });
+    expect(result.moved).toBe(2);
   });
 
   it("temas eklerken gonullu adini iletir", async () => {
