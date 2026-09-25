@@ -6,6 +6,7 @@ import {
   fetchLists,
   fetchSavedPlaces,
   savePlace,
+  savePlaces,
   savedToPlace,
   type SavedPlace,
 } from "./savedApi";
@@ -90,6 +91,27 @@ describe("saved API client", () => {
     });
 
     expect(spy.mock.calls[0][1].headers).toMatchObject({ "X-VOLUNTEER-NAME": "Ece" });
+  });
+
+  it("toplu kayitta hepsini tek istekte, tekli ile ayni govdeyle gonderir", async () => {
+    localStorage.setItem("volunteer_name", "Ece");
+    const spy = mockFetch({ created: 2, ids: { a: "s-a", b: "s-b" } });
+    const base = { type: "hotel", address: "Merkez", tags: {} } as const;
+
+    const result = await savePlaces([
+      { ...base, id: "a", name: "A", coordinates: { lat: 1, lng: 2 } },
+      { ...base, id: "b", name: "B", coordinates: { lat: 3, lng: 4 } },
+    ]);
+
+    const [url, init] = spy.mock.calls[0];
+    expect(url).toBe("/api/saved/bulk");
+    expect(init.method).toBe("POST");
+    expect(init.headers).toMatchObject({ "X-VOLUNTEER-NAME": "Ece" });
+    expect(JSON.parse(init.body).items).toEqual([
+      { place_id: "a", name: "A", place_type: "hotel", lat: 1, lon: 2, address: "Merkez", tags: {} },
+      { place_id: "b", name: "B", place_type: "hotel", lat: 3, lon: 4, address: "Merkez", tags: {} },
+    ]);
+    expect(result.ids).toEqual({ a: "s-a", b: "s-b" });
   });
 
   it("temas eklerken gonullu adini iletir", async () => {

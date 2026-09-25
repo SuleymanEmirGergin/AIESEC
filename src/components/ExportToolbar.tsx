@@ -7,7 +7,17 @@ interface ExportToolbarProps {
   /** Ekrandaki sonuclar icinden kac tanesi kayitli. */
   savedCount: number;
   totalResults: number;
+  /** Ekranda yuklu olanlari kaydeder. */
   onSaveAll: () => void;
+  /**
+   * Yuklenmemis sayfalar dahil filtreye uyan tum sonuclari kaydeder.
+   * Verilmezse buton gosterilmiyor (her sey zaten yuklu).
+   */
+  onSaveAllResults?: () => void;
+  /** Filtreye uyan toplam sonuc; tum-sonuclar butonunun etiketi. */
+  allResultsCount?: number;
+  /** Toplu kayit suruyorsa kaydedilen / hedeflenen. */
+  saveProgress?: { done: number; total: number } | null;
   onExport: () => void;
   /**
    * Doluysa indirme devre disi ve sebep gosteriliyor.
@@ -22,6 +32,9 @@ interface ExportToolbarProps {
 /** Sunucu 1000 ustunu reddediyor (sessizce kirpmiyor). */
 const MAX_EXPORT_ITEMS = 1000;
 
+const SAVE_BUTTON =
+  "inline-flex items-center gap-1.5 rounded-input px-2.5 py-1.5 text-2xs font-medium text-graphite-ink-2 transition-colors duration-fast ease-out hover:bg-graphite-2 hover:text-graphite-ink disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent";
+
 /**
  * Sayfanin tek koyu bandi.
  *
@@ -34,6 +47,9 @@ export default function ExportToolbar({
   savedCount,
   totalResults,
   onSaveAll,
+  onSaveAllResults,
+  allResultsCount,
+  saveProgress,
   onExport,
   exportBlockedReason,
   quotaRemaining,
@@ -45,6 +61,10 @@ export default function ExportToolbar({
   const overLimit = savedCount > MAX_EXPORT_ITEMS;
   const disabled = savedCount === 0 || !!exportBlockedReason || !!isExporting || overLimit;
   const allSaved = savedCount >= totalResults;
+
+  const progressLabel = saveProgress
+    ? `Kaydediliyor… ${saveProgress.done}/${saveProgress.total}`
+    : "Ekleniyor…";
 
   const blockNote = overLimit
     ? `${MAX_EXPORT_ITEMS} kaydı aşıyor; sunucu reddeder.`
@@ -66,11 +86,23 @@ export default function ExportToolbar({
           type="button"
           onClick={onSaveAll}
           disabled={allSaved || !!isSavingAll}
-          className="inline-flex items-center gap-1.5 rounded-input px-2.5 py-1.5 text-2xs font-medium text-graphite-ink-2 transition-colors duration-fast ease-out hover:bg-graphite-2 hover:text-graphite-ink disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+          className={SAVE_BUTTON}
         >
           <BookmarkPlus size={12} aria-hidden="true" />
-          {isSavingAll ? "Ekleniyor…" : allSaved ? "Hepsi kayıtlı" : "Hepsini kaydet"}
+          {isSavingAll ? progressLabel : allSaved ? "Hepsi kayıtlı" : "Hepsini kaydet"}
         </button>
+
+        {onSaveAllResults && (
+          <button
+            type="button"
+            onClick={onSaveAllResults}
+            disabled={!!isSavingAll}
+            className={SAVE_BUTTON}
+          >
+            <BookmarkPlus size={12} aria-hidden="true" />
+            {`Tüm sonuçları kaydet (${allResultsCount ?? ""})`}
+          </button>
+        )}
 
         <div className="ml-auto flex items-center gap-3">
           {/* Gerekce butonun yaninda, title'da degil: dokunmatik cihazda

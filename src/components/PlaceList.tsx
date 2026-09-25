@@ -55,106 +55,137 @@ export default function PlaceList({
 
   return (
     <ul className="flex-1 overflow-y-auto">
-      {places.map((place) => {
-        const isSelected = selectedPlaceId === place.id;
-        const isChecked = checkedIds?.has(place.id) ?? false;
-
-        return (
-          <li key={place.id} className="rule-b last:border-b-0">
-            <div
-              onClick={() => onPlaceClick(place.id)}
-              className={`
-                relative px-4 py-3 cursor-pointer
-                transition-colors duration-fast ease-out
-                ${isSelected ? "bg-accent-wash" : "hover:bg-paper-2"}
-              `}
-            >
-              {/* Secili satirin isareti sol kenardaki 2px aksan cizgisi.
-                  Onceden bunun icin border-l-4 kullaniliyordu ve secim
-                  degistikce tum satir icerigi 4px kayiyordu. Mutlak
-                  konumlandirma metni yerinde tutuyor. */}
-              {isSelected && (
-                <span
-                  aria-hidden="true"
-                  className="absolute left-0 top-0 bottom-0 w-[2px] bg-accent"
-                />
-              )}
-
-              <div className="flex items-start gap-2.5 min-w-0">
-                {onToggleCheck && (
-                  // Secim, satira tiklamaktan ayri tutuluyor: tiklamak
-                  // haritada odakliyor, kutucuk ise disa aktarima ekliyor.
-                  <button
-                    type="button"
-                    aria-label={`${place.name} kaydını dışa aktarıma ekle`}
-                    aria-pressed={isChecked}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onToggleCheck(place);
-                    }}
-                    className={`mt-0.5 shrink-0 transition-colors duration-fast ease-out ${
-                      isChecked ? "text-accent" : "text-ink-4 hover:text-ink-2"
-                    }`}
-                  >
-                    {isChecked ? <CheckSquare size={15} /> : <Square size={15} />}
-                  </button>
-                )}
-
-                <div className="min-w-0 flex-1">
-                  <h3 className="font-display text-sm font-medium text-ink leading-snug line-clamp-2">
-                    {place.name}
-                  </h3>
-
-                  {place.address && place.address !== "Adres bilgisi yok" && (
-                    <p className="mt-0.5 text-2xs text-ink-3 line-clamp-1">
-                      {place.address}
-                    </p>
-                  )}
-
-                  {/* Iletisim bilgisi listede de gorunuyor: kullanici her
-                      kaydi haritada tek tek acmadan hangilerinin
-                      ulasilabilir oldugunu gorebilmeli - secim ve disa
-                      aktarim karari buna dayaniyor. */}
-                  <div className="mt-1.5">
-                    <ContactLinks tags={place.tags} variant="compact" />
-                  </div>
-
-                  <div className="mt-2 flex items-center gap-2">
-                    {/* Onceden burada ham `place.type` versal olarak
-                        basiliyordu ve listede "OFFİCE", "PRIMARY_SCHOOL"
-                        gibi Ingilizce anahtar degerler goruluyordu. */}
-                    <span className="mono-label">
-                      {PLACE_TYPE_LABELS[place.type] ?? place.type}
-                    </span>
-
-                    {typeof place.distance_m === "number" && (
-                      <span className="mono-label tabular">
-                        {place.distance_m < 1000
-                          ? `${Math.round(place.distance_m)} m`
-                          : `${(place.distance_m / 1000).toFixed(1)} km`}
-                      </span>
-                    )}
-
-                    {onReport && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onReport(place);
-                        }}
-                        className="ml-auto inline-flex items-center gap-1 text-2xs font-medium text-ink-4 hover:text-critical transition-colors duration-fast ease-out"
-                      >
-                        <Flag size={10} />
-                        Bildir
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </li>
-        );
-      })}
+      {places.map((place) => (
+        <PlaceRow
+          key={place.id}
+          place={place}
+          isSelected={selectedPlaceId === place.id}
+          isChecked={checkedIds?.has(place.id) ?? false}
+          onPlaceClick={onPlaceClick}
+          onToggleCheck={onToggleCheck}
+          onReport={onReport}
+        />
+      ))}
     </ul>
   );
 }
+
+interface PlaceRowProps {
+  place: Place;
+  isSelected: boolean;
+  isChecked: boolean;
+  onPlaceClick: (id: string) => void;
+  onToggleCheck?: (place: Place) => void;
+  onReport?: (place: Place) => void;
+}
+
+/**
+ * Tek satir, memo'lu: bir yeri kaydetmek yalnizca o satiri yeniden
+ * ciziyor. Onceden her tiklamada 250 satirin hepsi (iletisim
+ * baglantilariyla) bastan ciziliyordu ve isaret ~500 ms gecikiyordu.
+ * Bunun calismasi icin cagiranin callback'leri sabit kimlikli olmali.
+ */
+const PlaceRow = React.memo(function PlaceRow({
+  place,
+  isSelected,
+  isChecked,
+  onPlaceClick,
+  onToggleCheck,
+  onReport,
+}: PlaceRowProps) {
+  return (
+    <li className="rule-b last:border-b-0">
+      <div
+        onClick={() => onPlaceClick(place.id)}
+        className={`
+          relative px-4 py-3 cursor-pointer
+          transition-colors duration-fast ease-out
+          ${isSelected ? "bg-accent-wash" : "hover:bg-paper-2"}
+        `}
+      >
+        {/* Secili satirin isareti sol kenardaki 2px aksan cizgisi.
+            Onceden bunun icin border-l-4 kullaniliyordu ve secim
+            degistikce tum satir icerigi 4px kayiyordu. Mutlak
+            konumlandirma metni yerinde tutuyor. */}
+        {isSelected && (
+          <span
+            aria-hidden="true"
+            className="absolute left-0 top-0 bottom-0 w-[2px] bg-accent"
+          />
+        )}
+
+        <div className="flex items-start gap-2.5 min-w-0">
+          {onToggleCheck && (
+            // Secim, satira tiklamaktan ayri tutuluyor: tiklamak
+            // haritada odakliyor, kutucuk ise disa aktarima ekliyor.
+            <button
+              type="button"
+              aria-label={`${place.name} kaydını dışa aktarıma ekle`}
+              aria-pressed={isChecked}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleCheck(place);
+              }}
+              className={`mt-0.5 shrink-0 transition-colors duration-fast ease-out ${
+                isChecked ? "text-accent" : "text-ink-4 hover:text-ink-2"
+              }`}
+            >
+              {isChecked ? <CheckSquare size={15} /> : <Square size={15} />}
+            </button>
+          )}
+
+          <div className="min-w-0 flex-1">
+            <h3 className="font-display text-sm font-medium text-ink leading-snug line-clamp-2">
+              {place.name}
+            </h3>
+
+            {place.address && place.address !== "Adres bilgisi yok" && (
+              <p className="mt-0.5 text-2xs text-ink-3 line-clamp-1">
+                {place.address}
+              </p>
+            )}
+
+            {/* Iletisim bilgisi listede de gorunuyor: kullanici her
+                kaydi haritada tek tek acmadan hangilerinin
+                ulasilabilir oldugunu gorebilmeli - secim ve disa
+                aktarim karari buna dayaniyor. */}
+            <div className="mt-1.5">
+              <ContactLinks tags={place.tags} variant="compact" />
+            </div>
+
+            <div className="mt-2 flex items-center gap-2">
+              {/* Onceden burada ham `place.type` versal olarak
+                  basiliyordu ve listede "OFFİCE", "PRIMARY_SCHOOL"
+                  gibi Ingilizce anahtar degerler goruluyordu. */}
+              <span className="mono-label">
+                {PLACE_TYPE_LABELS[place.type] ?? place.type}
+              </span>
+
+              {typeof place.distance_m === "number" && (
+                <span className="mono-label tabular">
+                  {place.distance_m < 1000
+                    ? `${Math.round(place.distance_m)} m`
+                    : `${(place.distance_m / 1000).toFixed(1)} km`}
+                </span>
+              )}
+
+              {onReport && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onReport(place);
+                  }}
+                  className="ml-auto inline-flex items-center gap-1 text-2xs font-medium text-ink-4 hover:text-critical transition-colors duration-fast ease-out"
+                >
+                  <Flag size={10} />
+                  Bildir
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </li>
+  );
+});

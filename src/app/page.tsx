@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import AppHeader from "../components/AppHeader";
@@ -22,7 +22,7 @@ import {
   type DistrictMeta,
   type PlaceQuery,
 } from "../lib/districts";
-import { fetchSavedPlaces, savePlace, removeSavedPlace } from "../lib/savedApi";
+import { fetchSavedPlaces, savePlace, savePlaces, removeSavedPlace } from "../lib/savedApi";
 import type { Place, PlaceType } from "../lib/types";
 import { X, Database } from "lucide-react";
 
@@ -34,6 +34,21 @@ import { X, Database } from "lucide-react";
  * tum satirlari birden DOM'a basmak sayfayi kilitliyordu.
  */
 const PAGE_SIZE = 250;
+
+/**
+ * Toplu kayitta istek basina yer sayisi. Sunucu 10.000'e kadar kabul
+ * ediyor; parcalamak ilerlemenin gorunmesi ve tek istegin zaman asimina
+ * yaklasmamasi icin.
+ */
+const BULK_CHUNK = 1000;
+
+/** "Tum sonuclari kaydet" icin sayfa boyu; ilce ucunun ust siniri. */
+const FETCH_ALL_PAGE = 1000;
+
+/** Sunucu cevabi gelene kadar isaretli gorunen yerin gecici id'si. */
+const PENDING_ID = "pending";
+
+const NO_VOLUNTEER = "Gönüllü adınızı Ayarlar'dan girin.";
 
 // Client-side only map import
 const MapView = dynamic(() => import("../components/MapView"), {
@@ -83,8 +98,17 @@ export default function Home() {
    * "hangileri kayitli" gostergesi.
    */
   const [savedIds, setSavedIds] = useState<Map<string, string>>(new Map());
-  const [savingId, setSavingId] = useState<string | null>(null);
+  // toggleSaved'in guncel degeri callback'i yeniden olusturmadan okumasi icin.
+  const savedIdsRef = useRef(savedIds);
+  savedIdsRef.current = savedIds;
+  const checkedIds = useMemo(() => new Set(savedIds.keys()), [savedIds]);
+  // Istegi suren yerler: ayni yere cevap gelmeden ikinci tiklama yok sayilir.
+  const pendingRef = useRef<Set<string>>(new Set());
   const [savingAll, setSavingAll] = useState(false);
+  /** Toplu kayit ilerlemesi; null iken toplu kayit yok. */
+  const [saveProgress, setSaveProgress] = useState<{ done: number; total: number } | null>(
+    null
+  );
 
   const [reportTarget, setReportTarget] = useState<Place | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -123,66 +147,139 @@ export default function Home() {
     return null;
   })();
 
+  const reportSaveError = useCallback((err: any, fallback: string) => {
+    if (err?.message === NO_VOLUNTEER) {
+      setSettingsOpen(true);
+      setNotice("Yer kaydetmek için önce Ayarlar’dan gönüllü adınızı girin.");
+    } else setNotice(err?.message || fallback);
+  }, []);
+
   /**
    * Kaydet / kaydı kaldır.
    *
-   * Iyimser guncelleme: gonullu tikladiginda isaret hemen degisiyor,
-   * sunucu cevabini beklemiyor. Hata olursa geri aliniyor.
+   * Iyimser guncelleme: isaret tiklama aninda degisiyor, sunucu cevabini
+   * beklemiyor; hata olursa yalnizca BU yer geri aliniyor. Eskiden
+   * kaydetme cevabi bekliyordu ve gelistirme modunda ilk tiklama route
+   * derlemesi yuzunden saniyelerce isaretsiz kaliyordu.
    */
   const toggleSaved = useCallback(
     async (place: Place) => {
-      if (savingId === place.id) return;
-      setSavingId(place.id);
-      const existingId = savedIds.get(place.id);
-      const snapshot = new Map(savedIds);
+      if (pendingRef.current.has(place.id)) return;
+      pendingRef.current.add(place.id);
+      const existingId = savedIdsRef.current.get(place.id);
+
+      const setEntry = (id: string | null) =>
+        setSavedIds((prev) => {
+          const next = new Map(prev);
+          if (id === null) next.delete(place.id);
+          else next.set(place.id, id);
+          return next;
+        });
 
       try {
         if (existingId) {
-          setSavedIds((prev) => {
-            const next = new Map(prev);
-            next.delete(place.id);
-            return next;
-          });
+          setEntry(null);
           await removeSavedPlace(existingId);
         } else {
+          setEntry(PENDING_ID);
           const created = await savePlace(place);
-          setSavedIds((prev) => new Map(prev).set(place.id, created.id));
+          setEntry(created.id);
         }
       } catch (err: any) {
-        setSavedIds(snapshot);
-        if (err?.message === "Gönüllü adınızı Ayarlar'dan girin.") {
-          setSettingsOpen(true);
-          setNotice("Yer kaydetmek için önce Ayarlar’dan gönüllü adınızı girin.");
-        } else setNotice(err?.message || "Kaydedilemedi.");
+        setEntry(existingId ?? null);
+        reportSaveError(err, "Kaydedilemedi.");
       } finally {
-        setSavingId(null);
+        pendingRef.current.delete(place.id);
       }
     },
-    [savedIds, savingId]
+    // savedIds'e bagli degil (ref'ten okunuyor): kimligi sabit kalmali ki
+    // memo'lu liste satirlari her kayitta yeniden cizilmesin.
+    [reportSaveError]
   );
 
-  const saveAllVisible = useCallback(async () => {
-    const unsaved = places.filter((p) => !savedIds.has(p.id));
-    if (unsaved.length === 0 || savingAll) return;
-    setSavingAll(true);
-    setNotice(null);
-    try {
-      // Sirali: toplu POST ucu yok ve es zamanli yuzlerce istek
-      // backend'i bosuna zorlar. Her kayit tamamlandiginda isaret
-      // aniden degil tek tek doluyor - islem suruyor izlenimi veriyor.
-      for (const place of unsaved) {
-        const created = await savePlace(place);
-        setSavedIds((prev) => new Map(prev).set(place.id, created.id));
+  /**
+   * Yerleri toplu uctan, BULK_CHUNK'lik parcalarla kaydeder.
+   *
+   * Eskiden her yer ayri istekti (250 yer ~25 sn, her birinde harita ve
+   * liste yeniden ciziliyordu). Parca basina tek istek ve tek state
+   * guncellemesi.
+   */
+  const saveMany = useCallback(
+    async (targets: Place[]) => {
+      const unsaved = targets.filter((p) => !savedIds.has(p.id));
+      if (unsaved.length === 0) return;
+      setSaveProgress({ done: 0, total: unsaved.length });
+      for (let i = 0; i < unsaved.length; i += BULK_CHUNK) {
+        const { ids } = await savePlaces(unsaved.slice(i, i + BULK_CHUNK));
+        setSavedIds((prev) => {
+          const next = new Map(prev);
+          for (const [placeId, savedId] of Object.entries(ids)) next.set(placeId, savedId);
+          return next;
+        });
+        setSaveProgress({
+          done: Math.min(i + BULK_CHUNK, unsaved.length),
+          total: unsaved.length,
+        });
       }
-    } catch (err: any) {
-      if (err?.message === "Gönüllü adınızı Ayarlar'dan girin.") {
-        setSettingsOpen(true);
-        setNotice("Yer kaydetmek için önce Ayarlar’dan gönüllü adınızı girin.");
-      } else setNotice(err?.message || "Bazı kayıtlar eklenemedi.");
-    } finally {
-      setSavingAll(false);
-    }
-  }, [places, savedIds, savingAll]);
+    },
+    [savedIds]
+  );
+
+  const runBulkSave = useCallback(
+    async (collect: () => Promise<Place[]>) => {
+      if (savingAll) return;
+      setSavingAll(true);
+      setNotice(null);
+      try {
+        await saveMany(await collect());
+      } catch (err: any) {
+        reportSaveError(err, "Bazı kayıtlar eklenemedi.");
+      } finally {
+        setSavingAll(false);
+        setSaveProgress(null);
+      }
+    },
+    [savingAll, saveMany, reportSaveError]
+  );
+
+  /** Ekranda yuklu olan sonuclar. */
+  const saveAllVisible = useCallback(
+    () => runBulkSave(async () => places),
+    [runBulkSave, places]
+  );
+
+  /**
+   * Ilcenin filtreye uyan TUM sonuclari - yuklenmemis sayfalar dahil.
+   *
+   * Eskiden yalnizca ekrandaki 250 kaydedilebiliyordu; gerisi icin once
+   * "daha fazla yukle" ile hepsini acmak gerekiyordu. Kalan sayfalar
+   * ayni sorgu ve siralamayla cekiliyor ama listeye basilmiyor: binlerce
+   * satiri DOM'a koymak tarayiciyi kilitliyordu (bkz. loadMore).
+   */
+  const saveAllResults = useCallback(
+    () =>
+      runBulkSave(async () => {
+        if (!district) return places;
+        const all = [...places];
+        const seen = new Set(all.map((p) => p.id));
+        for (let offset = places.length; offset < total; offset += FETCH_ALL_PAGE) {
+          const response = await fetchDistrictPlaces(district.id, {
+            ...query,
+            limit: FETCH_ALL_PAGE,
+            offset,
+          });
+          if (response.results.length === 0) break;
+          for (const place of response.results.map(districtPlaceToPlace)) {
+            if (!seen.has(place.id)) {
+              seen.add(place.id);
+              all.push(place);
+            }
+          }
+        }
+        return all;
+      }),
+    [runBulkSave, district, places, total, query]
+  );
 
   const handleApiError = useCallback((err: any) => {
     const message = String(err?.message ?? "");
@@ -367,9 +464,11 @@ export default function Home() {
     return () => clearTimeout(timer);
   }, [district, runDistrictSearch, runMapSearch]);
 
-  const mapCenter: [number, number] = district
-    ? [district.center[0], district.center[1]]
-    : [41.0082, 28.9784];
+  // Sabit referans: MapView memo'lu ve her yeni dizi onu bosuna yeniden cizerdi.
+  const mapCenter = useMemo<[number, number]>(
+    () => (district ? [district.center[0], district.center[1]] : [41.0082, 28.9784]),
+    [district]
+  );
 
   const savedInView = places.filter((p) => savedIds.has(p.id)).length;
 
@@ -482,7 +581,7 @@ export default function Home() {
                   loading={loading}
                   selectedPlaceId={selectedPlaceId}
                   onPlaceClick={setSelectedPlaceId}
-                  checkedIds={new Set(savedIds.keys())}
+                  checkedIds={checkedIds}
                   onToggleCheck={toggleSaved}
                   onReport={setReportTarget}
                 />
@@ -542,6 +641,10 @@ export default function Home() {
             savedCount={savedInView}
             totalResults={places.length}
             onSaveAll={saveAllVisible}
+            // Yalnizca yuklenmemis sonuc varken: aksi halde iki buton ayni isi yapar.
+            onSaveAllResults={district && total > places.length ? saveAllResults : undefined}
+            allResultsCount={total}
+            saveProgress={saveProgress}
             onExport={handleExport}
             exportBlockedReason={exportBlockedReason}
             quotaRemaining={

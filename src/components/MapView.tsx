@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 // MapContainer >= 5.0.0 olmali: 4.2.1 StrictMode'da ayni dugume ikinci harita
 // kurup "Map container is already initialized" firlatiyordu (kurulum muhafizi
 // bayat closure okuyordu). 5.0.0 muhafizi ref'ten okuyor.
@@ -144,7 +144,11 @@ function MapController({
   return null;
 }
 
-export default function MapView({
+// memo: kaydetme gibi harita disi her state degisikligi 250 isaretci ve
+// kume yapisini bastan kuruyordu (tiklama basina ~500 ms).
+export default memo(MapView);
+
+function MapView({
   places,
   center,
   zoom,

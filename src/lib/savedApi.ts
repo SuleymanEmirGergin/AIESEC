@@ -172,17 +172,37 @@ export const savePlace = (place: Place, listId?: string | null) =>
     // Istemci yeni mi tekrar mi oldugunu bilemeyecegi icin ad varsa iletir,
     // yoksa istegi gonderir; backend yalnizca yeni kaydi reddeder.
     volunteer: true,
-    body: {
-      place_id: place.id,
-      name: place.name,
-      place_type: place.type,
-      lat: place.coordinates.lat,
-      lon: place.coordinates.lng,
-      address: place.address,
-      tags: place.tags ?? {},
-      list_id: listId ?? null,
-    },
+    body: { ...toSaveBody(place), list_id: listId ?? null },
   });
+
+/** Sunucunun tek istekte kabul ettigi ust sinir (backend MAX_BULK_SAVE). */
+export const BULK_SAVE_LIMIT = 10_000;
+
+/**
+ * Birden cok yeri tek istekte kaydeder.
+ *
+ * Tekli kayitla ayni kurallar: zaten kayitli olan hata degil, `ids` her
+ * yer icin kayit id'sini tasiyor. Liste ve not yok - toplu kayit
+ * dosyalanmamis olarak ekliyor.
+ */
+export const savePlaces = (places: Place[]) =>
+  request<{ created: number; ids: Record<string, string> }>("/api/saved/bulk", {
+    method: "POST",
+    volunteer: true,
+    body: { items: places.map(toSaveBody) },
+  });
+
+function toSaveBody(place: Place) {
+  return {
+    place_id: place.id,
+    name: place.name,
+    place_type: place.type,
+    lat: place.coordinates.lat,
+    lon: place.coordinates.lng,
+    address: place.address,
+    tags: place.tags ?? {},
+  };
+}
 
 export const updateSavedPlace = (
   id: string,
