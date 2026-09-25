@@ -482,3 +482,88 @@ class TestExportHistory:
     def test_limit_is_bounded(self, client):
         assert client.get("/api/exports?limit=0").status_code == 422
         assert client.get("/api/exports?limit=500").status_code == 422
+
+
+class TestBulkSave:
+    """
+    "Hepsini kaydet" her yer icin ayri istek atiyordu: 250 yer ~25 sn,
+    ilcenin tamami (Eyupsultan ~8600) pratikte kullanilamaz. Toplu uc
+    tek istek, tek islem.
+    """
+
+    # Test veritabani calistirmalar arasinda temizlenmiyor; sabit id ikinci
+    # calistirmada "zaten kayitli" sayilir. Her calistirma kendi id'lerini uretir.
+    RUN = uuid.uuid4().hex[:8]
+
+    def _id(self, name: str) -> str:
+        return f"osm:node:{name}-{self.RUN}"
+
+    def _items(self, prefix: str, n: int) -> list[dict]:
+        return [_place(self._id(f"{prefix}-{i}"), name=f"Yer {i}") for i in range(n)]
+
+    def test_hepsi_tek_istekte_kaydedilir(self, client):
+        items = self._items("bulk-a", 3)
+        response = client.post(
+            "/api/saved/bulk", json={"items": items}, headers=VOLUNTEER_HEADERS
+        )
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["created"] == 3
+        assert set(body["ids"]) == {i["place_id"] for i in items}
+
+        saved = {p["place_id"]: p for p in client.get("/api/saved").json()}
+        for item in items:
+            assert saved[item["place_id"]]["id"] == body["ids"][item["place_id"]]
+            assert saved[item["place_id"]]["saved_by"] == "Ece"
+
+    def test_kayitli_olan_tekrar_eklenmez_mevcut_id_doner(self, client):
+        first = client.post(
+            "/api/saved", json=_place(self._id("bulk-b-0")), headers=VOLUNTEER_HEADERS
+        ).json()
+        items = self._items("bulk-b", 2)  # bulk-b-0 zaten kayitli
+
+        body = client.post(
+            "/api/saved/bulk", json={"items": items}, headers=VOLUNTEER_HEADERS
+        ).json()
+
+        assert body["created"] == 1
+        assert body["ids"][self._id("bulk-b-0")] == first["id"]
+
+    def test_ayni_istekteki_tekrar_bir_kez_kaydedilir(self, client):
+        item = _place(self._id("bulk-c-0"))
+        body = client.post(
+            "/api/saved/bulk", json={"items": [item, item]}, headers=VOLUNTEER_HEADERS
+        ).json()
+        assert body["created"] == 1
+        ids = [p["place_id"] for p in client.get("/api/saved").json()]
+        assert ids.count(self._id("bulk-c-0")) == 1
+
+    def test_yeni_kayit_icin_gonullu_adi_gerekli(self, client):
+        response = client.post("/api/saved/bulk", json={"items": self._items("bulk-d", 1)})
+        assert response.status_code == 422
+
+    def test_hepsi_zaten_kayitliysa_ad_gerekmez(self, client):
+        """Tekli uctaki kuralin aynisi: tekrar kaydetmek ad istemez."""
+        item = _place(self._id("bulk-e-0"))
+        client.post("/api/saved", json=item, headers=VOLUNTEER_HEADERS)
+        response = client.post("/api/saved/bulk", json={"items": [item]})
+        assert response.status_code == 200
+        assert response.json()["created"] == 0
+
+    def test_bos_ve_asiri_buyuk_istek_reddedilir(self, client):
+        assert client.post(
+            "/api/saved/bulk", json={"items": []}, headers=VOLUNTEER_HEADERS
+        ).status_code == 422
+        too_many = [_place(f"osm:node:x-{i}") for i in range(10_001)]
+        assert client.post(
+            "/api/saved/bulk", json={"items": too_many}, headers=VOLUNTEER_HEADERS
+        ).status_code == 422
+
+    def test_binlerce_kayit_tek_istekte(self, client):
+        """SQLite parametre siniri: IN sorgusu parcalanmali."""
+        items = self._items("bulk-f", 2500)
+        response = client.post(
+            "/api/saved/bulk", json={"items": items}, headers=VOLUNTEER_HEADERS
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["created"] == 2500

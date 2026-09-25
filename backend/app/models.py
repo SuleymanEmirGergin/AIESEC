@@ -457,9 +457,9 @@ class PlaceListResponse(BaseModel):
     place_count: int = 0
 
 
-class SavedPlaceCreate(BaseModel):
+class SavedPlaceData(BaseModel):
     """
-    Kaydedilecek yer.
+    Kaydedilecek yerin kendisi.
 
     Yerin tamami gonderiliyor, yalnizca id degil: kayit arama
     onbelleginin hala duruyor olmasina bagimli olmamali.
@@ -472,8 +472,32 @@ class SavedPlaceCreate(BaseModel):
     lon: float = Field(..., ge=-180, le=180)
     address: Optional[str] = Field(None, max_length=500)
     tags: Dict[str, Any] = Field(default_factory=dict)
+
+
+class SavedPlaceCreate(SavedPlaceData):
+    """Tek yer kaydi; not ve liste burada verilebilir."""
+
     note: Optional[str] = Field(None, max_length=1000)
     list_id: Optional[str] = None
+
+
+# En kalabalik ilce (Eyupsultan) ~8600 yer; tek istekte tamami sigmali.
+MAX_BULK_SAVE = 10_000
+
+
+class SavedPlaceBulkCreate(BaseModel):
+    """
+    Toplu kayit. Not ve liste yok: "hepsini kaydet" dosyalanmamis olarak
+    ekliyor, tasima Kayitli sayfasinin isi.
+    """
+
+    items: List[SavedPlaceData] = Field(..., min_length=1, max_length=MAX_BULK_SAVE)
+
+
+class SavedPlaceBulkResponse(BaseModel):
+    created: int
+    # place_id -> kayitli yer id'si (yeni ya da zaten kayitli olan)
+    ids: Dict[str, str]
 
 
 class SavedPlaceUpdate(BaseModel):

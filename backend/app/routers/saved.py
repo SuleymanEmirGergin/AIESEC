@@ -32,6 +32,8 @@ from app.models import (
     PlaceListCreate,
     PlaceListResponse,
     PlaceListUpdate,
+    SavedPlaceBulkCreate,
+    SavedPlaceBulkResponse,
     SavedPlaceCreate,
     SavedPlaceResponse,
     SavedPlaceUpdate,
@@ -285,6 +287,65 @@ async def save_place(
     await db.commit()
     await db.refresh(place)
     return place
+
+
+# SQLite tek sorguda en fazla 32766 parametre kabul ediyor; IN listesi parcali.
+_IN_CHUNK = 500
+
+
+@router.post("/saved/bulk", response_model=SavedPlaceBulkResponse)
+async def save_places_bulk(
+    data: SavedPlaceBulkCreate,
+    x_volunteer_name: str | None = Header(None),
+    db: AsyncSession = Depends(get_db),
+    api_key: APIKey = Depends(validate_api_key),
+):
+    """
+    Birden cok yeri tek istekte, tek islemde kaydet.
+
+    Tekli uctaki kurallar aynen gecerli: zaten kayitli olan hata degil,
+    mevcut id donuyor; gonullu adi yalnizca yeni kayit varsa gerekli.
+    Ayni istekte tekrar eden yer bir kez kaydediliyor.
+    """
+    items = {item.place_id: item for item in data.items}
+    place_ids = list(items)
+
+    ids: dict[str, str] = {}
+    for start in range(0, len(place_ids), _IN_CHUNK):
+        chunk = place_ids[start : start + _IN_CHUNK]
+        rows = await db.execute(
+            select(SavedPlace.place_id, SavedPlace.id).where(
+                SavedPlace.api_key_id == api_key.id, SavedPlace.place_id.in_(chunk)
+            )
+        )
+        ids.update(dict(rows.all()))
+
+    missing = [pid for pid in place_ids if pid not in ids]
+    if missing:
+        volunteer_name = _volunteer_name(x_volunteer_name)
+        now = _now()
+        new_places = [
+            SavedPlace(
+                id=str(uuid.uuid4()),
+                api_key_id=api_key.id,
+                place_id=pid,
+                name=items[pid].name,
+                place_type=items[pid].place_type,
+                lat=items[pid].lat,
+                lon=items[pid].lon,
+                address=items[pid].address,
+                tags=items[pid].tags or {},
+                saved_by=volunteer_name,
+                created_at=now,
+            )
+            for pid in missing
+        ]
+        # Id'ler burada uretildi; commit sonrasi nesneye dokunmaya gerek yok.
+        ids.update({p.place_id: p.id for p in new_places})
+        db.add_all(new_places)
+        await db.commit()
+
+    return {"created": len(missing), "ids": ids}
 
 
 async def _owned_place(place_id: str, api_key: APIKey, db: AsyncSession) -> SavedPlace:
