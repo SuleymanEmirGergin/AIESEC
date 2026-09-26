@@ -19,6 +19,16 @@ export async function GET(req: NextRequest) {
   }
   const dry = req.nextUrl.searchParams.get("dry") === "1";
   const server = process.env.EMAIL_SERVER;
+  // ?verify=1: SMTP'ye yalnizca giris dener, e-posta gondermez.
+  if (req.nextUrl.searchParams.get("verify") === "1") {
+    if (!server) return NextResponse.json({ smtp: "EMAIL_SERVER tanımlı değil" }, { status: 503 });
+    try {
+      await createTransport(server).verify();
+      return NextResponse.json({ smtp: "ok", from: !!process.env.EMAIL_FROM });
+    } catch (error: any) {
+      return NextResponse.json({ smtp: "hata", code: error?.code, response: error?.response }, { status: 502 });
+    }
+  }
   if (!server && !dry) {
     return NextResponse.json({ skipped: "EMAIL_SERVER tanımlı değil; sabah e-postası kapalı." });
   }
