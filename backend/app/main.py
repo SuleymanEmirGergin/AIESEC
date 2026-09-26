@@ -14,6 +14,7 @@ from app.middleware import MetricsMiddleware
 from app.routers import (
     account,
     admin,
+    dashboard,
     districts,
     export,
     health,
@@ -84,6 +85,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Include API routers
 app.include_router(search.router, prefix="/api", tags=["search"])
+app.include_router(dashboard.router, prefix="/api", tags=["dashboard"])
 app.include_router(export.router)
 # account.router kendi /api prefix'ini tasiyor (export gibi)
 app.include_router(account.router)

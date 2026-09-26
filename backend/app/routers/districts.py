@@ -202,13 +202,14 @@ async def district_places(
     q: str = Query(None, description="Isim icinde arama"),
     include_buffer: bool = Query(True, description="2 km tampon bolgesi dahil"),
     include_unclassified: bool = Query(False),
+    exclude_saved: bool = Query(False, description="Ekibin kaydettigi yerleri gosterme"),
     sort: str = Query("contact_first"),
     ref_lat: float = Query(None, ge=-90, le=90),
     ref_lon: float = Query(None, ge=-180, le=180),
     limit: int = Query(500, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
-    _: APIKey = Depends(validate_api_key),
+    api_key: APIKey = Depends(validate_api_key),
 ) -> dict:
     """
     Filtrelenmis ve siralanmis POI listesi. Tamamen yerel SQL;
@@ -231,6 +232,7 @@ async def district_places(
         q=q,
         include_buffer=include_buffer,
         include_unclassified=include_unclassified,
+        exclude_saved_for=api_key.id if exclude_saved and api_key.id is not None else None,
         sort=sort,
         ref_lat=ref_lat,
         ref_lon=ref_lon,

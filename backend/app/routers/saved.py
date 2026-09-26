@@ -25,7 +25,16 @@ from sqlalchemy import delete, desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import validate_api_key
-from app.database import APIKey, ContactEvent, ExportLog, PlaceList, SavedPlace, get_db
+from app.database import (
+    APIKey,
+    ContactEvent,
+    ExportLog,
+    PlaceDistrict,
+    PlaceList,
+    SavedPlace,
+    get_db,
+)
+from app.districts import get_district
 from app.models import (
     ContactEventCreate,
     ContactEventResponse,
@@ -36,6 +45,7 @@ from app.models import (
     SavedPlaceBulkCreate,
     SavedPlaceBulkMove,
     SavedPlaceBulkResponse,
+    SavedPlaceBulkUpdate,
     SavedPlaceCreate,
     SavedPlaceResponse,
     SavedPlaceUpdate,
@@ -235,7 +245,38 @@ async def list_saved_places(
     result = await db.execute(
         select(SavedPlace).where(*filters).order_by(desc(SavedPlace.created_at))
     )
-    return result.scalars().all()
+    places = result.scalars().all()
+    await _attach_districts(places, db)
+    return places
+
+
+# SQLite tek sorguda en fazla 999 degisken kabul ediyor.
+_IN_CHUNK = 500
+
+
+async def _attach_districts(places: list, db: AsyncSession) -> None:
+    """
+    Her kayda yerinin ilcesini ekler (filtre icin). Sinir ici uyelik
+    tampondakinden once gelir. Tek ek sorgu (parcali); iliski/join yok,
+    cunku kayit, ilce tablosunda yeri olmayan bir yeri de tutabilir.
+    """
+    by_place: dict[str, tuple[str, bool]] = {}
+    ids = list({p.place_id for p in places})
+    for i in range(0, len(ids), _IN_CHUNK):
+        rows = await db.execute(
+            select(PlaceDistrict.place_id, PlaceDistrict.district_id, PlaceDistrict.is_inside).where(
+                PlaceDistrict.place_id.in_(ids[i : i + _IN_CHUNK])
+            )
+        )
+        for place_id, district_id, inside in rows.all():
+            current = by_place.get(place_id)
+            if current is None or (inside and not current[1]):
+                by_place[place_id] = (district_id, bool(inside))
+    for place in places:
+        district_id = by_place.get(place.place_id, (None, False))[0]
+        district = get_district(district_id) if district_id else None
+        place.district_id = district_id
+        place.district_name = district.name if district else None
 
 
 @router.post("/saved", response_model=SavedPlaceResponse, status_code=201)
@@ -416,10 +457,11 @@ async def _owned_place(place_id: str, api_key: APIKey, db: AsyncSession) -> Save
 async def update_saved_place(
     saved_id: str,
     data: SavedPlaceUpdate,
+    x_volunteer_name: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
     api_key: APIKey = Depends(validate_api_key),
 ):
-    """Not ekle ya da baska bir listeye tasi."""
+    """Not, liste, sorumlu ya da takip tarihi."""
     place = await _owned_place(saved_id, api_key, db)
 
     # exclude_unset sart: `list_id: null` "dosyalanmamisa tasi" demek,
@@ -433,10 +475,78 @@ async def update_saved_place(
         if target:
             await _owned_list(target, api_key, db)
         place.list_id = target or None
+    if "assignee" in changes:
+        _assign(place, data.assignee, x_volunteer_name)
+    if "next_follow_up_at" in changes:
+        place.next_follow_up_at = changes["next_follow_up_at"]
 
     await db.commit()
     await db.refresh(place)
     return place
+
+
+def _assign(place: SavedPlace, assignee, x_volunteer_name: str | None) -> None:
+    """Sorumluyu yazar ya da (None) kaldirir; kimin atadigi ve ne zaman saklanir."""
+    if assignee is None:
+        place.assigned_to = place.assigned_name = place.assigned_by = place.assigned_at = None
+        return
+    place.assigned_to = assignee.email.strip().lower()
+    place.assigned_name = assignee.name.strip()
+    place.assigned_by = unquote(x_volunteer_name or "").strip()[:120] or None
+    place.assigned_at = _now()
+
+
+@router.post("/saved/bulk-update")
+async def bulk_update_saved_places(
+    data: SavedPlaceBulkUpdate,
+    x_volunteer_name: str | None = Header(None),
+    db: AsyncSession = Depends(get_db),
+    api_key: APIKey = Depends(validate_api_key),
+):
+    """
+    Secili kayitlara durum, sorumlu ya da takip tarihi uygular. Durum her
+    kayda "Toplu guncelleme" notlu bir temas olayi olarak yaziliyor ki
+    gecmis, guncel durumla tutarli kalsin. Baskasinin kaydina dokunulmaz.
+    """
+    changes = data.model_dump(exclude_unset=True)
+    changes.pop("ids", None)
+    if not changes:
+        raise HTTPException(status_code=422, detail="Degistirilecek bir alan secin.")
+
+    volunteer = _volunteer_name(x_volunteer_name) if "contact_status" in changes else None
+    today = _now().date()
+    updated = 0
+    ids = list(dict.fromkeys(data.ids))
+    for i in range(0, len(ids), _IN_CHUNK):
+        rows = await db.execute(
+            select(SavedPlace).where(
+                SavedPlace.api_key_id == api_key.id, SavedPlace.id.in_(ids[i : i + _IN_CHUNK])
+            )
+        )
+        for place in rows.scalars().all():
+            if "contact_status" in changes and data.contact_status is not None:
+                status = data.contact_status.value
+                db.add(
+                    ContactEvent(
+                        id=str(uuid.uuid4()),
+                        saved_place_id=place.id,
+                        status=status,
+                        contacted_at=today,
+                        note="Toplu güncelleme",
+                        next_follow_up_at=place.next_follow_up_at,
+                        volunteer_name=volunteer,
+                        created_at=_now(),
+                    )
+                )
+                place.contact_status = status
+                place.last_contact_at = today
+            if "assignee" in changes:
+                _assign(place, data.assignee, x_volunteer_name)
+            if "next_follow_up_at" in changes:
+                place.next_follow_up_at = data.next_follow_up_at
+            updated += 1
+    await db.commit()
+    return {"updated": updated}
 
 
 @router.delete("/saved/{saved_id}")

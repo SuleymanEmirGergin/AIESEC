@@ -8,12 +8,12 @@ hareketi buraya dusuyor ve milisaniye mertebesinde donuyor.
 from dataclasses import dataclass
 from math import asin, cos, radians, sin, sqrt
 
-from sqlalchemy import Select, case, collate, func, select
+from sqlalchemy import Select, case, collate, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.classify import FOLD_MAP, ascii_fold
-from app.database import PlaceDistrict, PlaceRow
+from app.database import PlaceDistrict, PlaceRow, SavedPlace
 from app.export_formats import TYPE_LABELS
 
 # 21 tur. count_by_type her zaman bu anahtarlarin hepsini donuyor:
@@ -114,6 +114,8 @@ class PlaceFilter:
     q: str | None = None
     include_buffer: bool = True
     include_unclassified: bool = False
+    # Bu ekip anahtarinin kaydettigi yerleri disla ("yalnizca yeniler").
+    exclude_saved_for: int | None = None
     sort: str = "contact_first"
     ref_lat: float | None = None
     ref_lon: float | None = None
@@ -149,6 +151,15 @@ def build_places_query(f: PlaceFilter) -> Select:
     elif not f.include_unclassified:
         # Tur belirtilmediginde siniflandirilamayan kayitlar gizli.
         statement = statement.where(PlaceRow.place_type.is_not(None))
+
+    if f.exclude_saved_for is not None:
+        # Sunucuda: toplam sayi ve "Hepsini kaydet" de yalniz yenileri kapsasin.
+        statement = statement.where(
+            ~exists().where(
+                SavedPlace.place_id == PlaceRow.id,
+                SavedPlace.api_key_id == f.exclude_saved_for,
+            )
+        )
 
     if f.has_contact:
         statement = statement.where(PlaceRow.has_contact.is_(True))

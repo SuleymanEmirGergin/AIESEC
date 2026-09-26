@@ -223,6 +223,13 @@ class SavedPlace(Base):
     contact_status = Column(String, nullable=False, default="uncontacted")
     last_contact_at = Column(Date, nullable=True)
     next_follow_up_at = Column(Date, nullable=True)
+    # Sorumlu gonullu. E-posta kimlik, ad gosterim icin atama aninda saklaniyor
+    # (kisi ekipten cikarilsa da kayitta kim oldugu okunur). Herkes herkese
+    # atayabilir; kimin atadigi assigned_by'da.
+    assigned_to = Column(String, nullable=True, index=True)
+    assigned_name = Column(String, nullable=True)
+    assigned_by = Column(String, nullable=True)
+    assigned_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
 
     __table_args__ = (
@@ -379,11 +386,18 @@ async def init_db():
             "next_follow_up_at": (
                 "ALTER TABLE saved_places ADD COLUMN next_follow_up_at DATE"
             ),
+            "assigned_to": "ALTER TABLE saved_places ADD COLUMN assigned_to VARCHAR",
+            "assigned_name": "ALTER TABLE saved_places ADD COLUMN assigned_name VARCHAR",
+            "assigned_by": "ALTER TABLE saved_places ADD COLUMN assigned_by VARCHAR",
+            "assigned_at": "ALTER TABLE saved_places ADD COLUMN assigned_at TIMESTAMP",
         }
         for column, statement in saved_place_migrations.items():
             if column not in existing_saved_place_columns:
                 await conn.exec_driver_sql(statement)
 
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_saved_places_assigned_to ON saved_places (assigned_to)"
+        )
         await conn.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_contact_events_history "
             "ON contact_events (saved_place_id, contacted_at, created_at)"

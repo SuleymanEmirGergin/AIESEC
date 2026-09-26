@@ -509,17 +509,41 @@ class SavedPlaceBulkMove(BaseModel):
     list_id: Optional[str] = None
 
 
+class SavedPlaceBulkUpdate(BaseModel):
+    """
+    Secili kayitlara toplu islem. En az bir alan gonderilmeli; gonderilmeyen
+    alan degismez (assignee/next_follow_up_at icin null "kaldir" demek).
+    Durum degisikligi her kayda temas gecmisi olarak yaziliyor.
+    """
+
+    ids: List[str] = Field(..., min_length=1, max_length=MAX_BULK_SAVE)
+    contact_status: Optional["ContactStatus"] = None
+    assignee: Optional["Assignee"] = None
+    next_follow_up_at: Optional[date] = None
+
+
 class SavedPlaceBulkResponse(BaseModel):
     created: int
     # place_id -> kayitli yer id'si (yeni ya da zaten kayitli olan)
     ids: Dict[str, str]
 
 
+class Assignee(BaseModel):
+    """Sorumlu gonullu: e-posta kimlik, ad gosterim icin."""
+
+    email: str = Field(..., max_length=254, pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+    name: str = Field(..., min_length=1, max_length=120)
+
+
 class SavedPlaceUpdate(BaseModel):
-    """Not ekleme ya da baska bir listeye tasima."""
+    """Not, liste, sorumlu ya da takip tarihi. Gonderilmeyen alan degismez."""
 
     note: Optional[str] = Field(None, max_length=1000)
     list_id: Optional[str] = None
+    # None: atamayi kaldir.
+    assignee: Optional[Assignee] = None
+    # None: takibi kaldir.
+    next_follow_up_at: Optional[date] = None
     # list_id=None "dosyalanmamisa tasi" demek olabilir; hangi alanin
     # gercekten gonderildigini ayirmak icin exclude_unset kullaniliyor.
 
@@ -566,6 +590,13 @@ class SavedPlaceResponse(BaseModel):
     contact_status: ContactStatus
     last_contact_at: Optional[date]
     next_follow_up_at: Optional[date]
+    assigned_to: Optional[str] = None
+    assigned_name: Optional[str] = None
+    assigned_by: Optional[str] = None
+    assigned_at: Optional[datetime] = None
+    # Yerin ilcesi (sinir ici oncelikli); filtre icin. Ilce verisinde yoksa None.
+    district_id: Optional[str] = None
+    district_name: Optional[str] = None
     created_at: datetime
 
 
@@ -662,3 +693,7 @@ class DistrictSummaryResponse(BaseModel):
     fetched_at: Optional[datetime] = None
     place_count: Optional[int] = None
     status: Optional[str] = None
+
+
+# ContactStatus SavedPlaceBulkUpdate'ten sonra tanimli (ileri referans).
+SavedPlaceBulkUpdate.model_rebuild()
