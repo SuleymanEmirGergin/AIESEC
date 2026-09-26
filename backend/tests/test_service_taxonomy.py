@@ -146,3 +146,62 @@ class TestTaxonomyLists:
             assert t in TYPE_LABELS, t
             assert t in presets.type_labels_tr, t
             assert t in grouped, t
+
+
+class TestUniversiteTemizligi:
+    """
+    Overture'in 'college_university' kategorisi kirli: Bakirkoy'deki 58
+    kaydin ~25'i universite, gerisi lise, kolej, mahkeme, mezarlik,
+    danismanlik firmasi. Ad universite degilse okul turune ya da
+    siniflandirilamayana (None) iner.
+    """
+
+    @pytest.mark.parametrize(
+        "name, expected",
+        [
+            ("İstinye Üniversitesi", "college_university"),
+            ("Istanbul Topkapi Universitesi", "college_university"),
+            ("Laleli İstanbul Uni", "college_university"),
+            ("Yabancı Diller Yüksekokulu", "college_university"),
+            ("Cerrahpaşa Tıp Fakültesi", "college_university"),
+            ("Air Force Academy", "college_university"),
+            ("Bakırköy MYO", "college_university"),
+            ("2023 Tercüman Koleji", "college_keyword"),
+            ("Aka Koleji", "college_keyword"),
+            ("100. Yıl Mesleki ve Teknik Anadolu Lisesi", "high_school"),
+            ("Ataköy Ortaokulu", "middle_school"),
+            ("Yeşilköy İlkokulu", "primary_school"),
+            ("Minik Adımlar Anaokulu", "kindergarten"),
+            ("Ingiliz Kultur Dernegi Dil Okullari", "language_school"),
+            # Canli veriden: universite birimleri atilmamali.
+            ("YTU Elektrik Muhendisligi Bolumu", "college_university"),
+            ("Mü Bankacılık ve Sigortacılık Yüksek Okulu", "college_university"),
+            ("Marmara Ünivetsitesi Öyp Kordinatörlüğü", "college_university"),
+            ("İtü Havacılık - Uzay Araştırmaları Merkezi", "college_university"),
+            ("İTÜ-KKTC Eğitim-Araştırma Yerleşkeleri", "college_university"),
+            ("BAU TIP", "college_university"),
+            ("FsmvÜ Kuram", "college_university"),
+            ("جامعة اسطنبول ايدن بالعربي", "college_university"),
+            ("Bahçeşehir Koza Okulları", "private_school"),
+            ("Özeliz Eğitim Kurumları Göztepe Şubesi", "private_school"),
+            ("Eurasia Tömer", "language_school"),
+            ("Marmara TekstİL MÜHendİSlİĞİ", "college_university"),
+            ("Ali Fuat Cebesoy İöo", "primary_school"),
+            ("Avcılar İngiliz Kültür", "language_school"),
+            ("Adalet İlmen Kız Öğrenci Yurdu", None),
+            ("Universal Otel", None),
+            ("Athletico De Madrid Pub", None),
+            ("Bakırköy 7. Ağır Ceza Mahkemesi", None),
+            ("Balikli Ermeni Mezarligi", None),
+            ("Kuram Danışmanlık", None),
+            ("Kars Kalesi", None),
+            ("Surp Kirkor Kilisesi", None),
+            (None, None),
+        ],
+    )
+    def test_ada_gore_duzeltilir(self, name, expected):
+        assert classify_overture("college_university", name) == expected
+        assert classify_overture("university", name) == expected
+
+    def test_diger_kategoriler_etkilenmez(self):
+        assert classify_overture("high_school", "Kuram Danışmanlık") == "high_school"

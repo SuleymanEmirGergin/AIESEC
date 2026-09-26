@@ -208,3 +208,21 @@ class TestHasName:
         """Test element with empty name tag."""
         tags = {"name": ""}
         assert has_name(tags) is False
+
+
+class TestOsmKolej:
+    """OSM'de Turkiye'deki kolejler (ozel K-12) cogunlukla amenity=college."""
+
+    def test_kolej_adi_kolej_turune_iner(self):
+        assert classify_school_level({"amenity": "college", "name": "Aka Koleji"}, "Aka Koleji") == "college_keyword"
+
+    def test_lise_adi_liseye_iner(self):
+        tags = {"amenity": "college", "name": "Bakırköy Anadolu Lisesi"}
+        assert classify_school_level(tags, "Bakırköy Anadolu Lisesi") == "high_school"
+
+    def test_adsiz_ya_da_belirsiz_college_universite_kalir(self):
+        assert classify_school_level({"amenity": "college"}, "") == "college_university"
+        assert classify_school_level({"amenity": "college"}, "Teknik Egitim Merkezi") == "college_university"
+
+    def test_university_etiketi_ada_bakmaz(self):
+        assert classify_school_level({"amenity": "university"}, "Aka Koleji") == "college_university"

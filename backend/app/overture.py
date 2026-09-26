@@ -122,6 +122,10 @@ def classify_overture(category: str | None, name: str | None) -> str | None:
     if (name or "").strip().lower().endswith(" province"):
         return None
     mapped = CATEGORY_MAP.get(category or "")
+    if mapped == "college_university":
+        from app.classify import refine_university
+
+        return refine_university(name)
     if mapped:
         return mapped
     if category and category.endswith("_company"):

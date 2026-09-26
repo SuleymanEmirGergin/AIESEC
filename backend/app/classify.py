@@ -1,6 +1,60 @@
 """School level and B2B type classification logic."""
 
+import re
 from typing import Optional
+
+# ASCII katlama: "Özel İSTANBUL" -> "ozel istanbul". Arama (queries.fold_sql)
+# ve ad kurallari ayni tabloyu kullaniyor. Once harfler, sonra lower():
+# SQLite'in lower()'i yalnizca ASCII biliyor.
+FOLD_MAP = {
+    "Ç": "c", "ç": "c", "Ğ": "g", "ğ": "g", "İ": "i", "I": "i", "ı": "i",
+    "Ö": "o", "ö": "o", "Ş": "s", "ş": "s", "Ü": "u", "ü": "u",
+    "Â": "a", "â": "a", "Î": "i", "î": "i", "Û": "u", "û": "u",
+}
+_FOLD_TABLE = str.maketrans(FOLD_MAP)
+
+
+def ascii_fold(text: str) -> str:
+    return text.translate(_FOLD_TABLE).lower()
+
+
+# Overture 'college_university' icin ad kurallari (katlanmis ada uygulanir).
+_UNIVERSITY = re.compile(
+    # "univ": yazim hatalari da ("Ünivetsitesi"); "universal" haric.
+    r"\buniv(?!ersal)|\buni\b|fakulte|faculty|yuksek ?okul|\bmyo\b|meslek yuksek"
+    r"|enstitu|institute|kampus|campus|yerleske|rektorluk|akademi|academy"
+    r"|konservatuvar|conservatory|\bbolumu\b|arastirma (ve uygulama )?merkezi|\btip\b|muhendislig"
+    # Sik universite kisaltmalari (katlanmis): ITU, YTU, ODTU, BAU, MSGSU, FSMVU, IKU.
+    r"|\b(itu|ytu|odtu|metu|bau|msgsu|fsmvu|iku)\b"
+    r"|جامع"  # Arapca "universite" (camia / camiiyye)
+)
+_SCHOOL_BY_NAME = [
+    (re.compile(r"\bkolej|\bcollege\b"), "college_keyword"),
+    (re.compile(r"\blise(si)?\b|high school|\blycee"), "high_school"),
+    (re.compile(r"\bortaokul|middle school"), "middle_school"),
+    (re.compile(r"\bilkokul|\bilkogretim|\bi\.?o\.? ?o\b|primary school|elementary school"), "primary_school"),
+    (re.compile(r"\banaokul|\bkres\b|kindergarten|preschool"), "kindergarten"),
+    (re.compile(r"dil okul|dil kurs|language|\bingilizce|\benglish\b|kultur dernegi|ingiliz kultur|\btomer\b"), "language_school"),
+    # Kademesi yazmayan okul ("... Okullari", "Egitim Kurumlari"): ozel okul.
+    (re.compile(r"\bokul(u|lari)?\b|egitim kurumlari|\bschools?\b"), "private_school"),
+]
+
+
+def refine_university(name: str | None) -> Optional[str]:
+    """
+    Overture'in universite dedigi kaydin gercek turu. Bakirkoy'de 58 kaydin
+    ~25'i universiteydi; gerisi lise, kolej, mahkeme, mezarlik, firma.
+    Universite isareti yoksa okul turune, o da yoksa siniflandirilamayana (None).
+    """
+    folded = ascii_fold(name or "")
+    if not folded.strip():
+        return None
+    if _UNIVERSITY.search(folded):
+        return "college_university"
+    for pattern, place_type in _SCHOOL_BY_NAME:
+        if pattern.search(folded):
+            return place_type
+    return None
 
 
 def tr_fold(text: str) -> str:
@@ -45,8 +99,13 @@ def classify_school_level(tags: dict, name: str) -> Optional[str]:
     # ilerisindeydi, ama amenity != "school" kontrolu oraya varmadan
     # None donduruyordu: dal ulasilamaz koddu ve universiteler hicbir
     # zaman siniflandirilamiyordu. (craft/workshop hatasinin ayni sekli.)
-    if tags.get("amenity") in ("university", "college"):
+    if tags.get("amenity") == "university":
         return "college_university"
+    if tags.get("amenity") == "college":
+        # Turkiye'de "Kolej" ozel K-12 okulu ve OSM'de amenity=college diye
+        # isaretleniyor. Ad acikca okul diyorsa o tur; yoksa yuksekogretim.
+        refined = refine_university(name)
+        return refined if refined not in (None, "college_university") else "college_university"
 
     # Not a school amenity
     if tags.get("amenity") != "school":

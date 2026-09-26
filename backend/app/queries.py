@@ -12,6 +12,7 @@ from sqlalchemy import Select, case, collate, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
+from app.classify import FOLD_MAP, ascii_fold
 from app.database import PlaceDistrict, PlaceRow
 from app.export_formats import TYPE_LABELS
 
@@ -57,25 +58,15 @@ def _tr_key(text: str) -> list[int]:
     return [_TR_ALPHABET.index(c) if c in _TR_ALPHABET else 100 + ord(c) for c in lowered]
 
 
-# Turkce harf katlama: arama ve SQLite'ta siralama ayni kurali kullaniyor.
-# Once harfler, sonra lower(): SQLite'in lower()'i yalnizca ASCII biliyor.
-_FOLD = {
-    "Ç": "c", "ç": "c", "Ğ": "g", "ğ": "g", "İ": "i", "I": "i", "ı": "i",
-    "Ö": "o", "ö": "o", "Ş": "s", "ş": "s", "Ü": "u", "ü": "u",
-    "Â": "a", "â": "a", "Î": "i", "î": "i", "Û": "u", "û": "u",
-}
-_FOLD_TABLE = str.maketrans(_FOLD)
-
-
 def fold_text(text: str) -> str:
     """'Özel İSTANBUL' -> 'ozel istanbul'. SQL tarafindaki fold_sql ile ayni sonuc."""
-    return text.translate(_FOLD_TABLE).lower()
+    return ascii_fold(text)
 
 
 def fold_sql(column) -> ColumnElement:
     """fold_text'in SQL karsiligi; SQLite ve Postgres'te ayni calisir."""
     expr = column
-    for src, dst in _FOLD.items():
+    for src, dst in FOLD_MAP.items():
         expr = func.replace(expr, src, dst)
     return func.lower(expr)
 
