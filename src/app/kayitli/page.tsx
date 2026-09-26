@@ -2,64 +2,76 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  Plus,
-  FolderInput,
-  FolderOpen,
-  Trash2,
-  AlertCircle,
-  Search,
-} from "lucide-react";
-import SaveTargetModal, { rememberList, type SaveTarget } from "../../components/SaveTargetModal";
-import { getDueFollowUps, isOverdue } from "../../lib/contactTracking";
+import { AlertCircle, CalendarClock, FolderOpen, Search } from "lucide-react";
 import AppHeader from "../../components/AppHeader";
 import SavedPlaceRow from "../../components/SavedPlaceRow";
 import ExportHistory from "../../components/ExportHistory";
-import CategoryFilter from "../../components/CategoryFilter";
-import { PLACE_TYPE_LABELS } from "../../lib/labels";
-import type { PlaceType } from "../../lib/types";
-import { exportLeads, downloadBlob } from "../../lib/api";
-import type { ExportFormat } from "../../lib/api";
 import DownloadMenu from "../../components/DownloadMenu";
+import UndoToast from "../../components/UndoToast";
+import SaveTargetModal, { rememberList, type SaveTarget } from "../../components/SaveTargetModal";
+import ListsRail from "../../components/saved/ListsRail";
+import SavedToolbar from "../../components/saved/SavedToolbar";
+import BulkBar from "../../components/saved/BulkBar";
+import Pagination from "../../components/saved/Pagination";
+import { downloadBlob, exportLeads, fetchAccount, type ExportFormat } from "../../lib/api";
+import { ALL_LISTS, EMPTY_FILTER, filterSaved, followUpBucket, paginate, type SavedFilter } from "../../lib/savedFilters";
+import { usePendingDelete } from "../../lib/usePendingDelete";
+import type { PlaceType } from "../../lib/types";
 import {
-  createList,
   addContactEvent,
+  bulkUpdateSaved,
+  createList,
   deleteList,
   fetchLists,
+  fetchMembers,
   fetchSavedPlaces,
   moveSavedPlaces,
-  removeSavedPlace,
   savedToPlace,
   updateSavedPlace,
+  type Assignee,
+  type ContactEventCreate,
+  type ContactStatus,
   type PlaceListSummary,
   type SavedPlace,
 } from "../../lib/savedApi";
 
-/** Sanal listeler: gercek bir kaydi yok, filtre gorevi goruyorlar. */
-const ALL = "__all__";
-const UNFILED = "unfiled";
+/** Bir sayfada cizilen kayit. 2.000 satiri birden cizmek 4 sn / 140 MB tutuyordu. */
+const PAGE_SIZE = 50;
+
+/** URL'den baslangic filtresi: Bugun ekrani ve e-posta buradan baglanti veriyor. */
+function filterFromUrl(): Partial<SavedFilter> {
+  if (typeof window === "undefined") return {};
+  const params = new URLSearchParams(window.location.search);
+  const out: Partial<SavedFilter> = {};
+  if (params.get("sorumlu") === "ben") out.assignee = "me";
+  if (params.get("sorumlu") === "yok") out.assignee = "none";
+  const takip = params.get("takip");
+  if (takip === "gecikmis") out.followUp = "overdue";
+  if (takip === "bugun") out.followUp = "today";
+  if (takip === "hafta") out.followUp = "week";
+  const ara = params.get("ara");
+  if (ara) out.q = ara;
+  return out;
+}
 
 export default function SavedPage() {
   const [lists, setLists] = useState<PlaceListSummary[]>([]);
   const [places, setPlaces] = useState<SavedPlace[]>([]);
-  const [activeList, setActiveList] = useState<string>(ALL);
-  const [typeFilter, setTypeFilter] = useState<PlaceType[]>([]);
+  const [members, setMembers] = useState<Assignee[]>([]);
+  const [me, setMe] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<SavedFilter>(EMPTY_FILTER);
+  const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [newListName, setNewListName] = useState("");
-  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [moveOpen, setMoveOpen] = useState(false);
 
   const reload = useCallback(async () => {
     setError(null);
     try {
-      // Ikisi paralel: liste sayilari ile yerler ayni anda geliyor,
-      // sirali beklemek ekrani iki kez bos gosterirdi.
-      const [nextLists, nextPlaces] = await Promise.all([
-        fetchLists(),
-        fetchSavedPlaces(),
-      ]);
+      const [nextLists, nextPlaces] = await Promise.all([fetchLists(), fetchSavedPlaces()]);
       setLists(nextLists);
       setPlaces(nextPlaces);
     } catch (err: any) {
@@ -70,168 +82,200 @@ export default function SavedPage() {
   }, []);
 
   useEffect(() => {
+    setFilter((f) => ({ ...f, ...filterFromUrl() }));
     reload();
+    fetchAccount().then((a) => setMe(a?.email ?? null));
+    fetchMembers().then(setMembers).catch(() => setMembers([]));
   }, [reload]);
 
-  /**
-   * Filtreleme istemcide: tum kayitlar zaten yuklu ve liste degistirmek
-   * her seferinde sunucuya gitmeyi hak etmiyor. Kayit sayisi bir ekibin
-   * biriktirebilecegi olcekte (yuzler), binler degil.
-   */
-  // Liste filtresi; tur sayaclari bunun uzerinden hesaplaniyor.
-  const inList = useMemo(() => {
-    if (activeList === ALL) return places;
-    if (activeList === UNFILED) return places.filter((p) => !p.list_id);
-    return places.filter((p) => p.list_id === activeList);
-  }, [places, activeList]);
+  const refreshLists = useCallback(() => {
+    fetchLists().then(setLists).catch(() => undefined);
+  }, []);
 
-  // Listedeki tur envanteri, tur secimden BAGIMSIZ (CategoryFilter'in
-  // harita sayfasindaki kuraliyla ayni). 16 anahtarin hepsi dolu: eksik
-  // anahtar "sayi yok" ile "sifir" ayrimini bozar.
-  const typeCounts = useMemo(() => {
-    const counts = Object.fromEntries(
-      (Object.keys(PLACE_TYPE_LABELS) as PlaceType[]).map((t) => [t, 0])
-    ) as Record<PlaceType, number>;
-    for (const p of inList) {
-      if (p.place_type && p.place_type in counts) counts[p.place_type as PlaceType] += 1;
+  const deleter = usePendingDelete<SavedPlace>({
+    onRemoveLocal: (ids) => {
+      setPlaces((prev) => prev.filter((p) => !ids.has(p.id)));
+      setSelected((prev) => new Set([...prev].filter((id) => !ids.has(id))));
+    },
+    onRestoreLocal: (items) => setPlaces((prev) => [...prev, ...items].sort((a, b) => b.created_at.localeCompare(a.created_at))),
+    onCommitted: refreshLists,
+    onError: setError,
+  });
+
+  const today = useMemo(() => new Date(), []);
+  const visible = useMemo(() => filterSaved(places, filter, me, today), [places, filter, me, today]);
+  const paged = paginate(visible, page, PAGE_SIZE);
+
+  // Filtre degisince ilk sayfaya don.
+  useEffect(() => setPage(1), [filter]);
+
+  const options = useMemo(() => {
+    const districts = new Map<string, string>();
+    const savers = new Set<string>();
+    const types = new Set<PlaceType>();
+    for (const p of places) {
+      if (p.district_id && p.district_name) districts.set(p.district_id, p.district_name);
+      if (p.saved_by) savers.add(p.saved_by);
+      if (p.place_type) types.add(p.place_type as PlaceType);
     }
-    return counts;
-  }, [inList]);
+    return {
+      districts: [...districts].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, "tr")),
+      savers: [...savers].sort((a, b) => a.localeCompare(b, "tr")),
+      types: [...types],
+    };
+  }, [places]);
 
-  const visible = useMemo(() => {
-    if (typeFilter.length === 0) return inList;
-    const wanted = new Set<string>(typeFilter);
-    return inList.filter((p) => p.place_type && wanted.has(p.place_type));
-  }, [inList, typeFilter]);
+  const counts = useMemo(() => {
+    const byList: Record<string, number> = {};
+    let unfiled = 0;
+    let mine = 0;
+    for (const p of places) {
+      if (p.list_id) byList[p.list_id] = (byList[p.list_id] ?? 0) + 1;
+      else unfiled += 1;
+      if (me && p.assigned_to === me) mine += 1;
+    }
+    return { all: places.length, unfiled, mine, byList };
+  }, [places, me]);
 
-  const unfiledCount = useMemo(
-    () => places.filter((p) => !p.list_id).length,
-    [places]
+  const due = useMemo(() => {
+    let overdue = 0;
+    let todayCount = 0;
+    for (const p of places) {
+      const b = followUpBucket(p, today);
+      if (b === "overdue") overdue += 1;
+      if (b === "today") todayCount += 1;
+    }
+    return { overdue, today: todayCount };
+  }, [places, today]);
+
+  const title =
+    filter.assignee === "me"
+      ? "Bana atananlar"
+      : filter.listId === ALL_LISTS
+        ? "Tüm kayıtlar"
+        : filter.listId === "unfiled"
+          ? "Dosyalanmamış"
+          : lists.find((l) => l.id === filter.listId)?.name ?? "Liste";
+
+  // --- tekil islemler (callback'ler sabit: satirlar memo'lu) ---
+
+  const patchLocal = useCallback((id: string, changes: Partial<SavedPlace>) => {
+    setPlaces((prev) => prev.map((p) => (p.id === id ? { ...p, ...changes } : p)));
+  }, []);
+
+  const handleNote = useCallback(
+    async (id: string, note: string) => {
+      patchLocal(id, { note });
+      try {
+        await updateSavedPlace(id, { note });
+      } catch (err: any) {
+        setError(err?.message || "Not kaydedilemedi.");
+        reload();
+      }
+    },
+    [patchLocal, reload]
   );
-  const dueFollowUps = useMemo(() => getDueFollowUps(places, new Date()), [places]);
 
-  const activeListName =
-    activeList === ALL
-      ? "Tüm kayıtlar"
-      : activeList === UNFILED
-        ? "Dosyalanmamış"
-        : lists.find((l) => l.id === activeList)?.name ?? "Liste";
+  const handleMove = useCallback(
+    async (id: string, listId: string | null) => {
+      patchLocal(id, { list_id: listId });
+      try {
+        await updateSavedPlace(id, { list_id: listId });
+        refreshLists();
+      } catch (err: any) {
+        setError(err?.message || "Kayıt taşınamadı.");
+        reload();
+      }
+    },
+    [patchLocal, refreshLists, reload]
+  );
 
-  const handleCreateList = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const name = newListName.trim();
-    if (!name || creating) return;
-    setCreating(true);
+  const handleAssign = useCallback(
+    async (id: string, assignee: Assignee | null) => {
+      try {
+        const updated = await updateSavedPlace(id, { assignee });
+        // Sunucu ilce alanlarini PATCH cevabinda gondermiyor; yereldekileri koru.
+        const { district_id: _d, district_name: _n, ...rest } = updated;
+        patchLocal(id, rest);
+      } catch (err: any) {
+        setError(err?.message || "Sorumlu atanamadı.");
+      }
+    },
+    [patchLocal]
+  );
+
+  const handleAddContact = useCallback(
+    async (id: string, data: ContactEventCreate) => {
+      const updated = await addContactEvent(id, data);
+      const { district_id: _d, district_name: _n, ...rest } = updated;
+      patchLocal(id, rest);
+      window.dispatchEvent(new Event("rota:due")); // menudeki Bugun rozeti
+    },
+    [patchLocal]
+  );
+
+  const removeLater = deleter.remove;
+  const placesRef = React.useRef(places);
+  placesRef.current = places;
+  const handleRemove = useCallback(
+    (id: string) => {
+      const item = placesRef.current.find((p) => p.id === id);
+      if (item) removeLater([item]);
+    },
+    [removeLater]
+  );
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  // --- toplu islemler ---
+
+  const selectedPlaces = useMemo(() => places.filter((p) => selected.has(p.id)), [places, selected]);
+
+  const runBulk = async (action: () => Promise<unknown>, fallback: string) => {
+    setBusy(true);
     setError(null);
     try {
-      const created = await createList(name);
-      setNewListName("");
-      setActiveList(created.id);
+      await action();
       await reload();
     } catch (err: any) {
-      setError(err?.message || "Liste oluşturulamadı.");
+      setError(err?.message || fallback);
     } finally {
-      setCreating(false);
+      setBusy(false);
     }
   };
 
-  const handleDeleteList = async (id: string) => {
-    setError(null);
-    try {
-      await deleteList(id);
-      setPendingDelete(null);
-      if (activeList === id) setActiveList(ALL);
-      await reload();
-    } catch (err: any) {
-      setError(err?.message || "Liste silinemedi.");
-    }
-  };
+  const bulkStatus = (status: ContactStatus) => runBulk(() => bulkUpdateSaved([...selected], { contact_status: status }), "Durum güncellenemedi.");
+  const bulkAssign = (assignee: Assignee | null) => runBulk(() => bulkUpdateSaved([...selected], { assignee }), "Sorumlu atanamadı.");
+  const bulkFollowUp = (date: string | null) =>
+    runBulk(() => bulkUpdateSaved([...selected], { next_follow_up_at: date }), "Takip tarihi ayarlanamadı.");
 
-  const handleNote = async (id: string, note: string) => {
-    // Iyimser guncelleme: not yazmak anlik hissetmeli. Hata olursa
-    // reload gercek durumu geri getiriyor.
-    setPlaces((prev) => prev.map((p) => (p.id === id ? { ...p, note } : p)));
-    try {
-      await updateSavedPlace(id, { note });
-    } catch (err: any) {
-      setError(err?.message || "Not kaydedilemedi.");
-      reload();
-    }
-  };
-
-  const handleMove = async (id: string, listId: string | null) => {
-    setPlaces((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, list_id: listId } : p))
-    );
-    try {
-      await updateSavedPlace(id, { list_id: listId });
-      // Liste sayilari degisti; yalnizca listeleri tazele.
-      setLists(await fetchLists());
-    } catch (err: any) {
-      setError(err?.message || "Kayıt taşınamadı.");
-      reload();
-    }
-  };
-
-  const handleRemove = async (id: string) => {
-    const snapshot = places;
-    setPlaces((prev) => prev.filter((p) => p.id !== id));
-    try {
-      await removeSavedPlace(id);
-      setLists(await fetchLists());
-    } catch (err: any) {
-      setPlaces(snapshot);
-      setError(err?.message || "Kayıt kaldırılamadı.");
-    }
-  };
-
-  const handleAddContact = async (id: string, data: Parameters<typeof addContactEvent>[1]) => {
-    const updated = await addContactEvent(id, data);
-    setPlaces((prev) => prev.map((place) => (place.id === id ? updated : place)));
-  };
-
-  /**
-   * Gorunen kayitlarin tamamini (liste + tur filtresi) tek seferde tasi.
-   * Eskiden her kayit satirdan tek tek tasiniyordu.
-   */
-  const [moveOpen, setMoveOpen] = useState(false);
-  const [moving, setMoving] = useState(false);
-
-  const handleBulkMove = async (target: SaveTarget) => {
+  const bulkMove = async (target: SaveTarget) => {
     setMoveOpen(false);
-    setMoving(true);
-    setError(null);
-    try {
+    await runBulk(async () => {
       let listId: string | null = null;
       if (target.kind === "list") listId = target.listId;
       if (target.kind === "new") {
         listId = (await createList(target.name)).id;
         rememberList(listId);
       }
-      await moveSavedPlaces(
-        visible.map((p) => p.id),
-        listId
-      );
-      await reload();
-    } catch (err: any) {
-      setError(err?.message || "Kayıtlar taşınamadı.");
-    } finally {
-      setMoving(false);
-    }
+      await moveSavedPlaces([...selected], listId);
+    }, "Kayıtlar taşınamadı.");
   };
 
-  const handleExport = async (format: ExportFormat) => {
-    if (visible.length === 0 || exporting) return;
+  const exportPlaces = async (items: SavedPlace[], name: string, format: ExportFormat) => {
+    if (!items.length || exporting) return;
     setExporting(true);
     setError(null);
     try {
-      const blob = await exportLeads(visible.map(savedToPlace), {
-        type: visible[0]?.place_type || "kayitli",
-        radius: 0,
-        format,
-        title: activeListName,
-      });
-      downloadBlob(blob, activeListName, format);
+      const blob = await exportLeads(items.map(savedToPlace), { type: items[0]?.place_type || "kayitli", radius: 0, format, title: name });
+      downloadBlob(blob, name, format);
     } catch (err: any) {
       setError(err?.message || "Dışa aktarım başarısız oldu.");
     } finally {
@@ -239,16 +283,11 @@ export default function SavedPage() {
     }
   };
 
-  const railItem = (active: boolean) =>
-    `group flex w-full items-center gap-2 rounded-input px-2.5 py-2 text-left text-xs font-medium transition-colors duration-fast ease-out ${
-      active ? "bg-accent text-accent-ink" : "text-ink-2 hover:bg-paper-2 hover:text-ink"
-    }`;
+  const allVisibleSelected = visible.length > 0 && visible.every((p) => selected.has(p.id));
 
   return (
     <main className="flex h-screen flex-col bg-paper text-ink-2">
-      <AppHeader
-        savedCount={places.length}
-      />
+      <AppHeader savedCount={places.length} />
 
       {error && (
         <div className="shrink-0 rule-b bg-caution-bg">
@@ -259,231 +298,152 @@ export default function SavedPage() {
         </div>
       )}
 
-      <div className="flex flex-1 flex-col-reverse overflow-hidden lg:flex-row">
-        {/* Sol ray: listeler */}
-        <aside className="flex w-full shrink-0 flex-col overflow-hidden bg-paper lg:w-[17rem] lg:border-r lg:border-rule">
-          <div className="rule-b px-4 pt-4 pb-2">
-            <h2 className="mono-label">Listeler</h2>
-          </div>
+      <div className="flex min-h-0 flex-1">
+        <ListsRail
+          lists={lists}
+          activeList={filter.listId}
+          mineActive={filter.assignee === "me"}
+          counts={counts}
+          onSelectList={(id) => setFilter((f) => ({ ...f, listId: id, assignee: f.assignee === "me" ? "" : f.assignee }))}
+          onToggleMine={() => setFilter((f) => ({ ...f, assignee: f.assignee === "me" ? "" : "me", listId: ALL_LISTS }))}
+          onCreate={async (name) => {
+            try {
+              const created = await createList(name);
+              await reload();
+              setFilter((f) => ({ ...f, listId: created.id }));
+              return true;
+            } catch (err: any) {
+              setError(err?.message || "Liste oluşturulamadı.");
+              return false;
+            }
+          }}
+          onDelete={async (id) => {
+            try {
+              await deleteList(id);
+              if (filter.listId === id) setFilter((f) => ({ ...f, listId: ALL_LISTS }));
+              await reload();
+            } catch (err: any) {
+              setError(err?.message || "Liste silinemedi.");
+            }
+          }}
+        />
 
-          <div className="flex-1 overflow-y-auto p-3">
-            <div className="space-y-1">
-              <button
-                type="button"
-                onClick={() => setActiveList(ALL)}
-                className={railItem(activeList === ALL)}
-              >
-                <span className="truncate">Tüm kayıtlar</span>
-                <span className="tabular ml-auto text-2xs opacity-70">
-                  {places.length}
-                </span>
-              </button>
-
-              {/* Dosyalanmamis yalnizca icinde bir sey varken gorunuyor:
-                  bos bir kova gonullunun ilgilenmesi gereken bir sey degil. */}
-              {unfiledCount > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setActiveList(UNFILED)}
-                  className={railItem(activeList === UNFILED)}
-                >
-                  <span className="truncate">Dosyalanmamış</span>
-                  <span className="tabular ml-auto text-2xs opacity-70">
-                    {unfiledCount}
-                  </span>
-                </button>
-              )}
-            </div>
-
-            {lists.length > 0 && (
-              <div className="mt-3 space-y-1 border-t border-rule pt-3">
-                {lists.map((list) => (
-                  <div key={list.id} className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setActiveList(list.id)}
-                      className={railItem(activeList === list.id)}
-                    >
-                      <span className="truncate">{list.name}</span>
-                      <span className="tabular ml-auto text-2xs opacity-70">
-                        {list.place_count}
-                      </span>
-                    </button>
-
-                    {pendingDelete === list.id ? (
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteList(list.id)}
-                        className="shrink-0 rounded-input px-2 py-1 text-2xs font-medium text-critical hover:bg-paper-2"
-                      >
-                        Onayla
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setPendingDelete(list.id)}
-                        aria-label={`${list.name} listesini sil`}
-                        className="shrink-0 rounded-input p-1.5 text-ink-4 transition-colors duration-fast ease-out hover:bg-paper-2 hover:text-critical"
-                      >
-                        <Trash2 size={12} aria-hidden="true" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <form onSubmit={handleCreateList} className="mt-3 border-t border-rule pt-3">
-              <label className="sr-only" htmlFor="new-list">
-                Yeni liste adı
-              </label>
-              <div className="flex gap-1.5">
-                <input
-                  id="new-list"
-                  type="text"
-                  value={newListName}
-                  onChange={(e) => setNewListName(e.target.value)}
-                  placeholder="Yeni liste"
-                  className="min-w-0 flex-1 rounded-input border border-rule-2 bg-paper px-2.5 py-1.5 text-xs text-ink placeholder:text-ink-4 transition-colors duration-fast ease-out hover:border-ink-4 focus:border-accent"
-                />
-                <button
-                  type="submit"
-                  disabled={!newListName.trim() || creating}
-                  aria-label="Liste oluştur"
-                  className="btn btn--ghost shrink-0 px-2.5 py-1.5"
-                >
-                  <Plus size={13} aria-hidden="true" />
-                </button>
-              </div>
-              <p className="mt-1.5 text-2xs leading-relaxed text-ink-4">
-                Örnek: &quot;Kadıköy liseleri&quot;, &quot;Eylül görüşmeleri&quot;
-              </p>
-            </form>
-          </div>
-
-          {/* Sayfanin footer'i: gecmis buraya degil, ana kolona gidiyor;
-              burada yalnizca durum var. */}
-          <div className="shrink-0 rule-t bg-paper-2 px-4 py-2.5">
-            <span className="mono-label tabular">{places.length} kayıt</span>
-          </div>
-        </aside>
-
-        {/* Ana kolon */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="flex shrink-0 flex-wrap items-center gap-3 rule-b px-4 py-3">
             <div className="min-w-0">
-              <h1 className="font-display text-lg font-semibold leading-tight text-ink">
-                {activeListName}
-              </h1>
+              <h1 className="font-display text-lg font-semibold leading-tight text-ink">{title}</h1>
               <p className="mono-label tabular mt-0.5">{visible.length} kayıt</p>
             </div>
-
-            <button
-              type="button"
-              onClick={() => setMoveOpen(true)}
-              disabled={visible.length === 0 || moving}
-              className="btn btn--ghost ml-auto px-4 py-2 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <FolderInput size={14} aria-hidden="true" />
-              {moving ? "Taşınıyor…" : `Listeye taşı (${visible.length})`}
-            </button>
-
-            <DownloadMenu
-              onSelect={handleExport}
-              disabled={visible.length === 0}
-              busy={exporting}
-            />
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSelected(allVisibleSelected ? new Set() : new Set(visible.map((p) => p.id)))}
+                disabled={!visible.length}
+                className="btn btn--ghost px-3 py-2 text-xs disabled:opacity-40"
+              >
+                {allVisibleSelected ? "Seçimi kaldır" : `Tümünü seç (${visible.length})`}
+              </button>
+              <DownloadMenu onSelect={(f) => exportPlaces(visible, title, f)} disabled={!visible.length} busy={exporting} />
+            </div>
           </div>
 
-          <CategoryFilter value={typeFilter} onChange={setTypeFilter} counts={typeCounts} />
+          <SavedToolbar
+            filter={filter}
+            onChange={setFilter}
+            lists={lists}
+            members={members}
+            districts={options.districts}
+            savers={options.savers}
+            types={options.types}
+          />
+
+          {(due.overdue > 0 || due.today > 0) && (
+            <Link href="/bugun" className="flex shrink-0 items-center gap-2 rule-b bg-caution-bg px-4 py-2 text-xs text-caution hover:underline">
+              <CalendarClock size={13} aria-hidden="true" />
+              {due.today > 0 && `Bugün aranacak ${due.today} kurum`}
+              {due.today > 0 && due.overdue > 0 && " · "}
+              {due.overdue > 0 && `${due.overdue} gecikmiş takip`}
+              <span className="ml-auto font-medium">Bugün ekranına git →</span>
+            </Link>
+          )}
+
+          {selected.size > 0 && (
+            <BulkBar
+              count={selected.size}
+              members={members}
+              busy={busy}
+              onStatus={bulkStatus}
+              onAssign={bulkAssign}
+              onFollowUp={bulkFollowUp}
+              onMove={() => setMoveOpen(true)}
+              onExport={(f) => exportPlaces(selectedPlaces, `${title} (seçili)`, f)}
+              onDelete={() => deleter.remove(selectedPlaces)}
+              onClear={() => setSelected(new Set())}
+            />
+          )}
 
           <div className="flex-1 overflow-y-auto">
-            {dueFollowUps.length > 0 && (
-              <section className="rule-b bg-caution-bg px-4 py-3">
-                <h2 className="mono-label">Takip zamanı ({dueFollowUps.length})</h2>
-                <ul className="mt-2 space-y-1 text-xs text-ink">
-                  {dueFollowUps.map((place) => (
-                    <li key={place.id}>{place.name || "İsimsiz Yer"} · {place.next_follow_up_at} {isOverdue(place, new Date()) && <span className="ml-1 text-critical">Gecikmiş</span>}</li>
-                  ))}
-                </ul>
-              </section>
-            )}
             {loading ? (
               <div className="flex items-center justify-center p-10">
                 <span className="mono-label">Yükleniyor</span>
               </div>
             ) : visible.length === 0 ? (
-              /*
-                Ogretici bos durum (PRODUCT.md ilke 2). Donusken ekipte
-                ilk karsilasma en sik karsilasmadir; "kayit yok" tek
-                basina gonulluye ne yapacagini soylemiyor.
-              */
               <div className="mx-auto max-w-md px-6 py-14 text-center">
-                <FolderOpen
-                  size={26}
-                  aria-hidden="true"
-                  strokeWidth={1.5}
-                  className="mx-auto mb-4 text-ink-4"
-                />
+                <FolderOpen size={26} aria-hidden="true" strokeWidth={1.5} className="mx-auto mb-4 text-ink-4" />
                 <h2 className="font-display text-sm font-semibold text-ink">
-                  {places.length === 0
-                    ? "Henüz kayıtlı yer yok"
-                    : "Bu liste boş"}
+                  {places.length === 0 ? "Henüz kayıtlı yer yok" : "Bu filtreyle kayıt yok"}
                 </h2>
                 <p className="mt-2 text-xs leading-relaxed text-ink-3">
-                  {places.length === 0 ? (
-                    <>
-                      Haritada bir ilçe tarayın, ilgilendiğiniz okulu veya
-                      firmayı kaydedin. Kaydettikleriniz burada birikir ve
-                      tarayıcıyı kapatsanız da durur.
-                    </>
-                  ) : (
-                    <>
-                      Kayıtlarınızı sağdaki klasör simgesinden bu listeye
-                      taşıyabilirsiniz.
-                    </>
-                  )}
+                  {places.length === 0
+                    ? "Arama ekranında bir ilçe tarayın, ilgilendiğiniz kurumları kaydedin. Kaydettikleriniz burada birikir."
+                    : "Filtreleri gevşetin ya da aramayı değiştirin."}
                 </p>
                 {places.length === 0 && (
                   <Link href="/" className="btn btn--primary mt-5 inline-flex px-4 py-2">
                     <Search size={13} aria-hidden="true" />
-                    Haritaya git
+                    Aramaya git
                   </Link>
                 )}
               </div>
             ) : (
-              <ul>
-                {visible.map((place) => (
-                  <SavedPlaceRow
-                    key={place.id}
-                    place={place}
-                    lists={lists}
-                    onSaveNote={handleNote}
-                    onMove={handleMove}
-                    onRemove={handleRemove}
-                    onAddContact={handleAddContact}
-                    onHistoryError={setError}
-                  />
-                ))}
-              </ul>
+              <>
+                <ul>
+                  {paged.items.map((place) => (
+                    <SavedPlaceRow
+                      key={place.id}
+                      place={place}
+                      lists={lists}
+                      members={members}
+                      selected={selected.has(place.id)}
+                      onToggleSelect={toggleSelect}
+                      onSaveNote={handleNote}
+                      onMove={handleMove}
+                      onAssign={handleAssign}
+                      onRemove={handleRemove}
+                      onAddContact={handleAddContact}
+                      onHistoryError={setError}
+                    />
+                  ))}
+                </ul>
+                <Pagination page={paged.page} pages={paged.pages} total={visible.length} size={PAGE_SIZE} onPage={setPage} />
+              </>
             )}
+            <ExportHistory />
           </div>
-
-          <ExportHistory />
         </div>
       </div>
 
       <SaveTargetModal
         isOpen={moveOpen}
-        count={visible.length}
+        count={selected.size}
         countLabel="kayıt"
         title="Nereye taşıyalım?"
         confirmLabel="Taşı"
-        exclude={activeList === ALL ? undefined : activeList}
         onClose={() => setMoveOpen(false)}
-        onConfirm={handleBulkMove}
+        onConfirm={bulkMove}
       />
 
+      {deleter.toast && <UndoToast message={deleter.toast} onUndo={deleter.undo} onClose={() => void deleter.dismiss()} />}
     </main>
   );
 }

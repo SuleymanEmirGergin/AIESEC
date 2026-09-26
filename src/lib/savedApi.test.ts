@@ -37,6 +37,12 @@ const savedPlace: SavedPlace = {
   contact_status: "uncontacted",
   last_contact_at: null,
   next_follow_up_at: null,
+  assigned_to: null,
+  assigned_name: null,
+  assigned_by: null,
+  assigned_at: null,
+  district_id: null,
+  district_name: null,
   created_at: "2026-08-23T00:00:00Z",
 };
 

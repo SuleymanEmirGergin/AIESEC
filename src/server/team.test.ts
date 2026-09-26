@@ -5,7 +5,7 @@ describe("onayli e-posta yardimcilari", () => {
   it("buyuk harf ve bosluklari esitler; bicimsizi reddeder", () => {
     expect(normalizeEmail("  Ece.Yilmaz@Ornek.org ")).toBe("ece.yilmaz@ornek.org");
     expect(normalizeEmail("ece@")).toBeNull();
-    expect(normalizeEmail("ece.yilmaz@ornek.org")).toBeNull();
+    expect(normalizeEmail("ece yilmaz@ornek.org")).toBeNull();
   });
 
   it("ADMIN_EMAILS virgul ya da boslukla ayrilir, gecersizler atlanir", () => {

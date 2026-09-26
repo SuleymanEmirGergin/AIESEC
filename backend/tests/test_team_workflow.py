@@ -153,3 +153,29 @@ class TestPano:
         assert people["Ayşe Yılmaz"]["assigned"] >= 1
         assert len(body["weekly"]) == 8
         assert body["weekly"][-1]["count"] >= 2
+
+
+class TestTopluSilme:
+    def test_secililer_ve_gecmisleri_silinir(self, client):
+        a, b, c = _save(client), _save(client), _save(client)
+        client.post(f"/api/saved/{a['id']}/contacts", json={"status": "contacted", "contacted_at": date.today().isoformat()}, headers=HEADERS)
+        response = client.post("/api/saved/bulk-delete", json={"ids": [a["id"], b["id"], "yok-boyle-bir-id"]})
+        assert response.status_code == 200, response.text
+        assert response.json()["deleted"] == 2
+        kalan = {p["id"] for p in client.get("/api/saved").json()}
+        assert a["id"] not in kalan and b["id"] not in kalan and c["id"] in kalan
+
+
+class TestBugunSayaci:
+    def test_gecikmis_ve_bugun_sayilir_kapanmislar_sayilmaz(self, client):
+        before = client.get("/api/dashboard/due?me=ayse@ornek.org").json()
+        a, b, c = _save(client), _save(client), _save(client)
+        yesterday = (date.today() - timedelta(days=1)).isoformat()
+        today = date.today().isoformat()
+        client.patch(f"/api/saved/{a['id']}", json={"next_follow_up_at": yesterday, "assignee": AYSE}, headers=HEADERS)
+        client.patch(f"/api/saved/{b['id']}", json={"next_follow_up_at": today}, headers=HEADERS)
+        client.post(f"/api/saved/{c['id']}/contacts", json={"status": "positive", "contacted_at": today, "next_follow_up_at": yesterday}, headers=HEADERS)
+        after = client.get("/api/dashboard/due?me=ayse@ornek.org").json()
+        assert after["overdue"] == before["overdue"] + 1
+        assert after["today"] == before["today"] + 1
+        assert after["mine"] == before["mine"] + 1

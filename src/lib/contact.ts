@@ -65,6 +65,17 @@ export function telHref(phone: string): string {
   return `tel:${firstValue(phone).replace(/[^\d+]/g, "")}`;
 }
 
+/**
+ * WhatsApp baglantisi; yalnizca Turkiye cep numaralarinda (+90 5xx). Sabit
+ * hatta WhatsApp olmaz, bos bir buton gonulluyu yaniltirdi.
+ */
+export function whatsappHref(phone: string): string | null {
+  let digits = firstValue(phone).replace(/\D/g, "");
+  if (digits.startsWith("0")) digits = digits.slice(1);
+  if (digits.length === 10) digits = `90${digits}`;
+  return /^905\d{9}$/.test(digits) ? `https://wa.me/${digits}` : null;
+}
+
 export function mailtoHref(email: string): string {
   return `mailto:${firstValue(email)}`;
 }

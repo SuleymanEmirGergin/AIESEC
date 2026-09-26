@@ -496,6 +496,34 @@ def _assign(place: SavedPlace, assignee, x_volunteer_name: str | None) -> None:
     place.assigned_at = _now()
 
 
+@router.post("/saved/bulk-delete")
+async def bulk_delete_saved_places(
+    data: SavedPlaceBulkMove,
+    db: AsyncSession = Depends(get_db),
+    api_key: APIKey = Depends(validate_api_key),
+):
+    """
+    Secili kayitlari (ve temas gecmislerini) siler. Arayuz silmeyi birkac
+    saniye bekletip "Geri al" sunuyor; sure dolunca ya da sayfadan cikarken
+    tek istekte buraya geliyor. Baskasinin kaydina dokunulmaz.
+    """
+    ids = list(dict.fromkeys(data.ids))
+    deleted = 0
+    for i in range(0, len(ids), _IN_CHUNK):
+        owned = (
+            await db.execute(
+                select(SavedPlace.id).where(SavedPlace.api_key_id == api_key.id, SavedPlace.id.in_(ids[i : i + _IN_CHUNK]))
+            )
+        ).scalars().all()
+        if not owned:
+            continue
+        await db.execute(delete(ContactEvent).where(ContactEvent.saved_place_id.in_(owned)))
+        await db.execute(delete(SavedPlace).where(SavedPlace.id.in_(owned)))
+        deleted += len(owned)
+    await db.commit()
+    return {"deleted": deleted}
+
+
 @router.post("/saved/bulk-update")
 async def bulk_update_saved_places(
     data: SavedPlaceBulkUpdate,

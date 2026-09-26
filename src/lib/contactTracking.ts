@@ -63,6 +63,15 @@ export function formatDay(value: string): string {
   return dayFormat.format(new Date(year, month - 1, day));
 }
 
+/** Takip tarihi insan diliyle: "3 gün gecikti", "Bugün", "Yarın", "5 gün sonra". */
+export function relativeDay(value: string, today: Date): string {
+  const diff = toDayNumber(value.slice(0, 10)) - Math.floor(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()) / 86_400_000);
+  if (diff === 0) return "Bugün";
+  if (diff === 1) return "Yarın";
+  if (diff === -1) return "Dün (gecikti)";
+  return diff < 0 ? `${-diff} gün gecikti` : `${diff} gün sonra`;
+}
+
 /** "2026-09-25" + 7 -> "2026-10-02" (takip tarihi kisayollari icin). */
 export function addDays(value: string, days: number): string {
   const [year, month, day] = value.split("-").map(Number);

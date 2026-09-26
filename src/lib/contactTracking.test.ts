@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { SavedPlace } from "./savedApi";
-import { addDays, formatDay, getDueFollowUps, localDateInputValue } from "./contactTracking";
+import { makeSaved } from "./testFactories";
+import { addDays, formatDay, getDueFollowUps, localDateInputValue, relativeDay } from "./contactTracking";
 
-const place = (id: string, next_follow_up_at: string | null): SavedPlace => ({
-  id, list_id: null, place_id: id, name: id, place_type: "high_school", lat: 0, lon: 0,
-  address: null, tags: {}, note: null, saved_by: null, contact_status: "follow_up",
-  last_contact_at: null, next_follow_up_at, created_at: "2026-08-01T00:00:00",
-});
+const place = (id: string, next_follow_up_at: string | null): SavedPlace =>
+  makeSaved({ id, place_id: id, name: id, contact_status: "follow_up", next_follow_up_at });
 
 const places = [
   place("this-week", "2026-08-30"), place("no-date", null), place("late", "2026-08-22"),
@@ -38,5 +36,16 @@ describe("takip tarihi yardimcilari", () => {
 
   it("gunu kaydirmadan Turkce bicimler", () => {
     expect(formatDay("2026-09-25")).toMatch(/^25 Eyl/);
+  });
+});
+
+describe("relativeDay", () => {
+  const today = new Date("2026-09-26T15:00:00");
+  it("gecmis ve gelecek gunleri insan diliyle yazar", () => {
+    expect(relativeDay("2026-09-26", today)).toBe("Bugün");
+    expect(relativeDay("2026-09-27", today)).toBe("Yarın");
+    expect(relativeDay("2026-09-25", today)).toBe("Dün (gecikti)");
+    expect(relativeDay("2026-09-23", today)).toBe("3 gün gecikti");
+    expect(relativeDay("2026-10-01", today)).toBe("5 gün sonra");
   });
 });

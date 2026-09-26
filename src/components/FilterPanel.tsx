@@ -101,6 +101,12 @@ export default function FilterPanel({
             label="Sadece iletişim bilgisi olanlar"
           />
           <Toggle
+            id="exclude-saved"
+            checked={!!value.excludeSaved}
+            onChange={(checked) => patch({ excludeSaved: checked })}
+            label="Yalnızca yeni olanlar (kayıtlıları gizle)"
+          />
+          <Toggle
             id="named-only"
             checked={!!value.namedOnly}
             onChange={(checked) => patch({ namedOnly: checked })}

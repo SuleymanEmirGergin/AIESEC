@@ -94,3 +94,18 @@ export async function removeMember(email: string): Promise<void> {
   await getPool().query("DELETE FROM allowed_emails WHERE email = $1", [email]);
   cache.delete(email);
 }
+
+/**
+ * Sorumlu secimi icin ekip: onayli e-postalar ve (varsa) giris yaptiginda
+ * Google'dan gelen adlari. Hic giris yapmamis kisi e-postasinin basiyla gorunur.
+ */
+export async function listAssignableMembers(): Promise<{ email: string; name: string }[]> {
+  const members = await listMembers();
+  const { rows } = await getPool().query(
+    "SELECT lower(email) AS email, name FROM users WHERE email IS NOT NULL AND name IS NOT NULL"
+  );
+  const names = new Map<string, string>(rows.map((r: { email: string; name: string }) => [r.email, r.name]));
+  return members
+    .map((m) => ({ email: m.email, name: names.get(m.email) ?? m.email.split("@")[0] }))
+    .sort((a, b) => a.name.localeCompare(b.name, "tr"));
+}

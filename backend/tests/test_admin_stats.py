@@ -6,6 +6,8 @@ bekledigi last_7_days / last_30_days hic gonderilmiyordu.
 
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import delete
+
 from app.database import AsyncSessionLocal, Report, init_db
 
 ADMIN = {"X-ADMIN-KEY": "test-admin-key"}
@@ -15,6 +17,8 @@ async def _reports():
     await init_db()
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     async with AsyncSessionLocal() as db:
+        # Test veritabani kalici olabilir (Postgres); tekrar kosunca sayilar birikmesin.
+        await db.execute(delete(Report).where(Report.place_id.like("osm:node:stat-%")))
         for place, name, days in [
             ("osm:node:stat-a", "Alfa Lisesi", 1),
             ("osm:node:stat-a", "Alfa Lisesi", 3),

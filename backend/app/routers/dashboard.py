@@ -9,7 +9,7 @@ Postgres'te farkli, bu olcekte (binlerce olay) fark etmiyor.
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -96,3 +96,25 @@ async def dashboard(
         "by_list": [{"name": name, "count": n, "contacted": c} for name, n, c in lists.all()],
         "generated_for": date.today().isoformat(),
     }
+
+
+@router.get("/dashboard/due")
+async def due_counts(
+    me: str | None = Query(None, max_length=254),
+    db: AsyncSession = Depends(get_db),
+    api_key: APIKey = Depends(validate_api_key),
+) -> dict:
+    """Menudeki "Bugun" rozeti: gecikmis + bugun takipleri (kapanmislar haric)."""
+    today = datetime.now(timezone.utc).date()
+    base = (
+        SavedPlace.api_key_id == api_key.id,
+        SavedPlace.next_follow_up_at.is_not(None),
+        SavedPlace.next_follow_up_at <= today,
+        SavedPlace.contact_status.not_in(CLOSED),
+    )
+    overdue = await db.scalar(select(func.count()).where(*base, SavedPlace.next_follow_up_at < today)) or 0
+    due_today = await db.scalar(select(func.count()).where(*base, SavedPlace.next_follow_up_at == today)) or 0
+    mine = 0
+    if me:
+        mine = await db.scalar(select(func.count()).where(*base, SavedPlace.assigned_to == me.strip().lower())) or 0
+    return {"overdue": overdue, "today": due_today, "mine": mine}

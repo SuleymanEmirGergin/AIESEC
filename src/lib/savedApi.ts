@@ -75,7 +75,21 @@ export interface SavedPlace {
   contact_status: ContactStatus;
   last_contact_at: string | null;
   next_follow_up_at: string | null;
+  /** Sorumlu gonullunun e-postasi; null = atanmamis. */
+  assigned_to: string | null;
+  assigned_name: string | null;
+  /** Kimin atadigi ve ne zaman. */
+  assigned_by: string | null;
+  assigned_at: string | null;
+  district_id: string | null;
+  district_name: string | null;
   created_at: string;
+}
+
+/** Sorumlu olarak atanabilecek ekip uyesi. */
+export interface Assignee {
+  email: string;
+  name: string;
 }
 
 export type ContactStatus =
@@ -199,11 +213,87 @@ function toSaveBody(place: Place) {
 
 export const updateSavedPlace = (
   id: string,
-  changes: { note?: string | null; list_id?: string | null }
+  changes: {
+    note?: string | null;
+    list_id?: string | null;
+    /** null: atamayi kaldir. */
+    assignee?: Assignee | null;
+    /** null: takibi kaldir. */
+    next_follow_up_at?: string | null;
+  }
 ) => request<SavedPlace>(`/api/saved/${id}`, { method: "PATCH", body: changes });
+
+/**
+ * Secili kayitlara toplu islem: durum (temas gecmisine yazilir), sorumlu
+ * ya da takip tarihi. Gonderilmeyen alan degismez.
+ */
+export const bulkUpdateSaved = (
+  ids: string[],
+  changes: { contact_status?: ContactStatus; assignee?: Assignee | null; next_follow_up_at?: string | null }
+) =>
+  request<{ updated: number }>("/api/saved/bulk-update", {
+    method: "POST",
+    body: { ids, ...changes },
+  });
+
+// --- Ekip ve pano -------------------------------------------------------------
+
+let membersPromise: Promise<Assignee[]> | null = null;
+
+/** Sorumlu secimi icin ekip uyeleri (oturum boyunca bir kez cekilir). */
+export function fetchMembers(): Promise<Assignee[]> {
+  if (!membersPromise) {
+    membersPromise = request<Assignee[]>("/api/team/members").catch((error) => {
+      membersPromise = null;
+      throw error;
+    });
+  }
+  return membersPromise;
+}
+
+export interface DashboardData {
+  totals: {
+    saved: number;
+    contacted: number;
+    positive: number;
+    not_suitable: number;
+    overdue: number;
+    due_today: number;
+    unassigned: number;
+  };
+  by_status: Partial<Record<ContactStatus, number>>;
+  by_person: { name: string; saved: number; contacts: number; positive: number; assigned: number }[];
+  weekly: { week_start: string; count: number }[];
+  by_list: { name: string; count: number; contacted: number }[];
+}
+
+export const fetchDashboard = () => request<DashboardData>("/api/dashboard");
+
+/** Menudeki "Bugun" rozeti: ekibin gecikmis + bugunku takipleri. */
+export const fetchDueCounts = () =>
+  request<{ overdue: number; today: number; mine: number }>("/api/dashboard/due");
 
 export const removeSavedPlace = (id: string) =>
   request<{ success: boolean }>(`/api/saved/${id}`, { method: "DELETE" });
+
+/** Secili kayitlari (temas gecmisleriyle) tek istekte siler. */
+export const bulkDeleteSaved = (ids: string[]) =>
+  request<{ deleted: number }>("/api/saved/bulk-delete", { method: "POST", body: { ids } });
+
+/**
+ * Sayfa kapanirken bekleyen silmeyi yine de gonderir: keepalive istegi
+ * sekme kapansa da tamamlanir. "Geri al" suresi dolmadan cikan kullanicinin
+ * silmesi kaybolmasin.
+ */
+export function bulkDeleteSavedOnExit(ids: string[]): void {
+  if (!ids.length) return;
+  void fetch("/api/saved/bulk-delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+    keepalive: true,
+  }).catch(() => undefined);
+}
 
 export const addContactEvent = (id: string, body: ContactEventCreate) =>
   request<SavedPlace>(`/api/saved/${encodeURIComponent(id)}/contacts`, {

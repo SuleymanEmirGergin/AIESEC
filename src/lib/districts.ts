@@ -83,6 +83,8 @@ export interface PlaceQuery {
   q?: string;
   includeBuffer?: boolean;
   includeUnclassified?: boolean;
+  /** Ekibin zaten kaydettigi yerleri gosterme ("yalnizca yeniler"). */
+  excludeSaved?: boolean;
   sort?: SortOption;
   refLat?: number;
   refLon?: number;
@@ -187,6 +189,7 @@ export function buildPlacesParams(query: PlaceQuery): URLSearchParams {
 
   if (query.types?.length) params.set("types", query.types.join(","));
   if (query.hasContact) params.set("has_contact", "true");
+  if (query.excludeSaved) params.set("exclude_saved", "true");
   if (query.namedOnly) params.set("named_only", "true");
   if (query.minConfidence) params.set("min_confidence", String(query.minConfidence));
   if (query.q?.trim()) params.set("q", query.q.trim());
