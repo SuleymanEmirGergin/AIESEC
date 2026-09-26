@@ -12,3 +12,6 @@ seed_key.py
 Dockerfile
 docker-compose.yml
 requirements-dev.txt
+.coveragerc
+pytest.ini
+ruff.toml
