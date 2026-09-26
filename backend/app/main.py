@@ -1,15 +1,16 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
+from slowapi.middleware import SlowAPIMiddleware
 
 from app import __version__
+from app.auth import verify_admin_key
 from app.config import settings
 from app.database import init_db
+from app.limits import limiter
 from app.middleware import MetricsMiddleware
 from app.routers import (
     account,
@@ -24,8 +25,6 @@ from app.routers import (
     search,
 )
 
-# Rate limiter setup (IP-based)
-limiter = Limiter(key_func=get_remote_address)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -49,8 +48,9 @@ app = FastAPI(
     title="Rota API",
     description="Enterprise-ready backend using Overpass API",
     version=__version__,
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url="/docs" if settings.enable_docs else None,
+    redoc_url="/redoc" if settings.enable_docs else None,
+    openapi_url="/openapi.json" if settings.enable_docs else None,
     lifespan=lifespan,
 )
 
@@ -82,6 +82,7 @@ app.add_middleware(
 # Rate limit error handler
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 # Include API routers
 app.include_router(search.router, prefix="/api", tags=["search"])
@@ -94,11 +95,12 @@ app.include_router(saved.router)
 app.include_router(districts.router)
 app.include_router(presets.router, prefix="/api", tags=["presets"])
 app.include_router(admin.router)
-app.include_router(metrics.router)
+# Ic isleyis sayaclari (uc adlari, gecikmeler): yalniz yonetici.
+app.include_router(metrics.router, dependencies=[Depends(verify_admin_key)])
 app.include_router(health.router)
 
-# Mount admin panel
-app.mount("/admin/ui", StaticFiles(directory="app/static", html=True), name="admin_ui")
+# Eski statik yonetim paneli (/admin/ui) kaldirildi: kimliksiz sunuluyordu,
+# kendi giris akisi da calismiyordu. Yonetim arayuzu web'deki /admin.
 
 
 # Legacy @app.get("/health") removed in favor of app.routers.health
@@ -116,6 +118,5 @@ async def root(request: Request) -> dict:
     return {
         "name": "FastAPI OSM Backend",
         "version": __version__,
-        "docs": "/docs",
         "health": "/health/ready",
     }

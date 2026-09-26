@@ -25,6 +25,7 @@ from app.ingest import IngestResult
 from app.store import place_row_values, replace_memberships, upsert_places
 
 # Gercek bir ilce: get_district dogrulamasindan gecmeli.
+ADMIN = {"X-ADMIN-KEY": "test-admin-key"}
 DISTRICT = all_districts()[0].id
 DISTRICT_NAME = all_districts()[0].name
 
@@ -353,7 +354,7 @@ class TestDistrictIngest:
             side_effect=AssertionError("ingest_district cagrilmamali")
         )
         with patch("app.routers.districts.ingest_district", new=exploding):
-            response = client.post("/api/districts/tr-99-yok/ingest")
+            response = client.post("/api/districts/tr-99-yok/ingest", headers=ADMIN)
         assert response.status_code == 422
         exploding.assert_not_awaited()
 
@@ -366,8 +367,18 @@ class TestDistrictIngest:
             side_effect=AssertionError("ingest_district cagrilmamali")
         )
         with patch("app.routers.districts.ingest_district", new=exploding):
-            response = client.post(f"/api/districts/{DISTRICT}/ingest")
+            response = client.post(f"/api/districts/{DISTRICT}/ingest", headers=ADMIN)
         assert response.status_code == 401
+        exploding.assert_not_awaited()
+
+    def test_requires_the_admin_key(self, client):
+        # Takim anahtari yetmez: dis maliyeti olan, canli veriye yazan uc.
+        exploding = AsyncMock(side_effect=AssertionError("ingest_district cagrilmamali"))
+        with patch("app.routers.districts.ingest_district", new=exploding):
+            response = client.post(f"/api/districts/{DISTRICT}/ingest")
+            enrich = client.post(f"/api/districts/{DISTRICT}/enrich")
+        assert response.status_code == 401
+        assert enrich.status_code == 401
         exploding.assert_not_awaited()
 
     def test_maps_ingest_result_into_response(self, client):
@@ -380,7 +391,7 @@ class TestDistrictIngest:
             )
         )
         with patch("app.routers.districts.ingest_district", new=stub):
-            response = client.post(f"/api/districts/{DISTRICT}/ingest")
+            response = client.post(f"/api/districts/{DISTRICT}/ingest", headers=ADMIN)
 
         assert response.status_code == 200
         assert response.json() == {
@@ -395,7 +406,7 @@ class TestDistrictIngest:
     def test_force_query_param_is_forwarded(self, client):
         stub = AsyncMock(return_value=self._stub_result())
         with patch("app.routers.districts.ingest_district", new=stub):
-            client.post(f"/api/districts/{DISTRICT}/ingest?force=true")
+            client.post(f"/api/districts/{DISTRICT}/ingest?force=true", headers=ADMIN)
 
         stub.assert_awaited_once()
         # ingest_district(db, district_id, buffer_m, force) -- force son pozisyonel.

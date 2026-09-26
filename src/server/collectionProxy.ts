@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiUrl, proxyToBackend, resolveApiKey } from "./backend";
+import { badPath, pathSuffix } from "./paths";
 
 /**
  * Koleksiyon uclari icin ortak proxy (listeler, kayitli yerler).
@@ -18,9 +19,8 @@ interface RouteContext {
   params: Promise<{ path?: string[] }>;
 }
 
-async function suffixOf(context: RouteContext): Promise<string> {
-  const segments = (await context.params).path ?? [];
-  return segments.length ? `/${segments.join("/")}` : "";
+async function suffixOf(context: RouteContext): Promise<string | null> {
+  return pathSuffix((await context.params).path);
 }
 
 /** Anahtar yoksa backend'e hic gitmeden anlasilir bir cevap don. */
@@ -45,6 +45,7 @@ export function createCollectionRoutes(basePath: string) {
     if (!key) return missingKeyResponse();
 
     const suffix = await suffixOf(context);
+    if (suffix === null) return badPath();
 
     // Govdesi olan metotlarda gecersiz JSON'u backend'e tasimak yerine
     // burada kesiyoruz; backend'den donen 422 daha az anlasilir olurdu.

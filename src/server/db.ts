@@ -11,7 +11,6 @@ import { Pool } from "pg";
 
 declare global {
   // Gelistirmede HMR her kaydetmede modulu yeniden yukluyor; havuz tek kalsin.
-  // eslint-disable-next-line no-var
   var __authPool: Pool | undefined;
 }
 
@@ -71,6 +70,11 @@ CREATE TABLE IF NOT EXISTS allowed_emails (
   added_by TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS login_emails (
+  email TEXT NOT NULL,
+  sent_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS login_emails_sent_at ON login_emails (sent_at);
 `;
 
 let schemaReady: Promise<void> | null = null;

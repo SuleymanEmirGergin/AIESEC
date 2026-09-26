@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createTransport } from "nodemailer";
 import { apiUrl } from "../../../../server/backend";
@@ -7,14 +8,22 @@ import type { SavedPlace } from "../../../../lib/savedApi";
 
 export const dynamic = "force-dynamic";
 
+/** Sabit sureli karsilastirma: yanit suresinden anahtar tahmin edilemesin. */
+function validCronAuth(header: string | null): boolean {
+  const secret = process.env.CRON_SECRET;
+  if (!secret || !header) return false;
+  const given = Buffer.from(header);
+  const expected = Buffer.from(`Bearer ${secret}`);
+  return given.length === expected.length && timingSafeEqual(given, expected);
+}
+
 /**
  * Her sabah Vercel Cron cagiriyor (vercel.json). Oturum yok; Vercel
  * `Authorization: Bearer $CRON_SECRET` gonderiyor, digerleri 401.
  * `?dry=1` e-posta gondermeden kime kac kayit gidecegini dondurur.
  */
 export async function GET(req: NextRequest) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
+  if (!validCronAuth(req.headers.get("authorization"))) {
     return NextResponse.json({ message: "Yetkisiz." }, { status: 401 });
   }
   const dry = req.nextUrl.searchParams.get("dry") === "1";

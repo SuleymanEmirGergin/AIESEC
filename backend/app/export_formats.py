@@ -159,6 +159,21 @@ def build_rows(items: List[Dict[str, Any]]) -> List[ExportRow]:
 
 # --- CSV --------------------------------------------------------------------
 
+# Hucre formul enjeksiyonu: kurum adlari OSM'den geliyor ve OSM'yi herkes
+# duzenleyebilir. "=HYPERLINK(...)" ile baslayan bir ad, dosya Excel'de
+# acilinca formul olarak calisirdi (veri sizdirma, DDE). Bu karakterlerle
+# baslayan hucre metin olarak isaretleniyor. "+90 532 ..." gibi yalnizca
+# rakam/bosluk/isaret iceren degerler zararsiz; onlara dokunulmuyor.
+_FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
+_PLAIN_NUMBER = re.compile(r"^[+\-]?[\d\s().+\-]*$")
+
+
+def safe_cell(value: str) -> str:
+    """CSV hucresi: formul gibi baslayan metnin basina ' koyar."""
+    if value.startswith(_FORMULA_START) and not _PLAIN_NUMBER.match(value):
+        return "'" + value
+    return value
+
 
 def build_csv(items: List[Dict[str, Any]]) -> str:
     """Construct CSV string from OSM items."""
@@ -166,7 +181,7 @@ def build_csv(items: List[Dict[str, Any]]) -> str:
     writer = csv.writer(output, delimiter=CSV_DELIMITER)
     writer.writerow(CSV_HEADER)
     for row in build_rows(items):
-        writer.writerow(row.as_list())
+        writer.writerow([safe_cell(v) for v in row.as_list()])
     return output.getvalue()
 
 
@@ -223,6 +238,13 @@ def _turkish_date(when: datetime) -> str:
 # --- Excel ------------------------------------------------------------------
 
 
+def _as_text(cells) -> None:
+    """openpyxl "=" ile baslayan metni formul yapar; hepsini metin tut (bkz. safe_cell)."""
+    for cell in cells:
+        if cell.data_type == "f":
+            cell.data_type = "s"
+
+
 def to_xlsx(items: List[Dict[str, Any]], title: str, generated_at: datetime) -> bytes:
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
@@ -259,6 +281,7 @@ def to_xlsx(items: List[Dict[str, Any]], title: str, generated_at: datetime) -> 
         ]
         values.append(line)
         ws.append(line)
+        _as_text(ws[r])
         links = {
             3: f"tel:{row.phone.replace(' ', '')}" if row.phone else "",
             4: f"mailto:{row.email}" if row.email else "",
@@ -289,6 +312,7 @@ def to_xlsx(items: List[Dict[str, Any]], title: str, generated_at: datetime) -> 
         [ATTRIBUTION],
     ):
         info.append(line)
+        _as_text(info[info.max_row])
     info["A1"].font = Font(bold=True, size=14)
     info.column_dimensions["A"].width = 90
 
@@ -354,7 +378,12 @@ def pdf_columns(rows: List[ExportRow]) -> list:
 
 
 def _esc(text: str) -> str:
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    # Tirnak da: deger <a href="..."> niteliginin icine giriyor; kacmazsa
+    # nitelikten tasip PDF isaretlemesini bozar (cokme ya da sahte baglanti).
+    return (
+        text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        .replace('"', "&quot;").replace("'", "&#39;")
+    )
 
 
 def to_pdf(

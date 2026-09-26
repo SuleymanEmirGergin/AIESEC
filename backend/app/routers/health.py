@@ -1,15 +1,16 @@
 """Advanced health check router."""
 
-import os
 import time
 from typing import Any, Dict
 
 import psutil
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, Request, Response, status
 from pydantic import BaseModel
+from sqlalchemy import text
 
 from app import __version__
-from app.overpass import overpass_client
+from app.database import AsyncSessionLocal
+from app.limits import limiter
 
 router = APIRouter(prefix="/health", tags=["health"])
 
@@ -31,37 +32,27 @@ class HealthResponse(BaseModel):
     checks: Dict[str, CheckResult]
 
 
-async def check_overpass() -> CheckResult:
-    """Check Overpass API reachability."""
+async def check_database() -> CheckResult:
+    """
+    Veritabani erisilebilir mi? Arama ve kayitlar buna bagli.
+
+    Onceden burada canli bir Overpass sorgusu vardi: kimliksiz bir uc her
+    cagrida disariya istek atiyordu (maliyet, Overpass'in bizi engellemesi).
+    Overpass artik yalnizca aylik veri yenilemede kullaniliyor.
+    """
     start_time = time.time()
     try:
-        # Minimal query to test connectivity
-        query = "[out:json][timeout:5]; node(around:1,41,29); out count;"
-        await overpass_client.query(query)
-        latency = (time.time() - start_time) * 1000
-        return CheckResult(status="pass", latency_ms=round(latency, 2))
-    except Exception as e:
-        return CheckResult(status="fail", details={"error": str(e)})
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("SELECT 1"))
+        return CheckResult(status="pass", latency_ms=round((time.time() - start_time) * 1000, 2))
+    except Exception:
+        # Hata metni disari verilmiyor (baglanti adresi vb. icerebilir).
+        return CheckResult(status="fail")
 
 
 def check_memory() -> CheckResult:
-    """Check memory usage."""
-    process = psutil.Process(os.getpid())
-    mem_info = process.memory_info()
-    mem_percent = psutil.virtual_memory().percent
-
-    status_str = "pass"
-    if mem_percent > 90:
-        status_str = "warn"
-
-    return CheckResult(
-        status=status_str,
-        details={
-            "rss_bytes": mem_info.rss,
-            "vms_bytes": mem_info.vms,
-            "system_percent": mem_percent,
-        },
-    )
+    """Bellek kullanimi. Ayrinti (RSS, sistem yuzdesi) disari verilmiyor: uc kimliksiz."""
+    return CheckResult(status="warn" if psutil.virtual_memory().percent > 90 else "pass")
 
 
 @router.get("/live", status_code=status.HTTP_200_OK)
@@ -71,14 +62,15 @@ async def liveness_probe():
 
 
 @router.get("/ready", response_model=HealthResponse)
-async def readiness_probe(response: Response):
+@limiter.limit("20/minute")
+async def readiness_probe(request: Request, response: Response):
     """Readiness probe checking dependencies."""
-    overpass_result = await check_overpass()
+    database_result = await check_database()
     memory_result = check_memory()
 
     # overall status
     overall_status = "healthy"
-    if overpass_result.status == "fail":
+    if database_result.status == "fail":
         overall_status = "unhealthy"
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     elif memory_result.status == "warn":
@@ -88,7 +80,7 @@ async def readiness_probe(response: Response):
         status=overall_status,
         version=__version__,
         timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        checks={"overpass": overpass_result, "memory": memory_result},
+        checks={"database": database_result, "memory": memory_result},
     )
 
 

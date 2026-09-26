@@ -8,16 +8,21 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import MarkerClusterGroup from "react-leaflet-cluster";
 import "leaflet/dist/leaflet.css";
+import markerIcon from "leaflet/dist/images/marker-icon.png";
+import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
+import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import ContactLinks from "./ContactLinks";
 import { createSpringGroup, type SpringGroup } from "../lib/spring";
 import type { Place } from "../lib/types";
 import { PLACE_TYPE_LABELS } from "../lib/labels";
 
 // Leaflet default icon fix
+// Gorseller paketle birlikte sunuluyor; onceden unpkg'den yukleniyordu
+// (dis koken, CSP'de izin ve kullanici IP'sinin ucuncu tarafa gitmesi).
 const DefaultIcon = L.icon({
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  iconUrl: markerIcon.src,
+  iconRetinaUrl: markerIcon2x.src,
+  shadowUrl: markerShadow.src,
   iconSize: [25, 41],
   iconAnchor: [12, 41],
   popupAnchor: [1, -34],

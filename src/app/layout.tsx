@@ -1,10 +1,21 @@
 import type { Metadata } from "next";
+import { Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
 // Kume varsayilanlari globals.css'ten ONCE: oradaki .marker-cluster-*
 // renkleri bunlari ezmeli. react-leaflet-cluster v4 CSS'i kendisi yuklemiyor.
 import "react-leaflet-cluster/dist/assets/MarkerCluster.css";
 import "react-leaflet-cluster/dist/assets/MarkerCluster.Default.css";
 import "./globals.css";
 import "leaflet/dist/leaflet.css";
+
+/**
+ * Fontlar derleme aninda indirilip siteyle birlikte sunuluyor (next/font).
+ * Onceden her ziyarette Google Fonts'tan yukleniyordu: kullanicinin IP'si
+ * Google'a gidiyordu (KVKK) ve CSP'ye iki dis koken eklemek gerekiyordu.
+ * latin-ext: Turkce harfler (ğ, ş, ı, İ) icin sart.
+ */
+const display = Space_Grotesk({ subsets: ["latin", "latin-ext"], weight: ["500", "600", "700"], variable: "--font-space-grotesk", display: "swap" });
+const body = Inter({ subsets: ["latin", "latin-ext"], weight: ["400", "500", "600"], variable: "--font-inter", display: "swap" });
+const mono = JetBrains_Mono({ subsets: ["latin", "latin-ext"], weight: ["400", "500", "600"], variable: "--font-jetbrains", display: "swap" });
 
 export const metadata: Metadata = {
   title: { default: "Rota", template: "%s · Rota" },
@@ -35,25 +46,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="tr" suppressHydrationWarning>
+    <html lang="tr" suppressHydrationWarning className={`${display.variable} ${body.variable} ${mono.variable}`}>
       <head>
         <link rel="icon" href="/favicon.ico" sizes="any" />
-        {/*
-          Fontlar CSS `@import` yerine buradan yukleniyor. `@import`,
-          tarayicinin stil dosyasini indirip ayristirmasini bekletir ve
-          font istegini zincirin sonuna atar; <link> istegi belge
-          ayristirilirken hemen baslatiyor.
-
-          preconnect iki ayri kokene gerekiyor: fonts.googleapis.com CSS'i,
-          fonts.gstatic.com ise font dosyalarini sunuyor. crossOrigin
-          ikincisinde zorunlu, cunku font indirmeleri CORS ile yapiliyor.
-        */}
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap"
-          rel="stylesheet"
-        />
       </head>
       <body>{children}</body>
     </html>

@@ -7,6 +7,7 @@ import { authConfig } from "./auth.config";
 import { ensureSchema, getPool } from "./server/db";
 import { getMember } from "./server/team";
 import { loginEmail } from "./server/loginEmail";
+import { allowLoginEmail } from "./server/loginLimit";
 
 /** Giris baglantisinin gecerlilik suresi. */
 const EMAIL_LINK_MAX_AGE_S = 60 * 60;
@@ -30,6 +31,13 @@ function emailProvider() {
     async sendVerificationRequest({ identifier, url, provider }) {
       if (!server) {
         console.info(`[giris] ${identifier} icin baglanti: ${url}`);
+        return;
+      }
+      // Sinirsiz tetiklenirse Gmail'in gunluk kotasi dolar (sabah ozeti de
+      // gidemez) ve kisinin kutusu dolar. Sinir asilinca sessizce gonderilmez;
+      // ekranda yine "gonderildi" yazar, saldirgan bir sey ogrenmez.
+      if (!(await allowLoginEmail(identifier))) {
+        console.warn("[giris] e-posta siniri asildi; baglanti gonderilmedi");
         return;
       }
       const { subject, text, html } = loginEmail(url);

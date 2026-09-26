@@ -1,0 +1,39 @@
+# pnpm ayarlari (pnpm 10+ bunlari package.json yerine burada okuyor).
+
+# Tedarik zinciri: paketlerin kurulum betikleri (preinstall/postinstall)
+# varsayilan olarak CALISMAZ. Son donem npm solucanlari (Shai-Hulud,
+# ChainDrop) tam bu yoldan yayildi. Yalnizca bilinen iki gelistirme
+# araci izinli.
+onlyBuiltDependencies:
+  - esbuild
+  - unrs-resolver
+
+# Yeni yayimlanan surum 3 gun (dakika) beklemeden kurulmaz: ele gecirilen
+# paketler genelde saatler icinde fark edilip kaldiriliyor.
+minimumReleaseAge: 4320
+
+# next-auth beta'si nodemailer'i ^7 || ^8 diye bildiriyor; bilinen
+# aciklari olan 8 yerine 10 kullaniliyor (giris e-postasini kendimiz
+# gonderiyoruz, next-auth'un nodemailer API'sine dokunmuyoruz).
+peerDependencyRules:
+  allowedVersions:
+    nodemailer: "10"
+
+# Next.js derleme zamaninda kullandigi bu paketleri eski (bilinen acikli)
+# surumlerde sabit tutuyor; guvenli surumlere zorlaniyor.
+overrides:
+  postcss: ^8.5.23
+  nanoid@3: ^3.3.18
+  browserslist: ^4.28.7
+  baseline-browser-mapping: ^2.11.0
+  # Gelistirme araclari (eslint zinciri): yalnizca yama surumleri.
+  ajv@6: ^6.14.0
+  brace-expansion@1: ^1.1.18
+  brace-expansion@2: ^2.1.4
+  flatted: ^3.4.2
+  js-yaml@4: ^4.3.2
+  minimatch@3: ^3.1.4
+  minimatch@9: ^9.0.7
+  picomatch@2: ^2.3.2
+  picomatch@4: ^4.0.4
+  postcss-selector-parser@6: ^6.1.3

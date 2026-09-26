@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { apiUrl, proxyToBackend, resolveApiKey } from "../../../../server/backend";
+import { badPath, pathSuffix } from "../../../../server/paths";
 
 /**
  * /api/districts/* -> backend /api/districts/*
@@ -21,8 +22,8 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ path?: string[] }> }
 ) {
-  const segments = (await params).path ?? [];
-  const suffix = segments.length ? `/${segments.join("/")}` : "";
+  const suffix = pathSuffix((await params).path);
+  if (suffix === null) return badPath();
   const { key } = resolveApiKey(req);
 
   return proxyToBackend(req, {

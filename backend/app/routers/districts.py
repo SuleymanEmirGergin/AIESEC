@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import validate_api_key, verify_api_key
+from app.auth import validate_api_key, verify_admin_key, verify_api_key
 from app.database import APIKey, get_db
 from app.districts import (
     DEFAULT_BUFFER_M,
@@ -256,7 +256,9 @@ async def district_places(
     }
 
 
-@router.post("/{district_id}/ingest")
+# Yalniz yonetici anahtariyla: dis maliyeti olan, canli veriye yazan uclar.
+# Web arayuzu bunlari cagirmiyor; aylik yenileme GitHub Actions'ta betikle.
+@router.post("/{district_id}/ingest", dependencies=[Depends(verify_admin_key)])
 async def trigger_ingest(
     district_id: str,
     force: bool = Query(False),
@@ -284,7 +286,7 @@ async def trigger_ingest(
     }
 
 
-@router.post("/{district_id}/enrich")
+@router.post("/{district_id}/enrich", dependencies=[Depends(verify_admin_key)])
 async def trigger_enrich(
     district_id: str,
     db: AsyncSession = Depends(get_db),

@@ -49,7 +49,7 @@ async def clear_cache(_: None = Depends(verify_admin_key)):
 @router.get("/reports", response_model=ReportListResponse)
 async def list_reports(
     status: str = "open",
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=500),
     offset: int = 0,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(verify_admin_key),
@@ -160,7 +160,7 @@ async def create_override(
 
 @router.get("/overrides", response_model=List[OverrideResponse])
 async def list_overrides(
-    limit: int = 100,
+    limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(verify_admin_key),
 ):

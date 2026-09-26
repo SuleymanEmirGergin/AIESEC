@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     # false (varsayilan): mevcut davranis aynen gecerli.
     local_mode: bool = False
 
+    # /docs, /redoc, /openapi.json: canlida kapali (butun uc haritasini
+    # disariya vermesin). Yerelde ENABLE_DOCS=true ile acilir.
+    enable_docs: bool = False
+    # IP basina istek siniri (slowapi, bellek ici). Testler kapatir.
+    rate_limit_enabled: bool = True
+
     class Config:
         env_file = ".env"
         case_sensitive = False

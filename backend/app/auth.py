@@ -1,6 +1,7 @@
 """Enterprise authentication and quota enforcement."""
 
 import hashlib
+import hmac
 import os
 from datetime import datetime, timezone
 from typing import Optional
@@ -29,25 +30,11 @@ async def verify_admin_key(x_admin_key: Optional[str] = Header(None)) -> None:
         HTTPException: 401 if key is missing or invalid
     """
     expected = get_admin_api_key()
-    if not x_admin_key or x_admin_key != expected:
+    # Sabit sureli karsilastirma: yanit suresinden anahtar tahmin edilemesin.
+    if not x_admin_key or not hmac.compare_digest(x_admin_key.encode(), expected.encode()):
         raise HTTPException(
             status_code=401, detail="Invalid or missing admin API key (X-ADMIN-KEY)"
         )
-
-
-async def verify_admin_token(authorization: Optional[str] = Header(None)) -> None:
-    """
-    Verify admin Bearer token (backward compatibility for legacy UI).
-    """
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authorization header missing")
-
-    parts = authorization.split()
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        raise HTTPException(status_code=401, detail="Invalid auth format")
-
-    if parts[1] != get_admin_api_key():
-        raise HTTPException(status_code=401, detail="Invalid admin token")
 
 
 def hash_key(key: str) -> str:

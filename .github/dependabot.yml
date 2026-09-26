@@ -1,0 +1,23 @@
+# Haftalik bagimlilik guncelleme onerileri. cooldown: yeni surum 3 gun
+# eskimeden onerilmez (ele gecirilen paketler genelde bu surede kaldirilir);
+# pnpm'deki minimumReleaseAge ile ayni ilke.
+# Python (backend/requirements.in) uv ile derleniyor; elle guncellenir:
+#   uv pip compile requirements.in --universal --python-version 3.12 --generate-hashes -o requirements.txt
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    groups:
+      npm:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3

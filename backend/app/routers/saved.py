@@ -34,6 +34,7 @@ from app.database import (
     SavedPlace,
     get_db,
 )
+from app.dates import team_today
 from app.districts import get_district
 from app.models import (
     ContactEventCreate,
@@ -542,7 +543,7 @@ async def bulk_update_saved_places(
         raise HTTPException(status_code=422, detail="Degistirilecek bir alan secin.")
 
     volunteer = _volunteer_name(x_volunteer_name) if "contact_status" in changes else None
-    today = _now().date()
+    today = team_today()
     updated = 0
     ids = list(dict.fromkeys(data.ids))
     for i in range(0, len(ids), _IN_CHUNK):

@@ -13,6 +13,8 @@ import os
 # once ayarlanmali. Testler gercek storage.db'ye dokunmamali.
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_storage.db")
 os.environ.setdefault("ADMIN_API_KEY", "test-admin-key")
+# Testler ayni "istemciden" yuzlerce istek atiyor; sinir ayrica test ediliyor.
+os.environ["RATE_LIMIT_ENABLED"] = "false"
 # Gelistiricinin .env'indeki LOCAL_MODE=true testlere sizmasin; yerel
 # mod testleri bayragi kendileri aciyor.
 os.environ["LOCAL_MODE"] = "false"

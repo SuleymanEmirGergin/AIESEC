@@ -7,7 +7,7 @@ Postgres'te farkli, bu olcekte (binlerce olay) fark etmiyor.
 """
 
 from collections import defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import validate_api_key
 from app.database import APIKey, ContactEvent, PlaceList, SavedPlace, get_db
+from app.dates import team_today
 
 router = APIRouter()
 
@@ -27,7 +28,7 @@ async def dashboard(
     db: AsyncSession = Depends(get_db),
     api_key: APIKey = Depends(validate_api_key),
 ) -> dict:
-    today = datetime.now(timezone.utc).date()
+    today = team_today()
     team = SavedPlace.api_key_id == api_key.id
 
     by_status = dict(
@@ -94,7 +95,7 @@ async def dashboard(
         ),
         "weekly": [{"week_start": week.isoformat(), "count": n} for week, n in weeks.items()],
         "by_list": [{"name": name, "count": n, "contacted": c} for name, n, c in lists.all()],
-        "generated_for": date.today().isoformat(),
+        "generated_for": today.isoformat(),
     }
 
 
@@ -105,7 +106,7 @@ async def due_counts(
     api_key: APIKey = Depends(validate_api_key),
 ) -> dict:
     """Menudeki "Bugun" rozeti: gecikmis + bugun takipleri (kapanmislar haric)."""
-    today = datetime.now(timezone.utc).date()
+    today = team_today()
     base = (
         SavedPlace.api_key_id == api_key.id,
         SavedPlace.next_follow_up_at.is_not(None),

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { AuthError } from "next-auth";
 import { AlertCircle, Mail, MailCheck } from "lucide-react";
 import { auth, emailEnabled, googleEnabled, signIn } from "../../auth";
+import { safeCallback } from "../../lib/safeCallback";
 
 export const dynamic = "force-dynamic";
 
@@ -13,20 +14,6 @@ const ERRORS: Record<string, string> = {
 };
 const FALLBACK_ERROR = "Giriş yapılamadı. Lütfen tekrar deneyin.";
 
-/**
- * Donus adresinin yalnizca yolu alinir: middleware tam URL veriyor, ama
- * baska bir siteye yonlendirme (acik yonlendirme) mumkun olmamali.
- */
-function safeCallback(value: string | undefined): string {
-  if (!value) return "/";
-  try {
-    const url = new URL(value, "http://yerel");
-    return `${url.pathname}${url.search}` || "/";
-  } catch {
-    return "/";
-  }
-}
-
 async function start(provider: "google" | "email", redirectTo: string, email?: string) {
   "use server";
   try {
@@ -34,6 +21,9 @@ async function start(provider: "google" | "email", redirectTo: string, email?: s
   } catch (error) {
     // signIn basarida NEXT_REDIRECT firlatiyor; o aynen gecmeli.
     if (error instanceof AuthError) {
+      // E-postada "ekipte yok" demek, bir adresin ekipte olup olmadigini
+      // disariya soyler; iki durumda da ayni ekran gosteriliyor.
+      if (provider === "email" && error.type === "AccessDenied") redirect("/giris?gonderildi=1");
       redirect(`/giris?error=${error.type === "AccessDenied" ? "AccessDenied" : "Default"}`);
     }
     throw error;
@@ -83,7 +73,7 @@ export default async function LoginPage({
             <MailCheck size={24} aria-hidden="true" className="mx-auto mb-3 text-accent" />
             <p className="text-sm font-medium text-ink">E-postanızı kontrol edin</p>
             <p className="mt-1 text-xs leading-relaxed text-ink-3">
-              Giriş bağlantısını gönderdik; 1 saat geçerli. Gelmediyse gereksiz (spam) klasörüne bakın.
+              Adres ekipte kayıtlıysa giriş bağlantısı birkaç dakika içinde gelir; 1 saat geçerli. Gelmediyse gereksiz (spam) klasörüne bakın ya da yöneticinize sorun.
             </p>
             <a href="/giris" className="btn btn--ghost mt-4 inline-flex px-3 py-1.5 text-xs">
               Başka yolla giriş yap
