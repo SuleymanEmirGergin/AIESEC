@@ -139,6 +139,12 @@ export default async function LoginPage({
             )}
           </div>
         )}
+
+        <p className="mt-8 text-center text-2xs text-ink-4">
+          <a href="/gizlilik" className="underline hover:text-ink">
+            Gizlilik
+          </a>
+        </p>
       </div>
     </main>
   );
