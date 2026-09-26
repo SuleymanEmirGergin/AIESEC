@@ -6,9 +6,10 @@ Sorumlu herkes tarafindan herkese atanabilir; kimin atadigi kayitta durur.
 """
 
 import uuid
-from datetime import date, timedelta
+from datetime import timedelta
 
 from app.database import AsyncSessionLocal, init_db
+from app.dates import team_today
 from app.store import add_memberships, place_row_values, upsert_places
 
 HEADERS = {"X-VOLUNTEER-NAME": "Ece"}
@@ -58,7 +59,7 @@ class TestSorumlu:
 
     def test_takip_tarihi_ertelenebilir(self, client):
         saved = _save(client)
-        target = (date.today() + timedelta(days=7)).isoformat()
+        target = (team_today() + timedelta(days=7)).isoformat()
         body = client.patch(f"/api/saved/{saved['id']}", json={"next_follow_up_at": target}, headers=HEADERS).json()
         assert body["next_follow_up_at"] == target
         body = client.patch(f"/api/saved/{saved['id']}", json={"next_follow_up_at": None}, headers=HEADERS).json()
@@ -78,11 +79,11 @@ class TestTopluGuncelleme:
             assert "Toplu" in (events[0]["note"] or "")
         places = {p["id"]: p for p in client.get("/api/saved").json()}
         assert places[a["id"]]["contact_status"] == "contacted"
-        assert places[a["id"]]["last_contact_at"] == date.today().isoformat()
+        assert places[a["id"]]["last_contact_at"] == team_today().isoformat()
 
     def test_sorumlu_ve_takip_toplu_atanir(self, client):
         a, b = _save(client), _save(client)
-        target = (date.today() + timedelta(days=3)).isoformat()
+        target = (team_today() + timedelta(days=3)).isoformat()
         response = client.post("/api/saved/bulk-update", json={"ids": [a["id"], b["id"]], "assignee": AYSE, "next_follow_up_at": target}, headers=HEADERS)
         assert response.json()["updated"] == 2
         places = {p["id"]: p for p in client.get("/api/saved").json()}
@@ -134,10 +135,10 @@ class TestIlceVeGizleme:
 class TestPano:
     def test_ozet_sayilari(self, client):
         a, b, c = _save(client, "P1"), _save(client, "P2"), _save(client, "P3")
-        today = date.today().isoformat()
+        today = team_today().isoformat()
         client.post(f"/api/saved/{a['id']}/contacts", json={"status": "positive", "contacted_at": today}, headers=HEADERS)
         client.post(f"/api/saved/{b['id']}/contacts", json={"status": "follow_up", "contacted_at": today,
-                    "next_follow_up_at": (date.today() - timedelta(days=1)).isoformat()}, headers={"X-VOLUNTEER-NAME": "Deniz"})
+                    "next_follow_up_at": (team_today() - timedelta(days=1)).isoformat()}, headers={"X-VOLUNTEER-NAME": "Deniz"})
         client.patch(f"/api/saved/{c['id']}", json={"assignee": AYSE}, headers=HEADERS)
 
         response = client.get("/api/dashboard")
@@ -158,7 +159,7 @@ class TestPano:
 class TestTopluSilme:
     def test_secililer_ve_gecmisleri_silinir(self, client):
         a, b, c = _save(client), _save(client), _save(client)
-        client.post(f"/api/saved/{a['id']}/contacts", json={"status": "contacted", "contacted_at": date.today().isoformat()}, headers=HEADERS)
+        client.post(f"/api/saved/{a['id']}/contacts", json={"status": "contacted", "contacted_at": team_today().isoformat()}, headers=HEADERS)
         response = client.post("/api/saved/bulk-delete", json={"ids": [a["id"], b["id"], "yok-boyle-bir-id"]})
         assert response.status_code == 200, response.text
         assert response.json()["deleted"] == 2
@@ -170,8 +171,8 @@ class TestBugunSayaci:
     def test_gecikmis_ve_bugun_sayilir_kapanmislar_sayilmaz(self, client):
         before = client.get("/api/dashboard/due?me=ayse@ornek.org").json()
         a, b, c = _save(client), _save(client), _save(client)
-        yesterday = (date.today() - timedelta(days=1)).isoformat()
-        today = date.today().isoformat()
+        yesterday = (team_today() - timedelta(days=1)).isoformat()
+        today = team_today().isoformat()
         client.patch(f"/api/saved/{a['id']}", json={"next_follow_up_at": yesterday, "assignee": AYSE}, headers=HEADERS)
         client.patch(f"/api/saved/{b['id']}", json={"next_follow_up_at": today}, headers=HEADERS)
         client.post(f"/api/saved/{c['id']}/contacts", json={"status": "positive", "contacted_at": today, "next_follow_up_at": yesterday}, headers=HEADERS)
