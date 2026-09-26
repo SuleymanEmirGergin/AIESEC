@@ -402,3 +402,57 @@ class TestCountByType:
     async def test_siniflandirilamayan_sayilmaz(self, db):
         counts = await count_by_type(db, D, include_buffer=True)
         assert sum(counts.values()) == 5
+
+
+TR = "tr-34-turkce-test"
+
+
+@pytest.fixture
+async def tr_db():
+    """Turkce harfli isimler: siralama ve harfe duyarsiz arama icin."""
+    await init_db()
+    names = ["zeta Otel", "Ömer Oteli", "İnci Otel", "Dede Otel", "Çınar Oteli", "cem apart", "ÖZEL KONUK EVİ"]
+    async with AsyncSessionLocal() as session:
+        rows = [
+            place_row_values(_element(880_000 + i, {"name": n, "tourism": "hotel"}), "hotel", 60, None)
+            for i, n in enumerate(names)
+        ]
+        await upsert_places(session, rows)
+        await replace_memberships(session, TR, [(r["id"], True) for r in rows])
+        yield session
+
+
+class TestTurkce:
+    async def test_isim_siralamasi_turkce_alfabe(self, tr_db):
+        """Kucuk harfle baslayanlar sona, C/O/U/I/S harfleri en sona dusmemeli."""
+        rows, _ = await fetch_places(tr_db, PlaceFilter(district_id=TR, sort="name"))
+        assert [r.name for r in rows] == [
+            "cem apart", "Çınar Oteli", "Dede Otel", "İnci Otel", "Ömer Oteli", "ÖZEL KONUK EVİ", "zeta Otel",
+        ]
+
+    async def test_ters_isim_siralamasi(self, tr_db):
+        rows, _ = await fetch_places(tr_db, PlaceFilter(district_id=TR, sort="name_desc"))
+        assert [r.name for r in rows][0] == "zeta Otel"
+        assert [r.name for r in rows][-1] == "cem apart"
+
+    @pytest.mark.parametrize(
+        "q, beklenen",
+        [
+            ("ozel", {"ÖZEL KONUK EVİ"}),
+            ("ÖZEL", {"ÖZEL KONUK EVİ"}),
+            ("özel", {"ÖZEL KONUK EVİ"}),
+            ("cinar", {"Çınar Oteli"}),
+            ("ÇINAR", {"Çınar Oteli"}),
+            ("inci", {"İnci Otel"}),
+            ("omer", {"Ömer Oteli"}),
+            ("OTELI", {"Ömer Oteli", "Çınar Oteli"}),
+        ],
+    )
+    async def test_harfe_duyarsiz_arama(self, tr_db, q, beklenen):
+        """Turkce klavyesi olmayan 'ozel' yazinca 'Özel' de bulunmali."""
+        rows, _ = await fetch_places(tr_db, PlaceFilter(district_id=TR, q=q))
+        assert {r.name for r in rows} == beklenen
+
+    async def test_aramada_yuzde_isareti_joker_degil(self, tr_db):
+        rows, _ = await fetch_places(tr_db, PlaceFilter(district_id=TR, q="%"))
+        assert rows == []

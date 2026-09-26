@@ -99,6 +99,21 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   return response.json();
 }
 
+/** Backend'in ilce ogesi: veri durumu ic ice `ingest` alaninda. */
+interface RawDistrict extends Omit<DistrictMeta, "fetched_at" | "place_count" | "status"> {
+  ingest: { fetched_at: string; place_count: number; status: DistrictMeta["status"] } | null;
+}
+
+/** Ic ice ingest alanini arayuzun okudugu duz alanlara acar. */
+function flattenDistrict({ ingest, ...rest }: RawDistrict): DistrictMeta {
+  return {
+    ...rest,
+    fetched_at: ingest?.fetched_at ?? null,
+    place_count: ingest?.place_count ?? null,
+    status: ingest?.status ?? null,
+  };
+}
+
 // Modul seviyesinde onbellek: sinir verisi oturum boyunca degismiyor.
 let districtsPromise: Promise<DistrictMeta[]> | null = null;
 let geojsonPromise: Promise<unknown> | null = null;
@@ -109,8 +124,8 @@ let geojsonPromise: Promise<unknown> | null = null;
  */
 export function fetchDistricts(): Promise<DistrictMeta[]> {
   if (!districtsPromise) {
-    districtsPromise = getJson<{ districts: DistrictMeta[] }>("/api/districts")
-      .then((payload) => payload.districts)
+    districtsPromise = getJson<{ districts: RawDistrict[] }>("/api/districts")
+      .then((payload) => payload.districts.map(flattenDistrict))
       .catch((error) => {
         // Basarisiz istegi onbellekte birakmak kalici hataya donusurdu.
         districtsPromise = null;

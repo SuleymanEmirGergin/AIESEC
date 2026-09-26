@@ -104,7 +104,12 @@ class TestDistrictListing:
     def test_metadata_is_cacheable(self, client):
         """Sinir verisi nadiren degisiyor; tarayici tutabilmeli."""
         response = client.get("/api/districts")
-        assert "max-age=86400" in response.headers["cache-control"]
+        cache = response.headers["cache-control"]
+        # Liste veri durumunu (kayit sayisi, cekilme tarihi) tasiyor; CDN'de
+        # herkese acik tutulursa veri yenilendikten sonra bir gun eski kalir
+        # (canlida yasandi: tasima oncesi bos hali 24 saat sunuldu).
+        assert "private" in cache and "public" not in cache
+        assert "max-age=300" in cache
 
     def test_geojson_is_served_with_long_cache(self, client):
         response = client.get("/api/districts/geojson")

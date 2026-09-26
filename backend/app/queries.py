@@ -8,8 +8,9 @@ hareketi buraya dusuyor ve milisaniye mertebesinde donuyor.
 from dataclasses import dataclass
 from math import asin, cos, radians, sin, sqrt
 
-from sqlalchemy import Select, case, func, select
+from sqlalchemy import Select, case, collate, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.database import PlaceDistrict, PlaceRow
 from app.export_formats import TYPE_LABELS
@@ -54,6 +55,40 @@ def _tr_key(text: str) -> list[int]:
     """Turkce alfabe sirasi: kod noktasi sirasi Ö/Ş/Ü'yu z'den sonraya atiyor."""
     lowered = text.replace("I", "ı").replace("İ", "i").lower()
     return [_TR_ALPHABET.index(c) if c in _TR_ALPHABET else 100 + ord(c) for c in lowered]
+
+
+# Turkce harf katlama: arama ve SQLite'ta siralama ayni kurali kullaniyor.
+# Once harfler, sonra lower(): SQLite'in lower()'i yalnizca ASCII biliyor.
+_FOLD = {
+    "Ç": "c", "ç": "c", "Ğ": "g", "ğ": "g", "İ": "i", "I": "i", "ı": "i",
+    "Ö": "o", "ö": "o", "Ş": "s", "ş": "s", "Ü": "u", "ü": "u",
+    "Â": "a", "â": "a", "Î": "i", "î": "i", "Û": "u", "û": "u",
+}
+_FOLD_TABLE = str.maketrans(_FOLD)
+
+
+def fold_text(text: str) -> str:
+    """'Özel İSTANBUL' -> 'ozel istanbul'. SQL tarafindaki fold_sql ile ayni sonuc."""
+    return text.translate(_FOLD_TABLE).lower()
+
+
+def fold_sql(column) -> ColumnElement:
+    """fold_text'in SQL karsiligi; SQLite ve Postgres'te ayni calisir."""
+    expr = column
+    for src, dst in _FOLD.items():
+        expr = func.replace(expr, src, dst)
+    return func.lower(expr)
+
+
+def _name_key(dialect: str) -> ColumnElement:
+    """
+    Isim siralama anahtari. Postgres: Turkce ICU sirasi (Ç, c'den sonra).
+    SQLite (yerel/test): katlanmis ad. Ikisi de buyuk-kucuk harfe duyarsiz;
+    eskiden bayt sirasiydi ve kucuk harfle baslayanlar ile Ç/Ö/Ü/İ/Ş sona dusuyordu.
+    """
+    if dialect == "postgresql":
+        return collate(PlaceRow.name, "tr-x-icu")
+    return fold_sql(PlaceRow.name)
 
 
 # Tur siralamasi Turkce etiketin alfabetik sirasi: kullanici ekranda
@@ -134,29 +169,28 @@ def build_places_query(f: PlaceFilter) -> Select:
         statement = statement.where(PlaceRow.confidence >= f.min_confidence)
 
     if f.q:
-        # SQLite LIKE varsayilan olarak ASCII'de buyuk-kucuk duyarsiz.
-        # Turkce karakterlerde duyarsizlik garantili degil; arayuz
-        # bunu kullaniciya sezdirmeden calisiyor cunku cogu arama
-        # ASCII harfle baslıyor.
-        statement = statement.where(PlaceRow.name.ilike(f"%{f.q}%"))
+        # Iki taraf da katlaniyor: "ozel" -> "Özel", "ISTANBUL" -> "İstanbul".
+        # autoescape: kullanicinin yazdigi % ve _ joker sayilmiyor.
+        statement = statement.where(fold_sql(PlaceRow.name).contains(fold_text(f.q), autoescape=True))
 
     return statement
 
 
-def _apply_sql_sort(statement: Select, sort: str) -> Select:
+def _apply_sql_sort(statement: Select, sort: str, dialect: str = "sqlite") -> Select:
     """SQL'de siralanabilen secenekleri uygular."""
+    name = _name_key(dialect)
     if sort == "contact_first":
         # Ulasabildigim kayitlar ustte, icinde alfabetik.
         return statement.order_by(
-            PlaceRow.has_contact.desc(), PlaceRow.name.is_(None), PlaceRow.name
+            PlaceRow.has_contact.desc(), PlaceRow.name.is_(None), name
         )
     if sort == "contact_last":
         return statement.order_by(
-            PlaceRow.has_contact, PlaceRow.name.is_(None), PlaceRow.name
+            PlaceRow.has_contact, PlaceRow.name.is_(None), name
         )
     if sort == "confidence":
         return statement.order_by(
-            PlaceRow.confidence.desc(), PlaceRow.name.is_(None), PlaceRow.name
+            PlaceRow.confidence.desc(), PlaceRow.name.is_(None), name
         )
     if sort in ("type", "type_desc"):
         # Ayni tur hep bitisik; tur icinde iletisimi olan ustte, sonra ad.
@@ -165,12 +199,12 @@ def _apply_sql_sort(statement: Select, sort: str) -> Select:
             rank.desc() if sort == "type_desc" else rank,
             PlaceRow.has_contact.desc(),
             PlaceRow.name.is_(None),
-            PlaceRow.name,
+            name,
         )
     if sort == "name_desc":
-        return statement.order_by(PlaceRow.name.is_(None), PlaceRow.name.desc())
+        return statement.order_by(PlaceRow.name.is_(None), name.desc())
     # name: isimsizler en sona (NULL'lar SQLite'ta once gelirdi)
-    return statement.order_by(PlaceRow.name.is_(None), PlaceRow.name)
+    return statement.order_by(PlaceRow.name.is_(None), name)
 
 
 def lead_score(place: PlaceRow) -> int:
@@ -219,7 +253,7 @@ def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 def sort_in_python(rows: list[PlaceRow], f: PlaceFilter) -> list[PlaceRow]:
     """SQL'de yapilamayan siralamalari uygular."""
     if f.sort == "lead_score":
-        return sorted(rows, key=lambda r: (-lead_score(r), r.name or "￿"))
+        return sorted(rows, key=lambda r: (-lead_score(r), r.name is None, _tr_key(r.name or "")))
 
     # ref_distance: referans nokta verilmediyse siralama anlamsiz,
     # kayitlar oldugu gibi doner (sessizce yanlis sira uretmekten iyi).
@@ -267,7 +301,7 @@ async def fetch_places(db: AsyncSession, f: PlaceFilter) -> tuple[list[PlaceRow]
 
     if f.sort in SQL_SORTS:
         page = statement.limit(f.limit).offset(f.offset)
-        result = await db.execute(_apply_sql_sort(page, f.sort))
+        result = await db.execute(_apply_sql_sort(page, f.sort, db.get_bind().dialect.name))
         rows = [_with_is_inside(row, inside) for row, inside in result.all()]
         return rows, total
 

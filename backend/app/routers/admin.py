@@ -2,7 +2,7 @@
 
 import secrets
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -271,27 +271,32 @@ async def update_api_key(
 async def get_enterprise_stats(
     db: AsyncSession = Depends(get_db), _: None = Depends(verify_admin_key)
 ):
-    """Get report and usage stats for last 30 days."""
-    # 1. Report distribution
-    dist_query = select(
-        Report.shown_type, Report.correct_type, func.count(Report.id)
-    ).group_by(Report.shown_type, Report.correct_type)
-    dist = await db.execute(dist_query)
+    """Yonetim ozeti: son 7/30 gunun rapor sayisi ve en cok raporlanan yerler (30 gun)."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    since_7, since_30 = now - timedelta(days=7), now - timedelta(days=30)
 
-    # 2. Top reported places
-    top_query = (
-        select(Report.place_id, Report.name, func.count(Report.id).label("count"))
-        .group_by(Report.place_id)
-        .order_by(desc("count"))
-        .limit(20)
+    async def count_since(since: datetime) -> int:
+        return await db.scalar(select(func.count(Report.id)).where(Report.created_at >= since)) or 0
+
+    dist = await db.execute(
+        select(Report.shown_type, Report.correct_type, func.count(Report.id))
+        .where(Report.created_at >= since_30)
+        .group_by(Report.shown_type, Report.correct_type)
     )
-    top = await db.execute(top_query)
+    # Ad GROUP BY'da degil, max() ile: Postgres toplanmamis kolonu reddediyor
+    # (SQLite etmiyordu, canlida 500 buradan geliyordu).
+    count_col = func.count(Report.id).label("count")
+    top = await db.execute(
+        select(Report.place_id, func.max(Report.name).label("name"), count_col)
+        .where(Report.created_at >= since_30)
+        .group_by(Report.place_id)
+        .order_by(count_col.desc(), Report.place_id)
+        .limit(10)
+    )
 
     return {
-        "report_distribution": [
-            {"from": r[0], "to": r[1], "count": r[2]} for r in dist
-        ],
-        "top_reported_places": [
-            {"id": r[0], "name": r[1], "reports": r[2]} for r in top
-        ],
+        "last_7_days": await count_since(since_7),
+        "last_30_days": await count_since(since_30),
+        "report_distribution": [{"from": r[0], "to": r[1], "count": r[2]} for r in dist],
+        "top_reported_places": [{"place_id": r[0], "name": r[1], "count": r[2]} for r in top],
     }

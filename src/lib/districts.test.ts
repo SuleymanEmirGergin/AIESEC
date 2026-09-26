@@ -88,6 +88,23 @@ describe("fetchDistricts", () => {
     expect(result[0].id).toBe("tr-34-kadikoy");
   });
 
+  it("backend'in ic ice ingest alanini duz alanlara acar", async () => {
+    // Backend durumu `ingest: {...}` icinde veriyor; sihirbaz kayit sayisini
+    // ve "veri yok" uyarisini duz alanlardan okuyor. Eskiden hep "0" gorunuyordu.
+    mockFetch({
+      districts: [
+        { id: "a", name: "A", ingest: { fetched_at: "2026-09-24T18:16:26", place_count: 2532, status: "ok", age_days: 1, stale: false } },
+        { id: "b", name: "B", ingest: null },
+      ],
+    });
+    const { fetchDistricts } = await import("./districts");
+
+    const [a, b] = await fetchDistricts();
+
+    expect(a).toMatchObject({ fetched_at: "2026-09-24T18:16:26", place_count: 2532, status: "ok" });
+    expect(b).toMatchObject({ fetched_at: null, place_count: null, status: null });
+  });
+
   it("backend hata mesajini firlatir", async () => {
     mockFetch({ message: "Backend'e ulasilamadi." }, false, 502);
     const { fetchDistricts } = await import("./districts");

@@ -40,7 +40,8 @@ router = APIRouter(prefix="/api/districts", tags=["districts"])
 # Sinir verisi elle uretiliyor ve nadiren degisiyor; tarayici uzun sure
 # tutabilir. GeoJSON'a `immutable` de veriliyor cunku icerigi degisirse
 # dosya zaten yeniden uretilip deploy ediliyor.
-METADATA_CACHE = "public, max-age=86400"
+# private: veri durumu degisiyor, Vercel CDN'i saklamasin (yalniz tarayici, 5 dk).
+METADATA_CACHE = "private, max-age=300"
 GEOJSON_CACHE = "public, max-age=604800, immutable"
 
 
