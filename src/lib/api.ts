@@ -68,6 +68,8 @@ export interface AccountInfo {
   email: string;
   name: string;
   role: "member" | "admin";
+  /** E-posta baglantisiyla giris acik mi (SMTP tanimli). */
+  emailLogin?: boolean;
 }
 
 /** Oturumdaki uye; okunamazsa null. */

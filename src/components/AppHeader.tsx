@@ -44,7 +44,7 @@ export default function AppHeader({ savedCount }: AppHeaderProps) {
           href="/"
           className="font-display text-sm font-semibold tracking-tight text-ink shrink-0"
         >
-          POI Finder
+          Rota
         </Link>
 
         <nav className="ml-3 flex items-center gap-1" aria-label="Ana gezinme">

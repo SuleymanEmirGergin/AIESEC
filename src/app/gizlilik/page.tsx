@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-export const metadata = { title: "Gizlilik | AIESEC POI Finder" };
+export const metadata = { title: "Gizlilik" };
 
 /**
  * Herkese acik gizlilik sayfasi (oturum istemez). Google, "Google ile giris"
@@ -10,11 +10,11 @@ export default function PrivacyPage() {
   return (
     <main className="min-h-screen bg-paper px-4 py-10 text-ink-2">
       <article className="mx-auto max-w-2xl space-y-5 text-sm leading-relaxed">
-        <p className="mono-label">AIESEC POI Finder</p>
+        <p className="mono-label">Rota</p>
         <h1 className="font-display text-2xl font-semibold text-ink">Gizlilik</h1>
         <p>
-          POI Finder, AIESEC gönüllülerinin kurum ve işletme listesi hazırlamak için kullandığı, yalnızca
-          davetli ekip üyelerine açık bir iç araçtır.
+          Rota, gönüllü ekibimizin kurum ve işletme listesi hazırlamak ve görüşmeleri takip etmek için
+          kullandığı, yalnızca davetli ekip üyelerine açık bir iç araçtır.
         </p>
         <h2 className="font-display text-base font-semibold text-ink">Hangi bilgileri tutuyoruz</h2>
         <ul className="list-disc space-y-1 pl-5">

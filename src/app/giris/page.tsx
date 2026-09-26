@@ -67,8 +67,8 @@ export default async function LoginPage({
   return (
     <main className="flex min-h-screen items-center justify-center bg-paper px-4 text-ink-2">
       <div className="w-full max-w-sm">
-        <p className="mono-label">AIESEC</p>
-        <h1 className="font-display text-2xl font-semibold text-ink">POI Finder</h1>
+        <h1 className="font-display text-3xl font-semibold text-ink">Rota</h1>
+        <p className="mono-label mt-1">Kurum bulma ve takip aracı</p>
         <p className="mt-1 text-sm text-ink-3">Ekip girişi. Yalnızca onaylı e-postalar girebilir.</p>
 
         {error && (
@@ -119,7 +119,7 @@ export default async function LoginPage({
                   type="email"
                   required
                   autoComplete="email"
-                  placeholder="ornek@aiesec.net"
+                  placeholder="ornek@eposta.com"
                   className="w-full rounded-input border border-rule-2 bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-4 hover:border-ink-4 focus:border-accent"
                 />
                 <button

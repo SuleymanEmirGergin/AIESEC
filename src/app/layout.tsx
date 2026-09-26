@@ -7,11 +7,10 @@ import "./globals.css";
 import "leaflet/dist/leaflet.css";
 
 export const metadata: Metadata = {
-  title: "Yakındaki Yer Bulucu | Nearby Place Finder",
-  description:
-    "Çevrenizdeki fabrika, okul, ofis ve atölyeleri harita üzerinde keşfedin. Konum tabanlı yer arama uygulaması.",
-  keywords: ["harita", "yer bulucu", "okul", "fabrika", "ofis", "konum"],
-  authors: [{ name: "AIESEC" }],
+  title: { default: "Rota", template: "%s · Rota" },
+  description: "Ekibin kurum bulma ve takip aracı: ilçedeki okul, otel ve firmaları bul, listele, ara, takip et.",
+  applicationName: "Rota",
+  authors: [{ name: "Rota" }],
 };
 
 export const viewport = {

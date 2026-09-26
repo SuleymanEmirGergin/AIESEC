@@ -45,7 +45,7 @@ async def lifespan(_: FastAPI):
 
 # FastAPI app instance
 app = FastAPI(
-    title="Nearby Place Finder API",
+    title="Rota API",
     description="Enterprise-ready backend using Overpass API",
     version=__version__,
     docs_url="/docs",

@@ -49,7 +49,7 @@ export default function AdminPage() {
       <aside className="shrink-0 border-b border-rule bg-paper lg:w-56 lg:border-b-0 lg:border-r">
         <div className="flex h-full flex-col gap-4 p-4">
           <div>
-            <p className="mono-label mb-0.5">POI Finder</p>
+            <p className="mono-label mb-0.5">Rota</p>
             <span className="font-display text-sm font-semibold text-ink">Yönetim</span>
           </div>
 

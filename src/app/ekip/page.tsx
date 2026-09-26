@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { AlertCircle, Lock, Trash2, UserPlus } from "lucide-react";
 import AppHeader from "../../components/AppHeader";
-import { redirectToLogin } from "../../lib/api";
+import { fetchAccount, redirectToLogin } from "../../lib/api";
 
 interface Member {
   email: string;
@@ -39,6 +39,7 @@ export default function TeamPage() {
   const [role, setRole] = useState<Member["role"]>("member");
   const [busy, setBusy] = useState(false);
   const [pendingRemove, setPendingRemove] = useState<string | null>(null);
+  const [emailLogin, setEmailLogin] = useState(false);
 
   const reload = useCallback(async () => {
     try {
@@ -50,6 +51,7 @@ export default function TeamPage() {
 
   useEffect(() => {
     reload();
+    fetchAccount().then((a) => setEmailLogin(!!a?.emailLogin));
   }, [reload]);
 
   const run = async (action: () => Promise<unknown>) => {
@@ -91,9 +93,10 @@ export default function TeamPage() {
       <div className="mx-auto w-full max-w-3xl px-4 py-6">
         <h1 className="font-display text-xl font-semibold text-ink">Ekip</h1>
         <p className="mt-1 text-xs leading-relaxed text-ink-3">
-          Sisteme yalnızca bu listedeki e-postalar girebilir: Google hesabıyla ya da e-postaya gelen
-          bağlantıyla. Eklediğiniz kişiye site adresini iletmeniz yeterli. Listeden çıkarılan kişinin
-          erişimi en geç bir dakikada kapanır.
+          Sisteme yalnızca bu listedeki e-postalar girebilir:{" "}
+          {emailLogin ? "Google hesabıyla ya da e-postaya gelen bağlantıyla." : "Google hesabıyla (bu e-posta bir Google hesabı olmalı)."}{" "}
+          Eklediğiniz kişiye site adresini iletmeniz yeterli. Listeden çıkarılan kişinin erişimi en geç bir
+          dakikada kapanır.
         </p>
 
         <form onSubmit={add} className="mt-5 flex flex-wrap gap-2">
@@ -106,7 +109,7 @@ export default function TeamPage() {
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="ornek@aiesec.net"
+            placeholder="ornek@eposta.com"
             className="min-w-0 flex-1 rounded-input border border-rule-2 bg-paper px-3 py-2 text-sm text-ink placeholder:text-ink-4 hover:border-ink-4 focus:border-accent"
           />
           <label htmlFor="team-role" className="sr-only">

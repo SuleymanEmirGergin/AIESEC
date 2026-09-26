@@ -11,6 +11,10 @@ on:
         description: "Taze ilceleri de yeniden cek (OSM)"
         type: boolean
         default: false
+      kontrol:
+        description: "Sadece veritabani baglantisini kontrol et (1 dk; veri yenilemez)"
+        type: boolean
+        default: false
 
 concurrency:
   group: refresh-data
@@ -39,13 +43,30 @@ jobs:
       - name: Veritabani adresi tanimli mi
         run: test -n "$DATABASE_URL" || { echo "::error::DATABASE_URL secret'i eksik"; exit 1; }
 
+      - name: Baglanti kontrolu
+        run: |
+          python - <<'PY'
+          import asyncio, os
+          from sqlalchemy import text
+          from app.database import make_engine
+          async def main():
+              engine = make_engine(os.environ["DATABASE_URL"])
+              async with engine.connect() as c:
+                  places = await c.scalar(text("select count(*) from places"))
+                  saved = await c.scalar(text("select count(*) from saved_places"))
+              await engine.dispose()
+              print(f"Baglanti tamam: {places} yer, {saved} kayitli yer")
+          asyncio.run(main())
+          PY
+
       - name: OSM ingest
+        if: ${{ !inputs.kontrol }}
         run: python -m app.ingest --all ${{ inputs.force && '--force' || '' }}
 
       # Overture eski surumleri S3'ten siliyor; sabit surum birkac ay
       # icinde bozulurdu. En yeni tam surum her seferinde bulunuyor.
       - name: En yeni Overture surumu
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !inputs.kontrol }}
         run: |
           release=$(curl -fsS "https://overturemaps-us-west-2.s3.amazonaws.com/?list-type=2&prefix=release/&delimiter=/" \
             | grep -oE 'release/[0-9]{4}-[0-9]{2}-[0-9]{2}\.[0-9]+/' | sort | tail -1 | cut -d/ -f2)
@@ -54,5 +75,5 @@ jobs:
           echo "OVERTURE_RELEASE=$release" >> "$GITHUB_ENV"
 
       - name: Overture zenginlestirme
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !inputs.kontrol }}
         run: python -m app.overture_ingest --all

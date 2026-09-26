@@ -400,7 +400,7 @@ def to_pdf(
     with_phone = sum(1 for r in rows if r.phone)
     ratio = f" (%{round(100 * with_phone / len(rows))})" if rows else ""
     story = [
-        Paragraph("POI FINDER · ORTAK KURUM LİSTESİ", eyebrow),
+        Paragraph("ROTA · KURUM LİSTESİ", eyebrow),
         Spacer(0, 3),
         Paragraph(_esc(title), h1),
         Spacer(0, 3),
@@ -554,7 +554,7 @@ def to_pdf(
         topMargin=margin_top,
         bottomMargin=margin_bottom,
         title=title,
-        author="POI Finder",
+        author="Rota",
         subject="Ortak kurum listesi",
     )
     doc.build(story, canvasmaker=NumberedCanvas)

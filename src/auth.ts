@@ -25,7 +25,7 @@ function emailProvider() {
     id: "email",
     name: "E-posta",
     server: server ?? "smtp://localhost",
-    from: process.env.EMAIL_FROM ?? "AIESEC POI Finder <no-reply@localhost>",
+    from: process.env.EMAIL_FROM ?? "Rota <no-reply@localhost>",
     maxAge: EMAIL_LINK_MAX_AGE_S,
     async sendVerificationRequest({ identifier, url, provider }) {
       if (!server) {
