@@ -179,7 +179,8 @@ export function groupByProvince(
     .map(([plate, items]) => ({
       plate,
       province: provinceName(items[0]),
-      districts: items,
+      // Backend ASCII sirasi veriyor (Bayrampasa < Bagcilar); secici Turkce sirali olsun.
+      districts: [...items].sort((a, b) => a.name.localeCompare(b.name, "tr")),
     }))
     .sort((a, b) => a.plate.localeCompare(b.plate));
 }

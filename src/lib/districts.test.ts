@@ -3,6 +3,8 @@ import {
   buildPlacesParams,
   fetchDistrictPlaces,
   fetchDistrictSummary,
+  groupByProvince,
+  type DistrictMeta,
 } from "./districts";
 
 function mockFetch(body: unknown, ok = true, status = 200) {
@@ -156,5 +158,16 @@ describe("fetchDistrictSummary", () => {
     expect(spy.mock.calls[0][0]).toBe(
       "/api/districts/tr-34-a%20b/summary?include_buffer=false"
     );
+  });
+});
+
+describe("groupByProvince", () => {
+  it("ilceleri il icinde Turkce alfabeyle siralar", () => {
+    const d = (name: string): DistrictMeta => ({
+      id: name, name, province: "istanbul", province_plate: "34", bbox: [0, 0, 0, 0], center: [0, 0],
+      fetched_at: null, place_count: 1, status: "ok",
+    });
+    const [group] = groupByProvince(["Bayrampaşa", "Başakşehir", "Bağcılar", "Bakırköy"].map(d));
+    expect(group.districts.map((x) => x.name)).toEqual(["Bağcılar", "Bakırköy", "Başakşehir", "Bayrampaşa"]);
   });
 });
